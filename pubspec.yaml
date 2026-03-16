@@ -197,10 +197,10 @@ flutter:
 
 flutter_native_splash:
     color: "#42a5f5"
-    image: "assets/images/logo.png"
+    image: "assets/images/logo GPS.png"
 
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: "assets/images/logo.png"
+  image_path: "assets/images/GPS Workforce Logo.png"
   remove_alpha_ios: true  # Add this line

@@ -1,7 +1,7 @@
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -9,10 +9,10 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
-
 import '../Models/attendance_Model.dart';
 import '../Repositories/attendance_repository.dart';
 import 'location_view_model.dart';
+import 'dart:typed_data';
 
 class AttendanceViewModel extends GetxController {
   // ── Dependencies ──────────────────────────────────────────────────────────
@@ -101,8 +101,10 @@ class AttendanceViewModel extends GetxController {
     String empName = '',
     String job     = '',
     String city    = '',
+    Uint8List? photoBytes ,
+
   }) async {
-    await clockIn(empId: empId, empName: empName, job: job, city: city);
+    await clockIn(empId: empId, empName: empName, job: job, city: city, photoBytes: photoBytes);
   }
 
   void stopElapsedTimer() {
@@ -120,6 +122,8 @@ class AttendanceViewModel extends GetxController {
     String empName = '',
     String job     = '',
     String city    = '',
+    Uint8List? photoBytes,
+
   }) async {
     debugPrint('🎯 [VM] ===== CLOCK-IN STARTED =====');
 
@@ -169,9 +173,12 @@ class AttendanceViewModel extends GetxController {
     elapsedTime.value = '00:00:00';
     _startTimer();
 
-    Get.snackbar('Clock-In Successful', 'You are now clocked in',
-        backgroundColor: Colors.green);
-    debugPrint('✅ [VM] Clock-in set. ID: $attendanceId');
+    Get.snackbar(
+      'Clock-In Successful',
+      'You are now clocked in',
+      backgroundColor: const Color(0xFF1A2B6D),
+      colorText: Colors.white, // This makes the text white
+    );
 
     // 5. Background: persist & sync
     await _handleBackgroundTasks(
@@ -180,6 +187,8 @@ class AttendanceViewModel extends GetxController {
       empName     : empName,
       job         : job,
       city        : city,
+      photoBytes  : photoBytes,
+
     );
   }
 
@@ -390,6 +399,8 @@ class AttendanceViewModel extends GetxController {
     required String empName,
     required String job,
     required String city,
+    Uint8List?      photoBytes,
+
   }) async {
     debugPrint('🛰 [VM] Background tasks started...');
     try {
@@ -414,6 +425,22 @@ class AttendanceViewModel extends GetxController {
       // C. Capture exact clock-in datetime
       final DateTime clockInNow = _clockInTime ?? DateTime.now();
 
+      String? profileBase64;
+      if (photoBytes != null && photoBytes.isNotEmpty) {
+        try {
+          profileBase64 = base64Encode(photoBytes);
+          debugPrint('📸 [VM] ✅ Profile base64 encoded — original: ${photoBytes.length} bytes | base64 length: ${profileBase64.length} chars');
+        } catch (e) {
+          // ✅ ADDED: explicit error log so failures are visible in logcat
+          debugPrint('❌ [VM] base64Encode FAILED: $e — profile will be NULL for this record');
+          profileBase64 = null;
+        }
+      } else {
+        // ✅ ADDED: log WHY profile is null so you can trace it in logcat
+        debugPrint('⚠️ [VM] photoBytes is ${photoBytes == null ? "null" : "empty"} — profile NOT saved. '
+            'Check that timer_card.dart read the photo bytes before any await calls.');
+      }
+
       // D. Save to local DB — original field names preserved
       final model = AttendanceModel(
         attendance_in_id  : attendanceId,
@@ -425,7 +452,8 @@ class AttendanceViewModel extends GetxController {
         city              : city,
         address           : address,
         attendance_in_date: clockInNow,   // ✅ real clock-in date (not DateTime.now() at save time)
-        attendance_in_time: clockInNow,   // ✅ real clock-in time
+        attendance_in_time: clockInNow,
+        profile:            profileBase64,// ✅ real clock-in time
         posted            : 0,
       );
       await addAttendance(model);

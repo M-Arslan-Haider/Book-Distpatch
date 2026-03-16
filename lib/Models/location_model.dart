@@ -1,179 +1,103 @@
-// import 'dart:convert';
-// import 'dart:typed_data';
-// import 'package:intl/intl.dart';
-//
-// class LocationModel {
-//   dynamic location_id;
-//   String? emp_id;         // employee id (table: emp_id)
-//   String? emp_name;       // employee name (table: emp_name)
-//   int posted;             // 0 = not posted, 1 = posted
-//   String? file_name;
-//   Uint8List? body;
-//   dynamic total_distance;
-//   DateTime? location_date;
-//   DateTime? location_time;
-//
-//   LocationModel({
-//     this.location_id,
-//     this.emp_id,
-//     this.emp_name,
-//     this.posted = 0,
-//     this.file_name,
-//     this.body,
-//     this.total_distance,
-//     this.location_date,
-//     this.location_time,
-//   });
-//
-//   // ----------------------
-//   // CREATE MODEL FROM DB / API MAP
-//   // ----------------------
-//   factory LocationModel.fromMap(Map<dynamic, dynamic> json) {
-//     final DateFormat dateFormat = DateFormat('dd-MMM-yyyy');
-//     final DateFormat timeFormat = DateFormat('HH:mm:ss');
-//
-//     return LocationModel(
-//       location_id: json['location_id'],
-//       emp_id: json['emp_id'],
-//       emp_name: json['emp_name'],
-//       posted: json['posted'] ?? 0,
-//       file_name: json['file_name'],
-//       total_distance: json['total_distance'],
-//
-//       location_date: json['location_date'] != null
-//           ? dateFormat.parse(json['location_date'].toString())
-//           : null,
-//
-//       location_time: json['location_time'] != null
-//           ? timeFormat.parse(json['location_time'].toString())
-//           : null,
-//
-//       body: json['body'] != null && json['body'].toString().isNotEmpty
-//           ? Uint8List.fromList(base64Decode(json['body'].toString()))
-//           : null,
-//     );
-//   }
-//
-//   // ----------------------
-//   // CONVERT MODEL TO DB / API MAP
-//   // ----------------------
-//   Map<String, dynamic> toMap() {
-//     return {
-//       'location_id': location_id,
-//       'emp_id': emp_id,
-//       'emp_name': emp_name,
-//       'posted': posted,
-//       'file_name': file_name,
-//       'total_distance': total_distance,
-//       'location_date': location_date != null
-//           ? DateFormat('dd-MMM-yyyy').format(location_date!)
-//           : DateFormat('dd-MMM-yyyy').format(DateTime.now()),
-//       'location_time': location_time != null
-//           ? DateFormat('HH:mm:ss').format(location_time!)
-//           : DateFormat('HH:mm:ss').format(DateTime.now()),
-//       'body': body != null ? base64Encode(body!) : null,
-//     };
-//   }
-// }
+// lib/Models/location_model.dart
 
-import 'dart:convert';
 import 'dart:typed_data';
-import 'package:intl/intl.dart';
 
 class LocationModel {
-  dynamic location_id;
-  String? emp_id;         // employee id (table: emp_id)
-  String? emp_name;       // employee name (table: emp_name)
-  int posted;             // 0 = not posted, 1 = posted
-  String? file_name;
-  Uint8List? body;
-  dynamic total_distance;
-  DateTime? location_date;
-  DateTime? location_time;
+  final String locationId;
+  final String locationDate;
+  final String locationTime;
+  final String fileName;
+  final String empId;
+  final String totalDistance;
+  final String empName;
+  final int posted;
+  final Uint8List? body; // GPX file bytes (BLOB)
 
-  LocationModel({
-    this.location_id,
-    this.emp_id,
-    this.emp_name,
-    this.posted = 0,
-    this.file_name,
+  const LocationModel({
+    required this.locationId,
+    required this.locationDate,
+    required this.locationTime,
+    required this.fileName,
+    required this.empId,
+    required this.totalDistance,
+    required this.empName,
+    required this.posted,
     this.body,
-    this.total_distance,
-    this.location_date,
-    this.location_time,
   });
 
-  // ----------------------
-  // CREATE MODEL FROM DB / API MAP
-  // ----------------------
-  factory LocationModel.fromMap(Map<dynamic, dynamic> json) {
-    // ✅ FIX: Support both stored formats when reading back from local DB
-    // DB stores as MM/dd/yyyy (new), but old rows may still have dd-MMM-yyyy
-    final DateFormat dateFormatNew = DateFormat('MM/dd/yyyy');
-    final DateFormat dateFormatOld = DateFormat('dd-MMM-yyyy');
-    final DateFormat timeFormat    = DateFormat('HH:mm:ss');
+  // ── DB column names match your CREATE TABLE exactly ──────────────────────
+  static const String tableName    = 'location_table';
+  static const String colId        = 'location_id';
+  static const String colDate      = 'location_date';
+  static const String colTime      = 'location_time';
+  static const String colFileName  = 'file_name';
+  static const String colEmpId     = 'emp_id';
+  static const String colDistance  = 'total_distance';
+  static const String colEmpName   = 'emp_name';
+  static const String colPosted    = 'posted';
+  static const String colBody      = 'body';
 
-    DateTime? parsedDate;
-    if (json['location_date'] != null) {
-      final raw = json['location_date'].toString();
-      try {
-        parsedDate = dateFormatNew.parse(raw);
-      } catch (_) {
-        try {
-          parsedDate = dateFormatOld.parse(raw);
-        } catch (_) {
-          parsedDate = null;
-        }
-      }
-    }
+  // ── Serialisation ─────────────────────────────────────────────────────────
 
-    DateTime? parsedTime;
-    if (json['location_time'] != null) {
-      try {
-        parsedTime = timeFormat.parse(json['location_time'].toString());
-      } catch (_) {
-        parsedTime = null;
-      }
-    }
-
+  factory LocationModel.fromMap(Map<String, dynamic> map) {
     return LocationModel(
-      location_id   : json['location_id'],
-      emp_id        : json['emp_id'],
-      emp_name      : json['emp_name'],
-      posted        : json['posted'] ?? 0,
-      file_name     : json['file_name'],
-      total_distance: json['total_distance'],
-      location_date : parsedDate,
-      location_time : parsedTime,
-      body          : json['body'] != null && json['body'].toString().isNotEmpty
-          ? Uint8List.fromList(base64Decode(json['body'].toString()))
+      locationId    : map[colId]       as String? ?? '',
+      locationDate  : map[colDate]     as String? ?? '',
+      locationTime  : map[colTime]     as String? ?? '',
+      fileName      : map[colFileName] as String? ?? '',
+      empId         : map[colEmpId]    as String? ?? '',
+      totalDistance : map[colDistance] as String? ?? '0.000',
+      empName       : map[colEmpName]  as String? ?? '',
+      posted        : map[colPosted]   as int?    ?? 0,
+      body          : map[colBody]     != null
+          ? Uint8List.fromList(map[colBody] as List<int>)
           : null,
     );
   }
 
-  // ----------------------
-  // CONVERT MODEL TO DB / API MAP
-  // ----------------------
   Map<String, dynamic> toMap() {
     return {
-      'location_id'   : location_id,
-      'emp_id'        : emp_id,
-      'emp_name'      : emp_name,
-      'posted'        : posted,
-      'file_name'     : file_name,
-      'total_distance': total_distance,
-
-      // ✅ FIX: Changed from 'dd-MMM-yyyy' to 'MM/dd/yyyy' to match API expectation
-      // e.g. 03/11/2026 instead of 11-Mar-2026
-      'location_date' : location_date != null
-          ? DateFormat('MM/dd/yyyy').format(location_date!)
-          : DateFormat('MM/dd/yyyy').format(DateTime.now()),
-
-      'location_time' : location_time != null
-          ? DateFormat('HH:mm:ss').format(location_time!)
-          : DateFormat('HH:mm:ss').format(DateTime.now()),
-
-      'body'          : body != null ? base64Encode(body!) : null,
+      colId       : locationId,
+      colDate     : locationDate,
+      colTime     : locationTime,
+      colFileName : fileName,
+      colEmpId    : empId,
+      colDistance : totalDistance,
+      colEmpName  : empName,
+      colPosted   : posted,
+      colBody     : body,
     };
   }
+
+  /// JSON map for the REST API — body sent as base64 in a multipart or raw
+  /// JSON field (adjust if your API expects multipart/form-data).
+  Map<String, dynamic> toApiJson() {
+    return {
+      'location_id'    : locationId,
+      'location_date'  : locationDate,
+      'location_time'  : locationTime,
+      'file_name'      : fileName,
+      'emp_id'         : empId,
+      'total_distance' : totalDistance,
+      'emp_name'       : empName,
+    };
+  }
+
+  LocationModel copyWith({int? posted}) {
+    return LocationModel(
+      locationId    : locationId,
+      locationDate  : locationDate,
+      locationTime  : locationTime,
+      fileName      : fileName,
+      empId         : empId,
+      totalDistance : totalDistance,
+      empName       : empName,
+      posted        : posted ?? this.posted,
+      body          : body,
+    );
+  }
+
+  @override
+  String toString() =>
+      'LocationModel(id=$locationId, emp=$empId, dist=$totalDistance km, posted=$posted)';
 }

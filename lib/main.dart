@@ -112,7 +112,7 @@ class MyApp extends StatelessWidget {
 
     return GetMaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Book IT',
+      title: 'GPS Workforce Monitor',
       initialRoute: loginVM.currentUser.value != null
           ? loginVM.getHomeRoute() // Dynamic home route based on designation
           : routeCodeScreen,       // Otherwise start from code screen

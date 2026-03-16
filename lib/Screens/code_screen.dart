@@ -7,6 +7,7 @@ import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../constants.dart';
+import '../AppColors.dart';
 
 class CodeScreen extends StatefulWidget {
   const CodeScreen({super.key});
@@ -30,11 +31,17 @@ class _CodeScreenState extends State<CodeScreen>
   StreamSubscription<List<ConnectivityResult>>? connectivitySubscription;
   bool isOffline = false;
 
-  static const Color _accentBlue    = Color(0xFF4354E8);
-  static const Color _accentLight   = Color(0xFFEBEEFD);
-  static const Color _textPrimary   = Color(0xFF111827);
-  static const Color _textSecondary = Color(0xFF6B7280);
-  static const Color _errorRed      = Color(0xFFD93025);
+  // ── Design tokens (mirrored from EmployeeProfileScreen) ──────────────────
+  // Color tokens moved to AppColors
+  // see app_colors.dart
+  //
+  //
+  //
+  //
+  //
+  //
+  //
+  //
 
   @override
   void initState() {
@@ -97,7 +104,7 @@ class _CodeScreenState extends State<CodeScreen>
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message, style: const TextStyle(color: Colors.white)),
-        backgroundColor: isError ? _errorRed : _accentBlue,
+        backgroundColor: isError ? AppColors.error : AppColors.primary,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         margin: const EdgeInsets.all(20),
@@ -190,12 +197,12 @@ class _CodeScreenState extends State<CodeScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       body: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
         child: Stack(
           children: [
-            // ── Same background blobs as location/camera/notification ──────
+            // ── Decorative blobs using navy/gold palette ──────────────────
             Positioned(
               top: -100,
               right: -50,
@@ -208,8 +215,8 @@ class _CodeScreenState extends State<CodeScreen>
                     borderRadius: BorderRadius.circular(80),
                     gradient: LinearGradient(
                       colors: [
-                        _accentBlue.withOpacity(0.18),
-                        _accentBlue.withOpacity(0.04),
+                        AppColors.cyan.withOpacity(0.15),
+                        AppColors.primary.withOpacity(0.03),
                       ],
                     ),
                   ),
@@ -224,7 +231,19 @@ class _CodeScreenState extends State<CodeScreen>
                 height: 120,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: _accentBlue.withOpacity(0.05),
+                  color: AppColors.greenTeal.withOpacity(0.10),
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: -60,
+              right: -40,
+              child: Container(
+                width: 160,
+                height: 160,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.primary.withOpacity(0.05),
                 ),
               ),
             ),
@@ -233,13 +252,13 @@ class _CodeScreenState extends State<CodeScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── Back button ───────────────────────────────────────────
+                  // ── Back button ─────────────────────────────────────────
                   Padding(
                     padding: const EdgeInsets.only(left: 8, top: 4),
                     child: IconButton(
                       onPressed: () => Get.back(),
-                      icon: const Icon(Icons.arrow_back,
-                          color: _textPrimary, size: 22),
+                      icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                          color: AppColors.primary, size: 20),
                     ),
                   ),
 
@@ -255,48 +274,74 @@ class _CodeScreenState extends State<CodeScreen>
                             children: [
                               const SizedBox(height: 20),
 
-                              // ── Circle icon (same as other screens) ────────
+                              // ── Logo image — GPS Workforce logo ─────────
                               Container(
-                                padding: const EdgeInsets.all(32),
+                                width: 140,
+                                height: 140,
                                 decoration: BoxDecoration(
-                                  color: _accentLight,
                                   shape: BoxShape.circle,
+                                  color: Colors.white,
                                   boxShadow: [
                                     BoxShadow(
-                                      color: _accentBlue.withOpacity(0.12),
-                                      blurRadius: 20,
+                                      color: AppColors.cyan.withOpacity(0.30),
+                                      blurRadius: 32,
+                                      spreadRadius: 4,
                                       offset: const Offset(0, 10),
+                                    ),
+                                    BoxShadow(
+                                      color: AppColors.greenTeal.withOpacity(0.15),
+                                      blurRadius: 16,
+                                      offset: const Offset(0, 4),
                                     ),
                                   ],
                                 ),
-                                child: const Icon(
-                                  Icons.location_city_rounded,
-                                  size: 70,
-                                  color: _accentBlue,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(10),
+                                  child: Image.asset(
+                                    'assets/images/applogo.png',
+                                    fit: BoxFit.contain,
+                                  ),
                                 ),
                               ),
 
-                              const SizedBox(height: 40),
+                              const SizedBox(height: 36),
 
-                              // ── Title ──────────────────────────────────────
-                              Text(
-                                'GPS-Based Attendance\nSystem',
+                              // ── Title ───────────────────────────────────
+                              const Text(
+                                'GPS Workforce Monitor',
                                 style: TextStyle(
                                   fontSize: 26,
                                   fontWeight: FontWeight.w800,
-                                  color: darkText,
+                                  color: AppColors.primary,
                                   height: 1.25,
+                                  letterSpacing: -0.3,
                                 ),
                                 textAlign: TextAlign.center,
                               ),
 
                               const SizedBox(height: 10),
 
+                              // Gold accent divider — signature profile element
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    width: 32, height: 3,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.cyan,
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 12),
+
                               Text(
                                 'Enter your company code to continue',
                                 style: TextStyle(
-                                  fontSize: 16,
-                                  color: subText,
+                                  fontSize: 15,
+                                  color: AppColors.textSecondary,
                                   height: 1.5,
                                 ),
                                 textAlign: TextAlign.center,
@@ -304,7 +349,7 @@ class _CodeScreenState extends State<CodeScreen>
 
                               const SizedBox(height: 40),
 
-                              // ── Input ──────────────────────────────────────
+                              // ── Input ────────────────────────────────────
                               Form(
                                 key: _formKey,
                                 child: TextFormField(
@@ -312,52 +357,54 @@ class _CodeScreenState extends State<CodeScreen>
                                   textCapitalization:
                                   TextCapitalization.characters,
                                   style: const TextStyle(
-                                    color: _textPrimary,
-                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.textPrimary,
+                                    fontWeight: FontWeight.w700,
                                     fontSize: 16,
-                                    letterSpacing: 1.5,
+                                    letterSpacing: 2.0,
                                   ),
                                   decoration: InputDecoration(
                                     hintText: 'Company Code',
                                     hintStyle: TextStyle(
-                                      color: _textSecondary.withOpacity(0.6),
+                                      color: AppColors.textSecondary.withOpacity(0.55),
                                       fontWeight: FontWeight.w400,
-                                      letterSpacing: 0.1,
+                                      letterSpacing: 0.5,
                                       fontSize: 15,
                                     ),
                                     filled: true,
-                                    fillColor: const Color(0xFFF5F6FA),
-                                    prefixIcon: const Icon(
+                                    fillColor: Colors.white,
+                                    prefixIcon: Icon(
                                       Icons.badge_outlined,
-                                      color: _textSecondary,
+                                      color: AppColors.primary.withOpacity(0.5),
                                       size: 22,
                                     ),
                                     border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(14),
-                                      borderSide: BorderSide.none,
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: const BorderSide(
+                                          color: AppColors.divider, width: 1.2),
                                     ),
                                     enabledBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(14),
-                                      borderSide: BorderSide.none,
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: const BorderSide(
+                                          color: AppColors.divider, width: 1.2),
                                     ),
                                     focusedBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(14),
+                                      borderRadius: BorderRadius.circular(12),
                                       borderSide: const BorderSide(
-                                          color: _accentBlue, width: 2),
+                                          color: AppColors.primary, width: 2),
                                     ),
                                     errorBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(14),
+                                      borderRadius: BorderRadius.circular(12),
                                       borderSide: const BorderSide(
-                                          color: _errorRed, width: 1.5),
+                                          color: AppColors.error, width: 1.5),
                                     ),
                                     focusedErrorBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(14),
+                                      borderRadius: BorderRadius.circular(12),
                                       borderSide: const BorderSide(
-                                          color: _errorRed, width: 2),
+                                          color: AppColors.error, width: 2),
                                     ),
                                     errorText: errorMessage,
                                     errorStyle: const TextStyle(
-                                        color: _errorRed, fontSize: 12),
+                                        color: AppColors.error, fontSize: 12),
                                     contentPadding:
                                     const EdgeInsets.symmetric(
                                         horizontal: 18, vertical: 20),
@@ -371,9 +418,9 @@ class _CodeScreenState extends State<CodeScreen>
                                 ),
                               ),
 
-                              const SizedBox(height: 60),
+                              const SizedBox(height: 52),
 
-                              // ── Continue Button ────────────────────────────
+                              // ── Continue Button — navy with gold shadow ──
                               SizedBox(
                                 width: double.infinity,
                                 height: 58,
@@ -384,16 +431,16 @@ class _CodeScreenState extends State<CodeScreen>
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: isOffline
                                         ? const Color(0xFFCBD5E1)
-                                        : _accentBlue,
+                                        : AppColors.primary,
                                     foregroundColor: isOffline
-                                        ? _textSecondary
+                                        ? AppColors.textSecondary
                                         : Colors.white,
                                     disabledBackgroundColor:
                                     const Color(0xFFCBD5E1),
-                                    elevation: isOffline ? 0 : 4,
-                                    shadowColor: _accentBlue.withOpacity(0.35),
+                                    elevation: isOffline ? 0 : 6,
+                                    shadowColor: AppColors.cyan.withOpacity(0.40),
                                     shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(32),
+                                      borderRadius: BorderRadius.circular(14),
                                     ),
                                   ),
                                   child: isLoading
@@ -429,6 +476,26 @@ class _CodeScreenState extends State<CodeScreen>
                               ),
 
                               const SizedBox(height: 20),
+
+                              // ── Footer ───────────────────────────────────
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.lock_outline_rounded,
+                                      size: 13,
+                                      color: AppColors.textSecondary.withOpacity(0.6)),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    'Secured & Encrypted Connection',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: AppColors.textSecondary.withOpacity(0.6),
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 20),
                             ],
                           ),
                         ),
@@ -447,7 +514,7 @@ class _CodeScreenState extends State<CodeScreen>
                 right: 0,
                 child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 9),
-                  color: const Color(0xFFF59E0B),
+                  color: AppColors.warning,
                   child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [

@@ -12,6 +12,7 @@ class AttendanceModel {
 
   dynamic attendance_in_date;
   dynamic attendance_in_time;
+  String? profile;
 
   int posted;
 
@@ -26,6 +27,7 @@ class AttendanceModel {
     this.address,
     this.attendance_in_date,
     this.attendance_in_time,
+    this.profile,
     this.posted = 0,
   });
 
@@ -41,6 +43,7 @@ class AttendanceModel {
       address: json['address'],
       attendance_in_date: json['attendance_in_date'],
       attendance_in_time: json['attendance_in_time'],
+      profile: json['profile'],
       posted: json['posted'] ?? 0,
     );
   }
@@ -76,6 +79,7 @@ class AttendanceModel {
       'address': address,
       'attendance_in_date': dateString,
       'attendance_in_time': timeString,
+      'profile' : profile,
       'posted': posted,
     };
   }

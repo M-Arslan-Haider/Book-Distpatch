@@ -36,10 +36,6 @@ const String prefSecondsPassed = 'secondsPassed';
 // Role-based routes
 const String routeLogin = '/login';
 const String routeHome = '/home';
-const String routeNSM = '/NSMHomepage';
-const String routeRSM = '/RSMHomepage';
-const String routeSM = '/SMHomepage';
-const String routeDispatcher = '/DispatcherHomepage';
 const String routeCodeScreen = '/CodeScreen';
 const String routePermissions = '/permissions';
 const String routeCameraScreen = '/cameraScreen';

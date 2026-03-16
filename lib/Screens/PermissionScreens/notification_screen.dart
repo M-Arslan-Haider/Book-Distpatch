@@ -1,140 +1,4 @@
-// // lib/Screens/PermissionScreens/notification_screen.dart
-//
-// import 'package:flutter/material.dart';
-// import 'package:get/get.dart';
-// import 'package:permission_handler/permission_handler.dart';
-// import '../../constants.dart';
-//
-// class NotificationScreen extends StatelessWidget {
-//   final VoidCallback? onNext;
-//
-//   const NotificationScreen({super.key, this.onNext});
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return Scaffold(
-//       backgroundColor: Colors.white,
-//       body: Stack(
-//         children: [
-//           Positioned(
-//             top: -100,
-//             right: -50,
-//             child: Transform.rotate(
-//               angle: -0.2,
-//               child: Container(
-//                 width: 300,
-//                 height: 300,
-//                 decoration: BoxDecoration(
-//                   borderRadius: BorderRadius.circular(80),
-//                   gradient: LinearGradient(
-//                     colors: [
-//                       Colors.blueGrey.withOpacity(0.4),
-//                       Colors.blueGrey.withOpacity(0.1),
-//                     ],
-//                   ),
-//                 ),
-//               ),
-//             ),
-//           ),
-//           Positioned(
-//             top: 50,
-//             left: -30,
-//             child: Container(
-//               width: 120,
-//               height: 120,
-//               decoration: BoxDecoration(
-//                 shape: BoxShape.circle,
-//                 color: Colors.blueGrey.withOpacity(0.05),
-//               ),
-//             ),
-//           ),
-//           SafeArea(
-//             child: Padding(
-//               padding: const EdgeInsets.symmetric(horizontal: 32),
-//               child: Column(
-//                 mainAxisAlignment: MainAxisAlignment.center,
-//                 children: [
-//                   Container(
-//                     padding: const EdgeInsets.all(32),
-//                     decoration: BoxDecoration(
-//                       color: Colors.white,
-//                       shape: BoxShape.circle,
-//                       boxShadow: [
-//                         BoxShadow(
-//                           color: Colors.black.withOpacity(0.05),
-//                           blurRadius: 20,
-//                           offset: const Offset(0, 10),
-//                         ),
-//                       ],
-//                     ),
-//                     child: const Icon(
-//                       Icons.notifications_active_rounded,
-//                       size: 70,
-//                       color: Colors.blueGrey,
-//                     ),
-//                   ),
-//                   const SizedBox(height: 40),
-//                   Text(
-//                     "Notification Permission",
-//                     style: TextStyle(
-//                       fontSize: 26,
-//                       fontWeight: FontWeight.w800,
-//                       color: darkText,
-//                     ),
-//                     textAlign: TextAlign.center,
-//                   ),
-//                   const SizedBox(height: 10),
-//                   Text(
-//                     "Allow notifications to stay updated with alerts.",
-//                     style: TextStyle(
-//                       fontSize: 16,
-//                       color: subText,
-//                       height: 1.5,
-//                     ),
-//                     textAlign: TextAlign.center,
-//                   ),
-//                   const SizedBox(height: 60),
-//                   SizedBox(
-//                     width: double.infinity,
-//                     height: 56,
-//                     child: ElevatedButton(
-//                       onPressed: () async {
-//                         PermissionStatus status = await Permission.notification.request();
-//                         if (status.isGranted) {
-//                           onNext?.call();
-//                         } else {
-//                           Get.snackbar(
-//                             'Permission Required',
-//                             'Notification permission is required.',
-//                             snackPosition: SnackPosition.BOTTOM,
-//                           );
-//                         }
-//                       },
-//                       style: ElevatedButton.styleFrom(
-//                         backgroundColor: const Color(0xFF2D3436),
-//                         foregroundColor: Colors.white,
-//                         shape: RoundedRectangleBorder(
-//                           borderRadius: BorderRadius.circular(18),
-//                         ),
-//                       ),
-//                       child: const Text(
-//                         "ALLOW",
-//                         style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-//                       ),
-//                     ),
-//                   ),
-//                 ],
-//               ),
-//             ),
-//           ),
-//         ],
-//       ),
-//     );
-//   }
-// }
-
-// lib/Screens/PermissionScreens/notification_screen.dart
-
+import '../../AppColors.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -145,15 +9,21 @@ class NotificationScreen extends StatelessWidget {
 
   const NotificationScreen({super.key, this.onNext});
 
-  static const Color _accentBlue  = Color(0xFF4354E8);
-  static const Color _accentLight = Color(0xFFEBEEFD);
+  // ── Design tokens (mirrored from EmployeeProfileScreen) ──────────────────
+  // Color tokens moved to AppColors
+  // see app_colors.dart
+  //
+  //
+  //
+  //
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       body: Stack(
         children: [
+          // ── Decorative blobs — navy + gold ──────────────────────────────
           Positioned(
             top: -100,
             right: -50,
@@ -166,8 +36,8 @@ class NotificationScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(80),
                   gradient: LinearGradient(
                     colors: [
-                      _accentBlue.withOpacity(0.18),
-                      _accentBlue.withOpacity(0.04),
+                      AppColors.cyan.withOpacity(0.14),
+                      AppColors.cyanBright.withOpacity(0.04),
                     ],
                   ),
                 ),
@@ -182,56 +52,98 @@ class NotificationScreen extends StatelessWidget {
               height: 120,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: _accentBlue.withOpacity(0.05),
+                color: AppColors.skyBlue.withOpacity(0.10),
               ),
             ),
           ),
+          Positioned(
+            bottom: -60,
+            right: -40,
+            child: Container(
+              width: 160,
+              height: 160,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.greenTeal.withOpacity(0.06),
+              ),
+            ),
+          ),
+
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 32),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+
+                  // ── Icon — navy gradient circle with gold border ─────────
                   Container(
-                    padding: const EdgeInsets.all(32),
+                    padding: const EdgeInsets.all(28),
                     decoration: BoxDecoration(
-                      color: _accentLight,
+                      gradient: const LinearGradient(
+                        colors: [AppColors.cyan, AppColors.greenTeal],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
                       shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.cyanBright, width: 2.5),
                       boxShadow: [
                         BoxShadow(
-                          color: _accentBlue.withOpacity(0.12),
-                          blurRadius: 20,
+                          color: AppColors.primary.withOpacity(0.28),
+                          blurRadius: 24,
                           offset: const Offset(0, 10),
                         ),
                       ],
                     ),
                     child: const Icon(
                       Icons.notifications_active_rounded,
-                      size: 70,
-                      color: _accentBlue,
+                      size: 64,
+                      color: Colors.white,
                     ),
                   ),
-                  const SizedBox(height: 40),
-                  Text(
-                    "Notification Permission",
+
+                  const SizedBox(height: 36),
+
+                  // ── Title ────────────────────────────────────────────────
+                  const Text(
+                    'Notification Permission',
                     style: TextStyle(
                       fontSize: 26,
                       fontWeight: FontWeight.w800,
-                      color: darkText,
+                      color: AppColors.primary,
+                      letterSpacing: -0.3,
                     ),
                     textAlign: TextAlign.center,
                   ),
+
                   const SizedBox(height: 10),
+
+                  // Gold accent divider
+                  Center(
+                    child: Container(
+                      width: 32, height: 3,
+                      decoration: BoxDecoration(
+                        color: AppColors.cyan,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 14),
+
                   Text(
-                    "Allow notifications to stay updated with alerts.",
+                    'Allow notifications to stay updated with alerts.',
                     style: TextStyle(
-                      fontSize: 16,
-                      color: subText,
-                      height: 1.5,
+                      fontSize: 15,
+                      color: AppColors.textSecondary,
+                      height: 1.6,
                     ),
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 60),
+
+                  const SizedBox(height: 56),
+
+                  // ── Allow Button — navy ──────────────────────────────────
                   SizedBox(
                     width: double.infinity,
                     height: 58,
@@ -246,25 +158,25 @@ class NotificationScreen extends StatelessWidget {
                             'Permission Required',
                             'Notification permission is required.',
                             snackPosition: SnackPosition.BOTTOM,
-                            backgroundColor: const Color(0xFFD93025),
+                            backgroundColor: AppColors.error,
                             colorText: Colors.white,
                           );
                         }
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: _accentBlue,
+                        backgroundColor: AppColors.primary,
                         foregroundColor: Colors.white,
-                        elevation: 4,
-                        shadowColor: _accentBlue.withOpacity(0.35),
+                        elevation: 6,
+                        shadowColor: AppColors.cyan.withOpacity(0.40),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(32),
+                          borderRadius: BorderRadius.circular(14),
                         ),
                       ),
                       child: const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Text(
-                            "Allow",
+                            'Allow',
                             style: TextStyle(
                               fontSize: 17,
                               fontWeight: FontWeight.w700,

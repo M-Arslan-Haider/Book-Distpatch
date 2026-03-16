@@ -50,23 +50,8 @@ class LoginViewModel extends GetxController {
   }
 
   String getHomeRoute() {
-    final designation = currentUser.value?.job?.toUpperCase() ?? '';
-
-    debugPrint('📍 Determining home route for designation: $designation');
-
-    switch (designation) {
-      case 'MANAGING DIRECTOR':
-      case 'NSM':
-        return routeNSM;
-      case 'RSM':
-        return routeRSM;
-      case 'SM':
-        return routeSM;
-      case 'DISPATCHER':
-        return routeDispatcher;
-      default:
-        return routeHome;
-    }
+    debugPrint('📍 All users redirected to Home Screen');
+    return routeHome;
   }
 
   Future<void> logout() async {
