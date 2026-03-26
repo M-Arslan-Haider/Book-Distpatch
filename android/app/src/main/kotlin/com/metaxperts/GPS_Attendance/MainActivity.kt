@@ -1,4 +1,4 @@
-//package com.metaxperts.GPS_Attendance
+//package com.metaxperts.GPS_Workforce_Monitor
 //
 //import android.content.Intent
 //import android.os.Bundle
@@ -28,7 +28,7 @@
 //}
 //
 
-package com.metaxperts.GPS_Attendance
+package com.metaxperts.GPS_Workforce_Monitor
 
 import android.content.Intent
 import android.os.Bundle
@@ -40,7 +40,7 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity(), ProviderInstaller.ProviderInstallListener {
 
-    private val CHANNEL = "com.metaxperts.GPS_Attendance/location_monitor"
+    private val CHANNEL = "com.metaxperts.GPS_Workforce_Monitor/location_monitor"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    package="com.metaxperts.GPS_Attendance">
+    package="com.metaxperts.GPS_Workforce_Monitor">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -32,13 +32,13 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
-        android:label="GPS Attendance"
+        android:label="GPS Workforce Monitor"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:enableOnBackInvokedCallback="true">
 
         <service
-            android:name="com.metaxperts.GPS_Attendance.UltraLocationService"
+            android:name="com.metaxperts.GPS_Workforce_Monitor.UltraLocationService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="location" />
@@ -96,10 +96,9 @@
         <service
             android:name="id.flutter.flutter_background_service.BackgroundService"
             android:foregroundServiceType="location" />
-
         <!-- WorkManager Configuration -->
         <service
-            android:name="com.metaxperts.GPS_Attendance.workmanager"
+            android:name="com.metaxperts.GPS_Workforce_Monitor.workmanager"
             android:exported="false">
             <intent-filter>
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />

@@ -1,4 +1,4 @@
-package com.metaxperts.GPS_Attendance
+package com.metaxperts.GPS_Workforce_Monitor
 
 import android.content.BroadcastReceiver
 import android.content.Context

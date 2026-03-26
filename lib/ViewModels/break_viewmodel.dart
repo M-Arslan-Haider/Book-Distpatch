@@ -532,8 +532,8 @@ class BreakViewModel extends GetxController {
     String message;
 
     if (sb == null) {
-      title = 'Break Schedule Nahi Mila ⛔';
-      message = 'Server se break schedule load nahi ho saka.\nDobara try karein.';
+      title = 'Break ⛔';
+      message = ' Its not break time yet. Please wait for your scheduled break.';
     } else {
       final start = _parseTime(sb.breakStart);
       final end = _parseTime(sb.breakEnd);

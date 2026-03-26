@@ -1,5 +1,5 @@
 
-package com.metaxperts.GPS_Attendance
+package com.metaxperts.GPS_Workforce_Monitor
 
 import android.app.AppOpsManager
 import android.app.AlarmManager

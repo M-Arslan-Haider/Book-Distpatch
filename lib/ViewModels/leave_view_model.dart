@@ -47,6 +47,7 @@ class LeaveViewModel extends GetxController {
 
   final List<String> leaveTypes = [
     'Annual Leave',
+    'Urgent Leave',
     'Sick Leave',
     'Casual Leave',
     'Emergency Leave',

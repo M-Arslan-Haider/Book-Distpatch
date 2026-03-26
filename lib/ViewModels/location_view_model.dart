@@ -1,16 +1,3 @@
-// // lib/ViewModels/location_view_model.dart
-// //
-// // Keeps every method that timer_card.dart already calls:
-// //   • consolidateDailyGPXData()
-// //   • consolidateDailyGPXDataForDate(DateTime)
-// //   • saveLocationFromConsolidatedFile()
-// //   • saveLocationFromConsolidatedFileForDate(DateTime)
-// //   • getImmediateDistance()
-// //   • calculateShiftDistance(DateTime)
-// //
-// // NEW hooks (call from AttendanceViewModel / AttendanceOutViewModel):
-// //   • onClockIn()   → starts GPX position stream
-// //   • onClockOut()  → stops stream, saves DB record, triggers server sync
 //
 // import 'dart:async';
 // import 'dart:io';
@@ -622,6 +609,23 @@
 //       final timeStr     = DateFormat('HH:mm:ss').format(now);
 //       final fileDateStr = DateFormat('dd-MM-yyyy').format(now);
 //
+//       // ── Accumulate previous sessions' distances for today ─────────────────
+//       // Find all existing DB records for this employee on today's date and sum
+//       // their distances. This handles multiple clock-in/clock-out cycles in a
+//       // single day: the new record will carry the full cumulative total.
+//       final todayRecords = await _repo.getByDate(dateStr);
+//       final previousTotal = todayRecords.fold<double>(
+//         0.0,
+//             (sum, r) => sum + (double.tryParse(r.totalDistance) ?? 0.0),
+//       );
+//       final cumulativeDistance = previousTotal + distance;
+//
+//       debugPrint(
+//           '📊 [LocVM] Distance accumulation → previous: '
+//               '${previousTotal.toStringAsFixed(3)} km + '
+//               'this session: ${distance.toStringAsFixed(3)} km = '
+//               'cumulative: ${cumulativeDistance.toStringAsFixed(3)} km');
+//
 //       await _initSerialCounter();
 //       final locationId = _buildLocationId(empId: empId);
 //
@@ -635,20 +639,27 @@
 //         locationTime  : timeStr,
 //         fileName      : 'track_${empId}_$fileDateStr.gpx',
 //         empId         : empId,
-//         totalDistance : distance.toStringAsFixed(3),
+//         totalDistance : cumulativeDistance.toStringAsFixed(3),
 //         empName       : empName,
-//         posted        : 0,
+//         posted        : 0,   // this new record will be synced
 //         body          : bytes,
 //       );
 //
 //       await _repo.add(model);
+//
+//       // ── Suppress older same-day records so only this one is synced ─────────
+//       // Mark every prior record for today as posted=1 so syncUnposted() skips
+//       // them. The server will only receive the latest cumulative record.
+//       await _repo.markOlderRecordsPosted(dateStr: dateStr, keepId: locationId);
+//
 //       await fetchAll();
 //
 //       _serialCounter++;
 //       await _saveSerialCounter();
 //
 //       debugPrint(
-//           '✅ [LocVM] DB record saved: $locationId | ${distance.toStringAsFixed(3)} km');
+//           '✅ [LocVM] DB record saved: $locationId | '
+//               '${cumulativeDistance.toStringAsFixed(3)} km (cumulative)');
 //     } catch (e) {
 //       debugPrint('❌ [LocVM] _saveLocationRecord: $e');
 //     }
@@ -810,19 +821,6 @@
 //   void _also(void Function() block) => block();
 // }
 
-// lib/ViewModels/location_view_model.dart
-//
-// Keeps every method that timer_card.dart already calls:
-//   • consolidateDailyGPXData()
-//   • consolidateDailyGPXDataForDate(DateTime)
-//   • saveLocationFromConsolidatedFile()
-//   • saveLocationFromConsolidatedFileForDate(DateTime)
-//   • getImmediateDistance()
-//   • calculateShiftDistance(DateTime)
-//
-// NEW hooks (call from AttendanceViewModel / AttendanceOutViewModel):
-//   • onClockIn()   → starts GPX position stream
-//   • onClockOut()  → stops stream, saves DB record, triggers server sync
 
 import 'dart:async';
 import 'dart:io';
@@ -843,9 +841,12 @@ import 'package:synchronized/synchronized.dart';
 import '../Models/location_model.dart';
 import '../Repositories/location_repository.dart';
 
+import '../Tracker/mqtt_service.dart'; // ← MQTT added
+
 class LocationViewModel extends GetxController {
   // ── Dependency ────────────────────────────────────────────────────────────
   final LocationRepository _repo = LocationRepository();
+  final MqttService _mqttService = MqttService(); // ← MQTT added
 
   // ── Observables – GPS ─────────────────────────────────────────────────────
   var latitude         = 0.0.obs;
@@ -909,6 +910,7 @@ class LocationViewModel extends GetxController {
     _posStream?.cancel();
     _writeDebounceTimer?.cancel();
     _forcedPointTimer?.cancel();
+    _mqttService.disconnect(); // ← MQTT added
     super.onClose();
   }
 
@@ -934,6 +936,7 @@ class LocationViewModel extends GetxController {
 
     await _initGpxFile(empId: empId);
     await saveCurrentLocation();
+    await _mqttService.connect(empId); // ← MQTT added
     _startPositionStream();
     _startForcedPointTimer();
   }
@@ -948,6 +951,7 @@ class LocationViewModel extends GetxController {
 
     await _stopPositionStream();
     _forcedPointTimer?.cancel();
+    _mqttService.disconnect(); // ← MQTT added
     if (_pendingWrite) await _performFileWrite();
 
     final distance = _gpxInitialised && _gpxFile != null
@@ -1349,6 +1353,7 @@ class LocationViewModel extends GetxController {
     if (!_gpxInitialised || _segment == null) return;
 
     _applyPosition(pos.latitude, pos.longitude);
+    _mqttService.publishLocation(pos.latitude, pos.longitude, _currentEmpId); // ← MQTT added
 
     final wpt = Wpt(
       lat : pos.latitude,

@@ -1,4 +1,4 @@
-name: GPS_Attendance
+name: GPS_Workforce_Monitor
 description: "A new Flutter project."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
@@ -21,7 +21,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 #version: 1.0.0+2
 #version: 27.1.2+6
 #version: 29.1.0+8
-version: 30.0.0+1
+version: 1.0.0+2
 
 environment:
   sdk: ^3.5.4
@@ -94,9 +94,9 @@ dependencies:
   device_info_plus: ^11.2.1
   isolate: ^2.1.1
   share_plus: ^11.0.0
-  pdf: ^3.11.3
+  pdf: ^3.12.0
   http_parser: ^4.1.2
-  printing: ^5.14.2
+  printing: ^5.14.3
 #  background_locator_2: ^2.0.6
   android_intent_plus: ^5.3.0
 #  in_app_update: ^4.2.3
@@ -121,7 +121,7 @@ dependencies:
   latlong2: ^0.9.1
   flutter_map: ^8.2.2
   file_picker: ^10.3.7
-  mqtt_client: ^10.11.3
+  mqtt_client: ^10.11.9
   lucide_icons: ^0.257.0
   new_version_plus: ^0.1.2
   synchronized: ^3.4.0
