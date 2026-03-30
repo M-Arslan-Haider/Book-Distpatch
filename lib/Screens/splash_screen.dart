@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../AppColors.dart'; // adjust path as needed
+import '../AppColors.dart';
+import '../ViewModels/login_view_model.dart';
+import '../constants.dart'; // Import constants for route names
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -15,6 +17,7 @@ class _SplashScreenState extends State<SplashScreen>
   late AnimationController _controller;
   late Animation<double> _fadeAnim;
   late Animation<double> _scaleAnim;
+  late Animation<double> _rotateAnim;
 
   @override
   void initState() {
@@ -22,22 +25,48 @@ class _SplashScreenState extends State<SplashScreen>
 
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
+      duration: const Duration(milliseconds: 1500),
     );
 
     _fadeAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.0, 0.6, curve: Curves.easeIn),
+      ),
     );
 
-    _scaleAnim = Tween<double>(begin: 0.75, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.elasticOut),
+    _scaleAnim = Tween<double>(begin: 0.6, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.2, 0.8, curve: Curves.elasticOut),
+      ),
+    );
+
+    _rotateAnim = Tween<double>(begin: -0.3, end: 0.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.2, 0.8, curve: Curves.easeOutCubic),
+      ),
     );
 
     _controller.forward();
 
+    // 5 seconds total splash duration
     Timer(const Duration(seconds: 3), () {
-      Get.offNamed("/cameraScreen");
+      _navigateToNextScreen();
     });
+  }
+
+  void _navigateToNextScreen() {
+    final loginVM = Get.find<LoginViewModel>();
+
+    if (loginVM.currentUser.value != null) {
+      // User already logged in → go to home
+      Get.offNamed(loginVM.getHomeRoute());
+    } else {
+      // User not logged in → go to code screen (company code verification)
+      Get.offNamed(routeCodeScreen);
+    }
   }
 
   @override
@@ -49,127 +78,143 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     final double screenHeight = MediaQuery.of(context).size.height;
+    final double screenWidth = MediaQuery.of(context).size.width;
 
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(gradient: AppColors.brandGradient),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [AppColors.cyan, AppColors.greenTeal],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
         child: Stack(
           children: [
-            // ── Decorative circles (mimic orbit ring in logo) ──────────────
+            // ── Decorative background circles ───────────────────────────
             Positioned(
-              top: -screenHeight * 0.12,
-              left: -80,
-              child: _glowCircle(260, AppColors.greenTeal.withOpacity(0.20)),
+              top: -screenHeight * 0.08,
+              left: -screenWidth * 0.15,
+              child: _glowCircle(260, Colors.white.withOpacity(0.06)),
             ),
             Positioned(
-              bottom: -screenHeight * 0.08,
-              right: -60,
-              child: _glowCircle(220, AppColors.cyanBright.withOpacity(0.18)),
+              bottom: -screenHeight * 0.05,
+              right: -screenWidth * 0.1,
+              child: _glowCircle(220, Colors.white.withOpacity(0.05)),
             ),
             Positioned(
-              top: screenHeight * 0.3,
-              right: -40,
-              child: _glowCircle(120, AppColors.greenTeal.withOpacity(0.12)),
+              top: screenHeight * 0.2,
+              right: -20,
+              child: _glowCircle(80, Colors.white.withOpacity(0.08)),
             ),
 
-            // ── Main content ──────────────────────────────────────────────
-            SafeArea(
+            // ── Centered Main Content ────────────────────────────────────
+            Center(
               child: FadeTransition(
                 opacity: _fadeAnim,
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    const Spacer(flex: 3),
-
-                    // Logo / icon
+                    // ── Logo ─────────────────────────────────────────────
                     ScaleTransition(
                       scale: _scaleAnim,
-                      child: Container(
-                        width: 110,
-                        height: 110,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.15),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: AppColors.cyan.withOpacity(0.6),
-                            width: 2.5,
+                      child: RotationTransition(
+                        turns: _rotateAnim,
+                        child: Container(
+                          width: 110,
+                          height: 110,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.15),
+                                blurRadius: 25,
+                                offset: const Offset(0, 8),
+                                spreadRadius: 2,
+                              ),
+                              BoxShadow(
+                                color: AppColors.cyan.withOpacity(0.2),
+                                blurRadius: 35,
+                                offset: const Offset(0, 0),
+                                spreadRadius: 4,
+                              ),
+                            ],
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.cyan.withOpacity(0.35),
-                              blurRadius: 30,
-                              offset: const Offset(0, 12),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Image.asset(
+                              'assets/images/applogo.png',
+                              fit: BoxFit.contain,
                             ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.location_on_rounded,
-                          color: Colors.white,
-                          size: 58,
+                          ),
                         ),
                       ),
                     ),
 
                     const SizedBox(height: 28),
 
-                    // App name
+                    // ── App Name in ONE LINE ─────────────────────────────
                     const Text(
-                      'GPS Workforce',
+                      'GPS Workforce Monitor',
+                      textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 32,
+                        fontSize: 28,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0.5,
                       ),
                     ),
-                    const SizedBox(height: 6),
+
+                    const SizedBox(height: 12),
+
+                    // ── Divider Line ───────────────────────────────────────
                     Container(
-                      width: 60,
+                      width: 80,
                       height: 3,
                       decoration: BoxDecoration(
-                        color: AppColors.greenTeal,
+                        color: Colors.white.withOpacity(0.9),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    Text(
-                      'Monitor',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.75),
-                        fontSize: 17,
-                        fontWeight: FontWeight.w400,
-                        letterSpacing: 6,
-                      ),
-                    ),
-
-                    const Spacer(flex: 3),
-
-                    // Loading indicator
-                    SizedBox(
-                      width: 36,
-                      height: 36,
-                      child: CircularProgressIndicator(
-                        color: AppColors.greenTeal,
-                        strokeWidth: 2.5,
-                        backgroundColor: Colors.white.withOpacity(0.2),
-                      ),
-                    ),
-
-                    const SizedBox(height: 28),
-
-                    // Powered-by footer
-                    Text(
-                      '© Powered by MetaXperts',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.65),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0.3,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
                   ],
                 ),
+              ),
+            ),
+
+            // ── Bottom Section (Loading + Footer) ──────────────────────
+            Positioned(
+              bottom: 40,
+              left: 0,
+              right: 0,
+              child: Column(
+                children: [
+                  // Loading indicator
+                  SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: CircularProgressIndicator(
+                      color: Colors.white.withOpacity(0.9),
+                      strokeWidth: 2.5,
+                      backgroundColor: Colors.white.withOpacity(0.2),
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // Footer
+                  Text(
+                    '© Powered by MetaXperts',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.7),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

@@ -2,6 +2,8 @@
 //  lib/Models/task_model.dart
 // ════════════════════════════════════════════════════════════════════════════
 
+import 'package:intl/intl.dart';
+
 class TaskModel {
   final int    id;
   final int    empId;
@@ -198,61 +200,98 @@ class CreateTaskRequest {
 //  ✅ updated_date & updated_time auto-generate at the moment of PUT call.
 //     These fields are NEVER shown in the UI — they go straight to the DB.
 // ════════════════════════════════════════════════════════════════════════════
+// class UpdateTaskRequest {
+//   final int taskId;
+//   final String status;
+//   final String comments;
+//   final String priority;
+//   final String? dueDate;
+//   final String? category;
+//   final String updatedDate;
+//   final String updatedTime;
+//
+//   UpdateTaskRequest({
+//     required this.taskId,
+//     required this.status,
+//     required this.comments,
+//     required this.priority,
+//     this.dueDate,
+//     this.category,
+//   })  : updatedDate = _formatDateForOracle(DateTime.now()),
+//         updatedTime = _formatDateTimeForOracle(DateTime.now());
+//
+//   static String _formatDateForOracle(DateTime date) {
+//     // Format as DD-MON-YYYY (e.g., 30-MAR-2026)
+//     return DateFormat('dd-MMM-yyyy').format(date).toUpperCase();
+//   }
+//
+//   static String _formatDateTimeForOracle(DateTime date) {
+//     // Format as DD-MON-YYYY HH24:MI:SS (e.g., 30-MAR-2026 12:50:09)
+//     return DateFormat('dd-MMM-yyyy HH:mm:ss').format(date).toUpperCase();
+//   }
+//
+//   Map<String, dynamic> toJson() {
+//     return {
+//       'id': taskId,
+//       'task_status': status,
+//       'comments': comments,
+//       'priority': priority,
+//       if (dueDate != null && dueDate!.isNotEmpty) 'due_date': dueDate,
+//       if (category != null && category!.isNotEmpty) 'category': category,
+//       'updated_date': updatedDate,
+//       'updated_time': updatedTime,
+//     };
+//   }
+// }
+
+// In task_model.dart - Update the UpdateTaskRequest class
+
 class UpdateTaskRequest {
-  final int     taskId;
-  final String  status;
-  final String  comments;
-  final String  priority;
+  final int taskId;
+  final String status;
+  final String comments;
+  final String priority;
   final String? dueDate;
   final String? category;
+  final String updatedDate;
+  final String updatedTime;
 
-  const UpdateTaskRequest({
+  UpdateTaskRequest({
     required this.taskId,
     required this.status,
     required this.comments,
     required this.priority,
     this.dueDate,
     this.category,
-  });
+  })  : updatedDate = _formatDateForOracle(DateTime.now()),
+        updatedTime = _formatDateTimeForOracle(DateTime.now());
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
-
-  static const _months = [
-    '', 'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
-    'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
-  ];
-
-  /// "03/18/2026" → Oracle DATE column
-  static String _currentDate() {
-    final now = DateTime.now();
-    return '${now.month.toString().padLeft(2, '0')}/'
-        '${now.day.toString().padLeft(2, '0')}/'
-        '${now.year}';
+  static String _formatDateForOracle(DateTime date) {
+    return DateFormat('dd-MMM-yyyy').format(date).toUpperCase();
   }
 
-  /// "03/18/2026 16:07:32" → Oracle TIMESTAMP(6) column
-  static String _currentTime() {
-    final now = DateTime.now();
-    return '${now.month.toString().padLeft(2, '0')}/'
-        '${now.day.toString().padLeft(2, '0')}/'
-        '${now.year} '
-        '${now.hour.toString().padLeft(2, '0')}:'
-        '${now.minute.toString().padLeft(2, '0')}:'
-        '${now.second.toString().padLeft(2, '0')}';
+  static String _formatDateTimeForOracle(DateTime date) {
+    return DateFormat('dd-MMM-yyyy HH:mm:ss').format(date).toUpperCase();
   }
 
-  // ── Serialise ──────────────────────────────────────────────────────────────
   Map<String, dynamic> toJson() {
-    final map = <String, dynamic>{
-      'id':           taskId,
-      'task_status':  status,
-      'comments':     comments,
-      'priority':     priority,
-      'updated_date': _currentDate(),  // "2026-03-18"  → Oracle DATE
-      'updated_time': _currentTime(),  // "15:56:16"    → Oracle TIMESTAMP
+    final json = <String, dynamic>{
+      'id': taskId,
+      'status': status,  // ✅ Changed from 'task_status' to 'status' to match GET response
+      'comments': comments,
+      'priority': priority,
+      'updated_date': updatedDate,
+      'updated_time': updatedTime,
     };
-    if (dueDate  != null && dueDate!.isNotEmpty)  map['due_date'] = dueDate;
-    if (category != null && category!.isNotEmpty) map['category'] = category;
-    return map;
+
+    // Only add if not null/empty
+    if (dueDate != null && dueDate!.isNotEmpty) {
+      json['due_date'] = dueDate;
+    }
+    if (category != null && category!.isNotEmpty) {
+      json['category'] = category;
+    }
+
+    return json;
   }
 }

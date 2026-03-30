@@ -1,6 +1,3 @@
-// ════════════════════════════════════════════════════════════════════════════
-//  lib/Screens/my_tasks_activity_screen.dart
-// ════════════════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -26,8 +23,6 @@ class _MyTasksActivityScreenState extends State<MyTasksActivityScreen>
 
   final RxString _filter = 'All'.obs;
 
-
-
   @override
   void initState() {
     super.initState();
@@ -49,12 +44,13 @@ class _MyTasksActivityScreenState extends State<MyTasksActivityScreen>
     super.dispose();
   }
 
-  List<TaskModel> get _activeTasks {
-    final base = _vm.assignedTasks
-        .where((t) => t.status == 'Pending' || t.status == 'In Progress')
-        .toList();
-    if (_filter.value == 'All') return base;
-    return base.where((t) => t.status == _filter.value).toList();
+  // Updated: Now shows all tasks including completed based on filter
+  List<TaskModel> get _filteredTasks {
+    if (_filter.value == 'All') {
+      return _vm.assignedTasks;
+    } else {
+      return _vm.assignedTasks.where((t) => t.status == _filter.value).toList();
+    }
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -97,8 +93,8 @@ class _MyTasksActivityScreenState extends State<MyTasksActivityScreen>
                               _buildFilterRow(),
                               const SizedBox(height: 18),
                               _sectionHeader(
-                                  'Active Tasks',
-                                  Icons.pending_actions_rounded,
+                                  'Tasks',
+                                  Icons.task_alt_rounded,
                                   AppColors.cyan),
                               const SizedBox(height: 14),
                             ],
@@ -106,7 +102,7 @@ class _MyTasksActivityScreenState extends State<MyTasksActivityScreen>
                         ),
                       ),
                       Obx(() {
-                        final tasks = _activeTasks;
+                        final tasks = _filteredTasks;
                         if (tasks.isEmpty) {
                           return SliverFillRemaining(
                             child: _buildEmptyState(),
@@ -194,7 +190,7 @@ class _MyTasksActivityScreenState extends State<MyTasksActivityScreen>
                           ),
                         ),
                         Text(
-                          'Pending & In-Progress tasks',
+                          'All assigned tasks',
                           style: TextStyle(
                             color:    Colors.white.withOpacity(0.65),
                             fontSize: 11,
@@ -226,119 +222,144 @@ class _MyTasksActivityScreenState extends State<MyTasksActivityScreen>
     );
   }
 
-  // ── Stats row ──────────────────────────────────────────────────────────────
+  // ── Stats row - Made scrollable horizontally ─────────────────────────────────
   Widget _buildStatsRow() {
     return Obx(() {
-      final all        = _vm.assignedTasks
-          .where((t) => t.status == 'Pending' || t.status == 'In Progress')
-          .length;
+      final all        = _vm.assignedTasks.length;
       final pending    = _vm.assignedTasks
           .where((t) => t.status == 'Pending').length;
       final inProgress = _vm.assignedTasks
           .where((t) => t.status == 'In Progress').length;
+      final completed  = _vm.assignedTasks
+          .where((t) => t.status == 'Completed').length;
 
-      return Row(
-        children: [
-          _statTile('Active',      all.toString(),
-              AppColors.cyan,      Icons.list_alt_rounded),
-          const SizedBox(width: 10),
-          _statTile('Pending',     pending.toString(),
-              AppColors.warning,   Icons.hourglass_empty_rounded),
-          const SizedBox(width: 10),
-          _statTile('In Progress', inProgress.toString(),
-              AppColors.skyBlueDk, Icons.autorenew_rounded),
-        ],
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        child: Row(
+          children: [
+            _statTile('Total', all.toString(),
+                AppColors.cyan, Icons.list_alt_rounded),
+            const SizedBox(width: 10),
+            _statTile('Pending', pending.toString(),
+                AppColors.warning, Icons.hourglass_empty_rounded),
+            const SizedBox(width: 10),
+            _statTile('Progress', inProgress.toString(),
+                AppColors.skyBlueDk, Icons.autorenew_rounded),
+            const SizedBox(width: 10),
+            _statTile('Completed', completed.toString(),
+                AppColors.greenTeal, Icons.check_circle_rounded),
+          ],
+        ),
       );
     });
   }
 
   Widget _statTile(String label, String count, Color color, IconData icon) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
-        decoration: BoxDecoration(
-          color:        AppColors.cardBg,
-          borderRadius: BorderRadius.circular(14),
-          border:       Border.all(color: color.withOpacity(0.20)),
-          boxShadow: [
-            BoxShadow(
-                color:      color.withOpacity(0.08),
-                blurRadius: 10,
-                offset:     const Offset(0, 3))
-          ],
-        ),
-        child: Column(
-          children: [
-            Container(
-              width: 38, height: 38,
-              decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(10)),
-              child: Icon(icon, size: 19, color: color),
-            ),
-            const SizedBox(height: 7),
-            Text(count,
-                style: TextStyle(
-                    fontSize:   20,
-                    fontWeight: FontWeight.w800,
-                    color:      color)),
-            const SizedBox(height: 2),
-            Text(label,
-                style: TextStyle(
-                    fontSize:   10,
-                    fontWeight: FontWeight.w500,
-                    color:      AppColors.textSecondary)),
-          ],
-        ),
+    return Container(
+      width: 85,
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+      decoration: BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withOpacity(0.20)),
+        boxShadow: [
+          BoxShadow(
+              color: color.withOpacity(0.08),
+              blurRadius: 10,
+              offset: const Offset(0, 3))
+        ],
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+                color: color.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(10)),
+            child: Icon(icon, size: 18, color: color),
+          ),
+          const SizedBox(height: 6),
+          Text(count,
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: color)),
+          const SizedBox(height: 2),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.textSecondary)),
+        ],
       ),
     );
   }
 
-  // ── Filter chips ───────────────────────────────────────────────────────────
+  // ── Filter chips - Made scrollable horizontally ───────────────────────────
   Widget _buildFilterRow() {
-    return Obx(() => Row(
-      children: ['All', 'Pending', 'In Progress'].map((f) {
-        final isActive = _filter.value == f;
-        Color c = f == 'Pending'
-            ? AppColors.warning
-            : f == 'In Progress'
-            ? AppColors.skyBlueDk
-            : AppColors.cyan;
-        return Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: GestureDetector(
-            onTap: () => _filter.value = f,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color:        isActive ? c.withOpacity(0.12) : AppColors.cardBg,
-                borderRadius: BorderRadius.circular(20),
-                border:       Border.all(
-                    color: isActive ? c : AppColors.divider,
-                    width: isActive ? 1.5 : 1),
-              ),
-              child: Text(
-                f,
-                style: TextStyle(
-                    fontSize:   12,
-                    fontWeight: FontWeight.w700,
-                    color:      isActive ? c : AppColors.textSecondary),
+    return Obx(() => SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        children: ['All', 'Pending', 'In Progress', 'Completed'].map((f) {
+          final isActive = _filter.value == f;
+          Color c = f == 'Pending'
+              ? AppColors.warning
+              : f == 'In Progress'
+              ? AppColors.skyBlueDk
+              : f == 'Completed'
+              ? AppColors.greenTeal
+              : AppColors.cyan;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: GestureDetector(
+              onTap: () => _filter.value = f,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: isActive ? c.withOpacity(0.12) : AppColors.cardBg,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                      color: isActive ? c : AppColors.divider,
+                      width: isActive ? 1.5 : 1),
+                ),
+                child: Text(
+                  f,
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: isActive ? c : AppColors.textSecondary),
+                ),
               ),
             ),
-          ),
-        );
-      }).toList(),
+          );
+        }).toList(),
+      ),
     ));
   }
 
-  // ── Task card ──────────────────────────────────────────────────────────────
+  // ── Task card - Updated to handle completed tasks ──────────────────────────
   Widget _buildTaskCard(TaskModel task) {
     final isInProgress = task.status == 'In Progress';
-    final statusColor  = isInProgress ? AppColors.skyBlueDk : AppColors.warning;
-    final statusIcon   = isInProgress
-        ? Icons.autorenew_rounded
-        : Icons.hourglass_empty_rounded;
+    final isCompleted = task.status == 'Completed';
+    final isPending = task.status == 'Pending';
+
+    Color statusColor;
+    IconData statusIcon;
+
+    if (isCompleted) {
+      statusColor = AppColors.greenTeal;
+      statusIcon = Icons.check_circle_rounded;
+    } else if (isInProgress) {
+      statusColor = AppColors.skyBlueDk;
+      statusIcon = Icons.autorenew_rounded;
+    } else {
+      statusColor = AppColors.warning;
+      statusIcon = Icons.hourglass_empty_rounded;
+    }
 
     Color priorityColor = AppColors.textSecondary;
     if (task.priority == 'High')   priorityColor = AppColors.error;
@@ -348,14 +369,14 @@ class _MyTasksActivityScreenState extends State<MyTasksActivityScreen>
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
-        color:        AppColors.cardBg,
+        color: AppColors.cardBg,
         borderRadius: BorderRadius.circular(16),
-        border:       Border.all(color: statusColor.withOpacity(0.20)),
+        border: Border.all(color: statusColor.withOpacity(0.20)),
         boxShadow: [
           BoxShadow(
-              color:      Colors.black.withOpacity(0.05),
+              color: Colors.black.withOpacity(0.05),
               blurRadius: 12,
-              offset:     const Offset(0, 4))
+              offset: const Offset(0, 4))
         ],
       ),
       child: Column(
@@ -365,7 +386,7 @@ class _MyTasksActivityScreenState extends State<MyTasksActivityScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
             decoration: BoxDecoration(
-              color:        statusColor.withOpacity(0.06),
+              color: statusColor.withOpacity(0.06),
               borderRadius: const BorderRadius.vertical(
                   top: Radius.circular(16)),
             ),
@@ -375,7 +396,7 @@ class _MyTasksActivityScreenState extends State<MyTasksActivityScreen>
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                   decoration: BoxDecoration(
-                    color:        statusColor.withOpacity(0.14),
+                    color: statusColor.withOpacity(0.14),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Row(
@@ -385,9 +406,9 @@ class _MyTasksActivityScreenState extends State<MyTasksActivityScreen>
                       const SizedBox(width: 4),
                       Text(task.status,
                           style: TextStyle(
-                              fontSize:   10,
+                              fontSize: 10,
                               fontWeight: FontWeight.w700,
-                              color:      statusColor)),
+                              color: statusColor)),
                     ],
                   ),
                 ),
@@ -396,22 +417,22 @@ class _MyTasksActivityScreenState extends State<MyTasksActivityScreen>
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                   decoration: BoxDecoration(
-                    color:        priorityColor.withOpacity(0.10),
+                    color: priorityColor.withOpacity(0.10),
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  child: Text(task.priority,
+                  child: Text(task.priority ?? 'N/A',
                       style: TextStyle(
-                          fontSize:   10,
+                          fontSize: 10,
                           fontWeight: FontWeight.w600,
-                          color:      priorityColor)),
+                          color: priorityColor)),
                 ),
-                // ✅ Category badge (show if not empty)
+                // Category badge (show if not empty)
                 if (task.category.isNotEmpty) ...[
                   const SizedBox(width: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                     decoration: BoxDecoration(
-                      color:        AppColors.cyan.withOpacity(0.10),
+                      color: AppColors.cyan.withOpacity(0.10),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Row(
@@ -422,9 +443,9 @@ class _MyTasksActivityScreenState extends State<MyTasksActivityScreen>
                         const SizedBox(width: 3),
                         Text(task.category,
                             style: const TextStyle(
-                                fontSize:   10,
+                                fontSize: 10,
                                 fontWeight: FontWeight.w600,
-                                color:      AppColors.cyan)),
+                                color: AppColors.cyan)),
                       ],
                     ),
                   ),
@@ -439,8 +460,8 @@ class _MyTasksActivityScreenState extends State<MyTasksActivityScreen>
                       const SizedBox(width: 4),
                       Text(task.dueDate,
                           style: TextStyle(
-                              fontSize:   10,
-                              color:      AppColors.textSecondary,
+                              fontSize: 10,
+                              color: AppColors.textSecondary,
                               fontWeight: FontWeight.w500)),
                     ],
                   ),
@@ -462,19 +483,19 @@ class _MyTasksActivityScreenState extends State<MyTasksActivityScreen>
                       child: Text(
                         task.taskTitle,
                         style: const TextStyle(
-                          fontSize:   15,
+                          fontSize: 15,
                           fontWeight: FontWeight.w700,
-                          color:      AppColors.textPrimary,
+                          color: AppColors.textPrimary,
                         ),
                       ),
                     ),
                     const SizedBox(width: 8),
-                    // ✅ Task ID badge
+                    // Task ID badge
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color:        AppColors.primary.withOpacity(0.08),
+                        color: AppColors.primary.withOpacity(0.08),
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(
                             color: AppColors.primary.withOpacity(0.20)),
@@ -489,9 +510,9 @@ class _MyTasksActivityScreenState extends State<MyTasksActivityScreen>
                           Text(
                             '${task.id}',
                             style: TextStyle(
-                              fontSize:   10,
+                              fontSize: 10,
                               fontWeight: FontWeight.w700,
-                              color:      AppColors.primary.withOpacity(0.70),
+                              color: AppColors.primary.withOpacity(0.70),
                             ),
                           ),
                         ],
@@ -505,11 +526,11 @@ class _MyTasksActivityScreenState extends State<MyTasksActivityScreen>
                     task.taskDescription,
                     style: TextStyle(
                       fontSize: 12.5,
-                      color:    AppColors.textSecondary,
-                      height:   1.4,
+                      color: AppColors.textSecondary,
+                      height: 1.4,
                     ),
-                    maxLines:  2,
-                    overflow:  TextOverflow.ellipsis,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
                 if (task.comments.isNotEmpty) ...[
@@ -517,9 +538,9 @@ class _MyTasksActivityScreenState extends State<MyTasksActivityScreen>
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     decoration: BoxDecoration(
-                      color:        AppColors.cyan.withOpacity(0.05),
+                      color: AppColors.cyan.withOpacity(0.05),
                       borderRadius: BorderRadius.circular(8),
-                      border:       Border.all(color: AppColors.cyan.withOpacity(0.15)),
+                      border: Border.all(color: AppColors.cyan.withOpacity(0.15)),
                     ),
                     child: Row(
                       children: [
@@ -531,7 +552,7 @@ class _MyTasksActivityScreenState extends State<MyTasksActivityScreen>
                             task.comments,
                             style: TextStyle(
                                 fontSize: 11.5,
-                                color:    AppColors.textSecondary),
+                                color: AppColors.textSecondary),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -558,40 +579,41 @@ class _MyTasksActivityScreenState extends State<MyTasksActivityScreen>
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    // Update button
-                    GestureDetector(
-                      onTap: () => _showUpdateSheet(task),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [AppColors.primary, AppColors.cyan],
-                            begin:  Alignment.topLeft,
-                            end:    Alignment.bottomRight,
+                    // Update button - Hide for completed tasks
+                    if (!isCompleted)
+                      GestureDetector(
+                        onTap: () => _showUpdateSheet(task),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [AppColors.primary, AppColors.cyan],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                            boxShadow: [
+                              BoxShadow(
+                                  color: AppColors.cyan.withOpacity(0.30),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 3))
+                            ],
                           ),
-                          borderRadius: BorderRadius.circular(8),
-                          boxShadow: [
-                            BoxShadow(
-                                color:      AppColors.cyan.withOpacity(0.30),
-                                blurRadius: 8,
-                                offset:     const Offset(0, 3))
-                          ],
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.edit_rounded, size: 13, color: Colors.white),
-                            SizedBox(width: 5),
-                            Text('Update',
-                                style: TextStyle(
-                                    fontSize:   12,
-                                    fontWeight: FontWeight.w700,
-                                    color:      Colors.white)),
-                          ],
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.edit_rounded, size: 13, color: Colors.white),
+                              SizedBox(width: 5),
+                              Text('Update',
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white)),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 ),
               ],
@@ -603,14 +625,15 @@ class _MyTasksActivityScreenState extends State<MyTasksActivityScreen>
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  //  Update Bottom Sheet  ✅ status + priority + due_date + category + comments
+  //  Update Bottom Sheet
   // ══════════════════════════════════════════════════════════════════════════
+  // Updated _showUpdateSheet method with modern redesign
   void _showUpdateSheet(TaskModel task) {
     debugPrint('🔍 Task Card - ID: ${task.id}, Title: ${task.taskTitle}');
 
-    String    selectedStatus   = task.status;
-    String    selectedPriority = task.priority;
-    String?   selectedCategory = task.category.isNotEmpty ? task.category : null; // ✅
+    String selectedStatus = task.status;
+    String selectedPriority = task.priority ?? 'Medium';
+    String? selectedCategory = task.category.isNotEmpty ? task.category : null;
     DateTime? selectedDueDate;
 
     // Parse existing due date if available
@@ -624,361 +647,651 @@ class _MyTasksActivityScreenState extends State<MyTasksActivityScreen>
       }
     }
 
-    final commentsController = TextEditingController(text: task.comments);
+    final commentsController = TextEditingController(text: task.comments ?? '');
+    final titleController = TextEditingController(text: task.taskTitle);
 
     Get.bottomSheet(
       StatefulBuilder(
-        builder: (sheetCtx, setSheetState) => SingleChildScrollView(
-          padding: EdgeInsets.only(
-            left:   20,
-            right:  20,
-            top:    20,
-            bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 24,
+        builder: (sheetCtx, setSheetState) => Container(
+          decoration: const BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
           ),
-          child: Container(
-            decoration: const BoxDecoration(
-              color:        AppColors.surface,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
-            ),
-            child: Column(
-              mainAxisSize:       MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Drag Handle
+              Container(
+                margin: const EdgeInsets.only(top: 12, bottom: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.divider,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
 
-                // ── Handle ──────────────────────────────────────────────────
-                Center(
-                  child: Container(
-                    width: 42, height: 4,
-                    decoration: BoxDecoration(
-                        color:        AppColors.divider,
-                        borderRadius: BorderRadius.circular(2)),
+              // Header with Gradient
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppColors.primary,
+                      AppColors.cyan,
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(28),
+                    topRight: Radius.circular(28),
                   ),
                 ),
-                const SizedBox(height: 18),
-
-                // ── Sheet title ─────────────────────────────────────────────
-                Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: 38, height: 38,
-                      decoration: BoxDecoration(
-                          color:        AppColors.cyan.withOpacity(0.10),
-                          borderRadius: BorderRadius.circular(10)),
-                      child: const Icon(Icons.edit_note_rounded,
-                          size: 20, color: AppColors.cyan),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Update Task',
-                              style: TextStyle(
-                                  fontSize:   15,
-                                  fontWeight: FontWeight.w800,
-                                  color:      AppColors.textPrimary)),
-                          Text(
-                            task.taskTitle,
-                            style: TextStyle(
-                                fontSize: 11, color: AppColors.textSecondary),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 22),
-
-                // ── Status ──────────────────────────────────────────────────
-                _sheetLabel('Status'),
-                const SizedBox(height: 9),
-                Row(
-                  children: ['Pending', 'In Progress', 'Completed'].map((s) {
-                    final selected = selectedStatus == s;
-                    final c = s == 'Pending'
-                        ? AppColors.warning
-                        : s == 'In Progress'
-                        ? AppColors.skyBlueDk
-                        : AppColors.greenTeal;
-                    return Expanded(
-                      child: GestureDetector(
-                        onTap: () => setSheetState(() => selectedStatus = s),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 180),
-                          margin:  const EdgeInsets.only(right: 6),
-                          padding: const EdgeInsets.symmetric(vertical: 11),
-                          decoration: BoxDecoration(
-                            color:        selected ? c.withOpacity(0.14) : AppColors.cardBg,
-                            borderRadius: BorderRadius.circular(10),
-                            border:       Border.all(
-                                color: selected ? c : AppColors.divider,
-                                width: selected ? 1.5 : 1),
-                          ),
-                          child: Text(s,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                  fontSize:   11,
-                                  fontWeight: FontWeight.w700,
-                                  color:      selected ? c : AppColors.textSecondary)),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 18),
-
-                // ── Priority ────────────────────────────────────────────────
-                _sheetLabel('Priority'),
-                const SizedBox(height: 9),
-                Row(
-                  children: ['Low', 'Medium', 'High'].map((p) {
-                    final selected = selectedPriority == p;
-                    final c = p == 'High'
-                        ? const Color(0xFFEF4444)
-                        : p == 'Medium'
-                        ? AppColors.warning
-                        : AppColors.greenTeal;
-                    return Expanded(
-                      child: GestureDetector(
-                        onTap: () => setSheetState(() => selectedPriority = p),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 180),
-                          margin:  const EdgeInsets.only(right: 6),
-                          padding: const EdgeInsets.symmetric(vertical: 11),
-                          decoration: BoxDecoration(
-                            color:        selected ? c.withOpacity(0.14) : AppColors.cardBg,
-                            borderRadius: BorderRadius.circular(10),
-                            border:       Border.all(
-                                color: selected ? c : AppColors.divider,
-                                width: selected ? 1.5 : 1),
-                          ),
-                          child: Text(p,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                  fontSize:   11,
-                                  fontWeight: FontWeight.w700,
-                                  color:      selected ? c : AppColors.textSecondary)),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 18),
-
-                // ── Due Date ─────────────────────────────────────────────────
-                _sheetLabel('Due Date'),
-                const SizedBox(height: 9),
-                GestureDetector(
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: sheetCtx,
-                      initialDate: selectedDueDate ??
-                          DateTime.now().add(const Duration(days: 1)),
-                      firstDate: DateTime.now(),
-                      lastDate:  DateTime.now().add(const Duration(days: 365)),
-                    );
-                    if (picked != null) {
-                      setSheetState(() => selectedDueDate = picked);
-                    }
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 14),
-                    decoration: BoxDecoration(
-                      color:        AppColors.cardBg,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: selectedDueDate != null
-                            ? AppColors.greenTeal
-                            : AppColors.divider,
-                      ),
-                    ),
-                    child: Row(
+                    Row(
                       children: [
-                        Icon(Icons.calendar_month_rounded,
-                            color: selectedDueDate != null
-                                ? AppColors.greenTeal
-                                : AppColors.textSecondary,
-                            size: 20),
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: const Icon(
+                            Icons.edit_note_rounded,
+                            size: 24,
+                            color: Colors.white,
+                          ),
+                        ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('Due Date',
-                                  style: TextStyle(
-                                    color:      selectedDueDate != null
-                                        ? AppColors.greenTeal
-                                        : AppColors.textSecondary,
-                                    fontSize:   10,
-                                    fontWeight: FontWeight.w600,
-                                  )),
-                              const SizedBox(height: 2),
-                              Text(
-                                selectedDueDate == null
-                                    ? 'Tap to select due date'
-                                    : DateFormat('dd MMM yyyy')
-                                    .format(selectedDueDate!),
+                              const Text(
+                                'Update Task',
                                 style: TextStyle(
-                                  color:      selectedDueDate == null
-                                      ? AppColors.textSecondary
-                                      : AppColors.textPrimary,
-                                  fontSize:   13,
-                                  fontWeight: FontWeight.w600,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                  letterSpacing: -0.5,
                                 ),
+                              ),
+                              Text(
+                                task.taskTitle,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.white.withOpacity(0.85),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ],
                           ),
                         ),
-                        Icon(Icons.arrow_forward_ios_rounded,
-                            color: AppColors.textSecondary, size: 14),
                       ],
                     ),
-                  ),
+                  ],
                 ),
-                const SizedBox(height: 18),
+              ),
 
-                // ✅ ── Category Dropdown ─────────────────────────────────────
-
-
-                // ── Comments ─────────────────────────────────────────────────
-                _sheetLabel('Comments'),
-                const SizedBox(height: 9),
-                TextField(
-                  controller: commentsController,
-                  maxLines:   3,
-                  style:      const TextStyle(
-                      fontSize: 13, color: AppColors.textPrimary),
-                  decoration: InputDecoration(
-                    hintText:  'Write your update comments here...',
-                    hintStyle: TextStyle(
-                        color:    AppColors.textSecondary.withOpacity(0.5),
-                        fontSize: 13),
-                    filled:    true,
-                    fillColor: AppColors.cardBg,
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(color: AppColors.divider)),
-                    enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(color: AppColors.divider)),
-                    focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(
-                            color: AppColors.cyan, width: 1.5)),
-                    contentPadding: const EdgeInsets.all(12),
+              // Form Content
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.only(
+                    left: 20,
+                    right: 20,
+                    top: 20,
+                    bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 24,
                   ),
-                ),
-                const SizedBox(height: 22),
-
-                // ── Save button ───────────────────────────────────────────────
-                Obx(() => GestureDetector(
-                  onTap: _vm.isUpdating.value
-                      ? null
-                      : () async {
-                    // Format due date as dd-MMM-YYYY (uppercase) for Oracle
-                    String? dueDateStr;
-                    if (selectedDueDate != null) {
-                      dueDateStr = DateFormat('dd-MMM-yyyy')
-                          .format(selectedDueDate!)
-                          .toUpperCase();
-                    }
-
-                    final ok = await _vm.updateTask(
-                      taskId:     task.id,
-                      status:     selectedStatus,
-                      comments:   commentsController.text.trim(),
-                      priority:   selectedPriority,
-                      dueDate:    dueDateStr,
-                      category:   selectedCategory, // ✅
-                      isAssigned: true,
-                    );
-
-                    if (ok) {
-                      Get.back();
-                      Get.showSnackbar(const GetSnackBar(
-                        message:         'Task updated successfully!',
-                        duration:        Duration(seconds: 2),
-                        backgroundColor: AppColors.greenTeal,
-                        icon: Icon(Icons.check_circle_outline_rounded,
-                            color: Colors.white),
-                        borderRadius: 10,
-                        margin:       EdgeInsets.all(12),
-                      ));
-                    } else {
-                      Get.showSnackbar(GetSnackBar(
-                        message: _vm.errorMessage.value.isNotEmpty
-                            ? _vm.errorMessage.value
-                            : 'Update failed. Try again.',
-                        duration:        const Duration(seconds: 3),
-                        backgroundColor: AppColors.error,
-                        icon: const Icon(Icons.error_outline_rounded,
-                            color: Colors.white),
-                        borderRadius: 10,
-                        margin:       const EdgeInsets.all(12),
-                      ));
-                    }
-                  },
-                  child: Container(
-                    width:  double.infinity,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      gradient: _vm.isUpdating.value
-                          ? null
-                          : const LinearGradient(
-                        colors: [
-                          AppColors.primary,
-                          AppColors.cyan,
-                          AppColors.greenTeal,
-                        ],
-                        begin: Alignment.topLeft,
-                        end:   Alignment.bottomRight,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Task Title Preview
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              AppColors.cyan.withOpacity(0.08),
+                              AppColors.primary.withOpacity(0.08),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: AppColors.cyan.withOpacity(0.2),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.task_alt_rounded,
+                              size: 20,
+                              color: AppColors.cyan,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Task ID',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                  Text(
+                                    '#${task.id}',
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      color:        _vm.isUpdating.value ? AppColors.divider : null,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow:    _vm.isUpdating.value
-                          ? []
-                          : [
-                        BoxShadow(
-                            color:      AppColors.cyan.withOpacity(0.35),
-                            blurRadius: 12,
-                            offset:     const Offset(0, 4))
-                      ],
-                    ),
-                    child: Center(
-                      child: _vm.isUpdating.value
-                          ? const SizedBox(
-                        width: 22, height: 22,
-                        child: CircularProgressIndicator(
-                            color: Colors.white, strokeWidth: 2.5),
-                      )
-                          : const Row(
-                        mainAxisSize: MainAxisSize.min,
+
+                      const SizedBox(height: 24),
+
+                      // Status Section
+                      _buildModernSection(
+                        title: 'Status',
+                        icon: Icons.timeline_rounded,
+                        child: Row(
+                          children: ['Pending', 'In Progress', 'Completed'].map((s) {
+                            final selected = selectedStatus == s;
+                            final color = s == 'Pending'
+                                ? AppColors.warning
+                                : s == 'In Progress'
+                                ? AppColors.skyBlueDk
+                                : AppColors.greenTeal;
+                            return Expanded(
+                              child: GestureDetector(
+                                onTap: () => setSheetState(() => selectedStatus = s),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  margin: const EdgeInsets.only(right: 8),
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  decoration: BoxDecoration(
+                                    gradient: selected
+                                        ? LinearGradient(
+                                      colors: [
+                                        color.withOpacity(0.9),
+                                        color,
+                                      ],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    )
+                                        : null,
+                                    color: selected ? null : AppColors.cardBg,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: selected ? color : AppColors.divider,
+                                      width: selected ? 0 : 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        s == 'Pending'
+                                            ? Icons.hourglass_empty_rounded
+                                            : s == 'In Progress'
+                                            ? Icons.autorenew_rounded
+                                            : Icons.check_circle_rounded,
+                                        size: 16,
+                                        color: selected ? Colors.white : color,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        s,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: selected ? Colors.white : color,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      // Priority Section
+                      _buildModernSection(
+                        title: 'Priority Level',
+                        icon: Icons.flag_rounded,
+                        child: Row(
+                          children: ['Low', 'Medium', 'High'].map((p) {
+                            final selected = selectedPriority == p;
+                            final color = p == 'High'
+                                ? const Color(0xFFEF4444)
+                                : p == 'Medium'
+                                ? AppColors.warning
+                                : AppColors.greenTeal;
+                            return Expanded(
+                              child: GestureDetector(
+                                onTap: () => setSheetState(() => selectedPriority = p),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  margin: const EdgeInsets.only(right: 8),
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  decoration: BoxDecoration(
+                                    gradient: selected
+                                        ? LinearGradient(
+                                      colors: [
+                                        color.withOpacity(0.9),
+                                        color,
+                                      ],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    )
+                                        : null,
+                                    color: selected ? null : AppColors.cardBg,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: selected ? color : AppColors.divider,
+                                      width: selected ? 0 : 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        p == 'High'
+                                            ? Icons.arrow_upward_rounded
+                                            : p == 'Medium'
+                                            ? Icons.remove_rounded
+                                            : Icons.arrow_downward_rounded,
+                                        size: 16,
+                                        color: selected ? Colors.white : color,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        p,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: selected ? Colors.white : color,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      // Due Date Section
+                      _buildModernSection(
+                        title: 'Due Date',
+                        icon: Icons.calendar_today_rounded,
+                        child: GestureDetector(
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: sheetCtx,
+                              initialDate: selectedDueDate ??
+                                  DateTime.now().add(const Duration(days: 1)),
+                              firstDate: DateTime.now(),
+                              lastDate: DateTime.now().add(const Duration(days: 365)),
+                              builder: (context, child) {
+                                return Theme(
+                                  data: Theme.of(context).copyWith(
+                                    colorScheme: const ColorScheme.light(
+                                      primary: AppColors.cyan,
+                                      onPrimary: Colors.white,
+                                      surface: AppColors.surface,
+                                    ),
+                                  ),
+                                  child: child!,
+                                );
+                              },
+                            );
+                            if (picked != null) {
+                              setSheetState(() => selectedDueDate = picked);
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: AppColors.cardBg,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: selectedDueDate != null
+                                    ? AppColors.greenTeal
+                                    : AppColors.divider,
+                                width: selectedDueDate != null ? 1.5 : 1,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 44,
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        AppColors.greenTeal.withOpacity(0.15),
+                                        AppColors.cyan.withOpacity(0.15),
+                                      ],
+                                    ),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Icon(
+                                    Icons.event_rounded,
+                                    color: selectedDueDate != null
+                                        ? AppColors.greenTeal
+                                        : AppColors.textSecondary,
+                                    size: 22,
+                                  ),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Select Due Date',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: selectedDueDate != null
+                                              ? AppColors.greenTeal
+                                              : AppColors.textSecondary,
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        selectedDueDate == null
+                                            ? 'Tap to set a deadline'
+                                            : DateFormat('EEEE, dd MMM yyyy')
+                                            .format(selectedDueDate!),
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700,
+                                          color: selectedDueDate == null
+                                              ? AppColors.textSecondary
+                                              : AppColors.textPrimary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.chevron_right_rounded,
+                                  color: AppColors.textSecondary,
+                                  size: 24,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      // Comments Section
+                      _buildModernSection(
+                        title: 'Comments',
+                        icon: Icons.comment_rounded,
+                        child: TextField(
+                          controller: commentsController,
+                          maxLines: 4,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: AppColors.textPrimary,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: 'Add your comments or notes...',
+                            hintStyle: TextStyle(
+                              color: AppColors.textSecondary.withOpacity(0.5),
+                              fontSize: 13,
+                            ),
+                            filled: true,
+                            fillColor: AppColors.cardBg,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: BorderSide.none,
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: const BorderSide(
+                                color: AppColors.cyan,
+                                width: 1.5,
+                              ),
+                            ),
+                            contentPadding: const EdgeInsets.all(16),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 28),
+
+                      // Action Buttons
+                      Row(
                         children: [
-                          Icon(Icons.check_rounded,
-                              color: Colors.white, size: 18),
-                          SizedBox(width: 8),
-                          Text('Save Changes',
-                              style: TextStyle(
-                                  color:      Colors.white,
-                                  fontSize:   15,
-                                  fontWeight: FontWeight.w700)),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => Get.back(),
+                              child: Container(
+                                height: 52,
+                                decoration: BoxDecoration(
+                                  color: AppColors.cardBg,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: AppColors.divider,
+                                  ),
+                                ),
+                                child: const Center(
+                                  child: Text(
+                                    'Cancel',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Obx(() => GestureDetector(
+                              onTap: _vm.isUpdating.value
+                                  ? null
+                                  : () async {
+                                String? dueDateStr;
+                                if (selectedDueDate != null) {
+                                  dueDateStr = DateFormat('dd-MMM-yyyy')
+                                      .format(selectedDueDate!)
+                                      .toUpperCase();
+                                }
+
+                                final ok = await _vm.updateTask(
+                                  taskId: task.id,
+                                  status: selectedStatus,
+                                  comments: commentsController.text.trim(),
+                                  priority: selectedPriority,
+                                  dueDate: dueDateStr,
+                                  category: selectedCategory,
+                                  isAssigned: true,
+                                );
+
+                                if (ok) {
+                                  Get.back();
+                                  Get.showSnackbar(const GetSnackBar(
+                                    message: 'Task updated successfully!',
+                                    duration: Duration(seconds: 2),
+                                    backgroundColor: AppColors.greenTeal,
+                                    icon: Icon(
+                                      Icons.check_circle_outline_rounded,
+                                      color: Colors.white,
+                                    ),
+                                    borderRadius: 10,
+                                    margin: EdgeInsets.all(12),
+                                  ));
+                                } else {
+                                  Get.showSnackbar(GetSnackBar(
+                                    message: _vm.errorMessage.value.isNotEmpty
+                                        ? _vm.errorMessage.value
+                                        : 'Update failed. Try again.',
+                                    duration: const Duration(seconds: 3),
+                                    backgroundColor: AppColors.error,
+                                    icon: const Icon(
+                                      Icons.error_outline_rounded,
+                                      color: Colors.white,
+                                    ),
+                                    borderRadius: 10,
+                                    margin: const EdgeInsets.all(12),
+                                  ));
+                                }
+                              },
+                              child: Container(
+                                height: 52,
+                                decoration: BoxDecoration(
+                                  gradient: _vm.isUpdating.value
+                                      ? null
+                                      : const LinearGradient(
+                                    colors: [
+                                      AppColors.primary,
+                                      AppColors.cyan,
+                                      AppColors.greenTeal,
+                                    ],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
+                                  color: _vm.isUpdating.value
+                                      ? AppColors.divider
+                                      : null,
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: _vm.isUpdating.value
+                                      ? []
+                                      : [
+                                    BoxShadow(
+                                      color: AppColors.cyan.withOpacity(0.3),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: Center(
+                                  child: _vm.isUpdating.value
+                                      ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2.5,
+                                    ),
+                                  )
+                                      : const Row(
+                                    mainAxisAlignment:
+                                    MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.save_rounded,
+                                        color: Colors.white,
+                                        size: 18,
+                                      ),
+                                      SizedBox(width: 8),
+                                      Text(
+                                        'Save Changes',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            )),
+                          ),
                         ],
                       ),
-                    ),
+                    ],
                   ),
-                )),
-
-              ],
-            ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
-      isScrollControlled:  true,
-      backgroundColor:     Colors.transparent,
-      enableDrag:          true,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      enableDrag: true,
+    );
+  }
+
+// Helper method for modern section design
+  Widget _buildModernSection({
+    required String title,
+    required IconData icon,
+    required Widget child,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    AppColors.cyan.withOpacity(0.1),
+                    AppColors.primary.withOpacity(0.1),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                icon,
+                size: 16,
+                color: AppColors.cyan,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+                letterSpacing: -0.3,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        child,
+      ],
     );
   }
 
@@ -991,21 +1304,23 @@ class _MyTasksActivityScreenState extends State<MyTasksActivityScreen>
           Container(
             width: 88, height: 88,
             decoration: BoxDecoration(
-              color:  AppColors.greenTeal.withOpacity(0.10),
-              shape:  BoxShape.circle,
+              color: AppColors.greenTeal.withOpacity(0.10),
+              shape: BoxShape.circle,
             ),
             child: const Icon(Icons.task_alt_rounded,
                 size: 40, color: AppColors.greenTeal),
           ),
           const SizedBox(height: 18),
-          const Text('All caught up!',
+          const Text('No tasks found',
               style: TextStyle(
-                  fontSize:   18,
+                  fontSize: 18,
                   fontWeight: FontWeight.w700,
-                  color:      AppColors.textPrimary)),
+                  color: AppColors.textPrimary)),
           const SizedBox(height: 6),
           Text(
-            'No pending or in-progress tasks right now.',
+            _filter.value == 'Completed'
+                ? 'No completed tasks yet.'
+                : 'No tasks available in this category.',
             style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
           ),
           const SizedBox(height: 24),
@@ -1014,9 +1329,9 @@ class _MyTasksActivityScreenState extends State<MyTasksActivityScreen>
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               decoration: BoxDecoration(
-                color:        AppColors.cyan.withOpacity(0.10),
+                color: AppColors.cyan.withOpacity(0.10),
                 borderRadius: BorderRadius.circular(12),
-                border:       Border.all(color: AppColors.cyan.withOpacity(0.25)),
+                border: Border.all(color: AppColors.cyan.withOpacity(0.25)),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -1025,9 +1340,9 @@ class _MyTasksActivityScreenState extends State<MyTasksActivityScreen>
                   const SizedBox(width: 6),
                   Text('Refresh',
                       style: TextStyle(
-                          fontSize:   13,
+                          fontSize: 13,
                           fontWeight: FontWeight.w600,
-                          color:      AppColors.cyan)),
+                          color: AppColors.cyan)),
                 ],
               ),
             ),
@@ -1041,9 +1356,9 @@ class _MyTasksActivityScreenState extends State<MyTasksActivityScreen>
   Widget _sheetLabel(String text) => Text(
     text,
     style: TextStyle(
-        fontSize:   12,
+        fontSize: 12,
         fontWeight: FontWeight.w600,
-        color:      AppColors.textSecondary),
+        color: AppColors.textSecondary),
   );
 
   Widget _sectionHeader(String title, IconData icon, Color color) {
@@ -1051,22 +1366,22 @@ class _MyTasksActivityScreenState extends State<MyTasksActivityScreen>
       Container(
           width: 4, height: 20,
           decoration: BoxDecoration(
-              gradient:     AppColors.brandGradient,
+              gradient: AppColors.brandGradient,
               borderRadius: BorderRadius.circular(2))),
       const SizedBox(width: 8),
       Container(
         width: 28, height: 28,
         decoration: BoxDecoration(
-            color:        color.withOpacity(0.10),
+            color: color.withOpacity(0.10),
             borderRadius: BorderRadius.circular(8)),
         child: Icon(icon, size: 15, color: color),
       ),
       const SizedBox(width: 8),
       Text(title,
           style: const TextStyle(
-              color:         AppColors.primary,
-              fontSize:      13,
-              fontWeight:    FontWeight.w700,
+              color: AppColors.primary,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
               letterSpacing: 0.3)),
     ]);
   }

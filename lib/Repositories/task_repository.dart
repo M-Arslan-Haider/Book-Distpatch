@@ -1,12 +1,11 @@
-// ════════════════════════════════════════════════════════════════════════════
-//  lib/Repositories/task_repository.dart
-// ════════════════════════════════════════════════════════════════════════════
+
 
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart'             as http;
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../Models/task_model.dart';
@@ -238,7 +237,13 @@ class TaskRepository {
   Future<RepositoryResult<TaskModel>> updateTask(UpdateTaskRequest request) async {
     try {
       final headers = await _headers();
-      final body    = request.toJson();   // ← updated_date & updated_time included here
+      final body = request.toJson();
+
+      // Format dates correctly for Oracle
+      final now = DateTime.now();
+      // Override the dates with proper format
+      body['updated_date'] = DateFormat('dd-MMM-yyyy').format(now).toUpperCase();
+      body['updated_time'] = DateFormat('dd-MMM-yyyy HH:mm:ss').format(now).toUpperCase();
 
       debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       debugPrint('🟡 [PUT] URL          : $_baseUrl$_updateEndpoint');
@@ -251,7 +256,7 @@ class TaskRepository {
       final response = await http.put(
         Uri.parse('$_baseUrl$_updateEndpoint'),
         headers: headers,
-        body:    jsonEncode(body),
+        body: jsonEncode(body),
       ).timeout(_timeout);
 
       debugPrint('🟡 [PUT] Status  : ${response.statusCode}');
