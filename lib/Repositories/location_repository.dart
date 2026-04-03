@@ -1,4 +1,3 @@
-// // lib/Repositories/location_repository.dart
 //
 // import 'dart:convert';
 // import 'dart:typed_data';
@@ -92,6 +91,34 @@
 //       whereArgs: [0],
 //     );
 //     return rows.map(LocationModel.fromMap).toList();
+//   }
+//
+//   /// Returns all records (posted or not) for a given date string (yyyy-MM-dd).
+//   Future<List<LocationModel>> getByDate(String dateStr) async {
+//     final db   = await _db;
+//     final rows = await db.query(
+//       LocationModel.tableName,
+//       where    : '${LocationModel.colDate} = ?',
+//       whereArgs: [dateStr],
+//     );
+//     return rows.map(LocationModel.fromMap).toList();
+//   }
+//
+//   /// Marks every record on [dateStr] as posted=1 EXCEPT the one with [keepId].
+//   /// This ensures only the latest cumulative record is synced to the server.
+//   Future<void> markOlderRecordsPosted({
+//     required String dateStr,
+//     required String keepId,
+//   }) async {
+//     final db = await _db;
+//     await db.update(
+//       LocationModel.tableName,
+//       {LocationModel.colPosted: 1},
+//       where    : '${LocationModel.colDate} = ? AND ${LocationModel.colId} != ?',
+//       whereArgs: [dateStr, keepId],
+//     );
+//     debugPrint(
+//         '✅ [LocRepo] Suppressed older records for $dateStr (keeping $keepId)');
 //   }
 //
 //   Future<void> markPosted(String locationId) async {
@@ -204,8 +231,8 @@
 //   }
 // }
 
-// lib/Repositories/location_repository.dart
 
+///for campanies
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -255,15 +282,16 @@ class LocationRepository {
 
   static const String _kCreateTable = '''
     CREATE TABLE IF NOT EXISTS ${LocationModel.tableName}(
-      ${LocationModel.colId}       TEXT PRIMARY KEY,
-      ${LocationModel.colDate}     TEXT,
-      ${LocationModel.colTime}     TEXT,
-      ${LocationModel.colFileName} TEXT,
-      ${LocationModel.colEmpId}    TEXT,
-      ${LocationModel.colDistance} TEXT,
-      ${LocationModel.colEmpName}  TEXT,
-      ${LocationModel.colPosted}   INTEGER DEFAULT 0,
-      ${LocationModel.colBody}     BLOB
+      ${LocationModel.colId}          TEXT PRIMARY KEY,
+      ${LocationModel.colDate}        TEXT,
+      ${LocationModel.colTime}        TEXT,
+      ${LocationModel.colFileName}    TEXT,
+      ${LocationModel.colEmpId}       TEXT,
+      ${LocationModel.colDistance}    TEXT,
+      ${LocationModel.colEmpName}     TEXT,
+      ${LocationModel.colPosted}      INTEGER DEFAULT 0,
+      ${LocationModel.colBody}        BLOB,
+      ${LocationModel.colCompanyCode} TEXT
     )
   ''';
 
@@ -382,6 +410,11 @@ class LocationRepository {
         'total_distance': record.totalDistance,
         'emp_name'      : record.empName,
       });
+
+      if (record.company_code != null && record.company_code!.isNotEmpty) {
+        request.fields['company_code'] = record.company_code!;
+        request.fields['COMPANY_CODE'] = record.company_code!; // ← ADDED (both cases)
+      }
 
       if (record.body != null && record.body!.isNotEmpty) {
         request.files.add(

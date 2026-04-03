@@ -1,3 +1,4 @@
+
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
@@ -8,13 +9,26 @@ import '../../constants.dart';
 
 class LoginRepository extends GetxService {
 
-  // Fetch login data from Oracle API
+  // Get login API URL with company_code filter
+  Future<String> _getLoginApiUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    final companyCode = prefs.getString(prefCompanyCode) ?? '';
+
+    if (companyCode.isNotEmpty) {
+      return ApiManager.getLoginApi(companyCode);
+    }
+
+    return loginApiEndpoint;
+  }
+
+  // Fetch employees from API - backend filters by company_code automatically
   Future<List<LoginModels>> fetchLoginFromApi() async {
     try {
-      debugPrint('📡 Fetching login data from: $loginApiEndpoint');
+      final apiUrl = await _getLoginApiUrl();
+      debugPrint('📡 Fetching login data from: $apiUrl');
 
       final response = await http
-          .get(Uri.parse(loginApiEndpoint))
+          .get(Uri.parse(apiUrl))
           .timeout(const Duration(seconds: 30));
 
       if (response.statusCode != 200) {
@@ -22,11 +36,9 @@ class LoginRepository extends GetxService {
       }
 
       final Map<String, dynamic> data = json.decode(response.body);
-
       List<dynamic> items = data['items'] ?? [];
 
       debugPrint('✅ Fetched ${items.length} users from API');
-
       return items.map((json) => LoginModels.fromJson(json)).toList();
     } catch (e) {
       debugPrint('❌ Error fetching login data: $e');
@@ -34,12 +46,12 @@ class LoginRepository extends GetxService {
     }
   }
 
-  // Get user by credentials
+  // Get user by emp_id only - no need to check company_code
+  // because backend SQL already does: WHERE company_code = :company_code
   Future<LoginModels?> getUserByCredentials(String userId, String password) async {
     try {
       final apiData = await fetchLoginFromApi();
 
-      // Try to parse userId as int for comparison
       int? userIdInt = int.tryParse(userId);
 
       for (var user in apiData) {
@@ -51,8 +63,8 @@ class LoginRepository extends GetxService {
           idMatches = user.emp_id.toString() == userId;
         }
 
-        // For now, we're not validating password as API doesn't return passwords
-        // You'll need to implement password validation separately
+        // ✅ Backend already filtered by company_code
+        // Sirf emp_id check kafi hai
         if (idMatches) {
           debugPrint('✅ User found: ${user.emp_name}, Role: ${user.job}');
           return user;
@@ -66,29 +78,4 @@ class LoginRepository extends GetxService {
       return null;
     }
   }
-
-// // Save login data to local database
-// Future<void> saveLoginDataToLocal(List<LoginModels> loginData) async {
-//   var dbClient = await dbHelper.db;
-//   await dbClient.delete(tableNameLogin);
-//
-//   for (var model in loginData) {
-//     await dbClient.insert(tableNameLogin, model.toJson());
-//   }
-// }
-
-// // Sync login data
-// Future<bool> syncLoginData() async {
-//   try {
-//     final apiData = await fetchLoginFromApi();
-//     if (apiData.isNotEmpty) {
-//       await saveLoginDataToLocal(apiData);
-//       return true;
-//     }
-//     return false;
-//   } catch (e) {
-//     debugPrint('Sync failed: $e');
-//     return false;
-//   }
-// }
 }

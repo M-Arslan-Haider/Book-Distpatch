@@ -1,3 +1,4 @@
+
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
@@ -75,6 +76,9 @@ class LeaveRepository {
       request.fields['APPLICATION_TIME']   = leave.applicationTime;
       request.fields['STATUS']             = leave.status;
       request.fields['POSTED']             = leave.posted.toString();
+      if (leave.company_code != null && leave.company_code!.isNotEmpty) {
+        request.fields['COMPANY_CODE']     = leave.company_code!;
+      }
 
       // ── TEXT FIELDS (lower_case — fallback) ──
       request.fields['leave_id']           = leave.leaveId;
@@ -90,6 +94,9 @@ class LeaveRepository {
       request.fields['application_time']   = leave.applicationTime;
       request.fields['status']             = leave.status;
       request.fields['posted']             = leave.posted.toString();
+      if (leave.company_code != null && leave.company_code!.isNotEmpty) {
+        request.fields['company_code']     = leave.company_code!;
+      }
 
       // ── ATTACHMENT IMAGE ──
       final Uint8List? attachmentBytes = _getAttachmentBytes(leave.attachmentData, leave.attachmentImage);
@@ -178,6 +185,8 @@ class LeaveRepository {
         'application_time': leave.applicationTime,
         'status':           leave.status,
         'posted':           leave.posted.toString(),
+        if (leave.company_code != null && leave.company_code!.isNotEmpty)
+          'company_code':   leave.company_code!,
       };
 
       // Append all params to URL — ORDS maps these to :bind_variables always

@@ -1,3 +1,4 @@
+
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
@@ -10,6 +11,7 @@ import 'package:uuid/uuid.dart';
 
 import '../Models/leave_model.dart';
 import '../Repositories/leave_repository.dart';
+import '../Database/db_helper.dart';
 
 class LeaveViewModel extends GetxController {
   final LeaveRepository _repo = LeaveRepository();
@@ -78,14 +80,27 @@ class LeaveViewModel extends GetxController {
 
   // ─── PRIVATE – LEAVE ID BUILDER ────────────────────────────────────────────
 
+  // Replace the existing _buildLeaveId method with this updated version:
+
   String _buildLeaveId({required String empId}) {
     final now    = DateTime.now();
     final day    = DateFormat('dd').format(now);
     final month  = DateFormat('MMM').format(now);
     final serial = _serialCounter.toString().padLeft(3, '0');
     final empPart = empId.padLeft(2, '0');
-    final id = 'LV-EMP-$empPart-$day-$month-$serial';
-    debugPrint('🆔 Generated ID: $id');
+
+    // Get company code from DBHelper
+    final String companyCode = DBHelper.getCompanyCode() ?? '';
+
+    // Build ID with company code prefix
+    String id;
+    if (companyCode.isNotEmpty) {
+      id = '$companyCode-LV-EMP-$empPart-$day-$month-$serial';
+    } else {
+      id = 'LV-EMP-$empPart-$day-$month-$serial';
+    }
+
+    debugPrint('🆔 [LeaveVM] Generated ID: $id (company: $companyCode, counter: $_serialCounter)');
     return id;
   }
 
@@ -254,6 +269,7 @@ class LeaveViewModel extends GetxController {
         status:          'pending',
         posted:          0,
         hasAttachment:   attachmentBytes.value != null ? 1 : 0,
+        company_code:    DBHelper.getCompanyCode(),
       );
 
       debugPrint('📋 [LeaveVM] Submitting leave:');

@@ -1,3 +1,4 @@
+//for diffeent compaanies
 import 'package:intl/intl.dart';
 
 class AttendanceModel {
@@ -13,6 +14,7 @@ class AttendanceModel {
   dynamic attendance_in_date;
   dynamic attendance_in_time;
   String? profile;
+  String? company_code; // ← ADDED
 
   int posted;
 
@@ -28,6 +30,7 @@ class AttendanceModel {
     this.attendance_in_date,
     this.attendance_in_time,
     this.profile,
+    this.company_code, // ← ADDED
     this.posted = 0,
   });
 
@@ -44,12 +47,12 @@ class AttendanceModel {
       attendance_in_date: json['attendance_in_date'],
       attendance_in_time: json['attendance_in_time'],
       profile: json['profile'],
+      company_code: json['company_code'], // ← ADDED
       posted: json['posted'] ?? 0,
     );
   }
 
   Map<String, dynamic> toMap() {
-
     String dateString;
     if (attendance_in_date is DateTime) {
       dateString = DateFormat('dd-MMM-yyyy').format(attendance_in_date);
@@ -79,7 +82,8 @@ class AttendanceModel {
       'address': address,
       'attendance_in_date': dateString,
       'attendance_in_time': timeString,
-      'profile' : profile,
+      'profile': profile,
+      'company_code': company_code, // ← ADDED
       'posted': posted,
     };
   }
