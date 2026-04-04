@@ -10,6 +10,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../Database/db_helper.dart';
 import '../Models/attendance_Model.dart';
 import '../Models/attendanceOut_model.dart';
 import '../ViewModels/attendance_view_model.dart';
@@ -103,15 +104,39 @@ class TravelViewModel extends GetxController {
   // ─────────────────────────────────────────────────────────────────────────
   // PRIVATE — Travel ID builder (uses shared counter from attendance)
   // ─────────────────────────────────────────────────────────────────────────
+  // Future<String> _buildTravelId({required String empId}) async {
+  //   final now = DateTime.now();
+  //   final day = DateFormat('dd').format(now);
+  //   final month = DateFormat('MMM').format(now);
+  //   final serial = await _getNextSerialNumber();
+  //   final serialStr = serial.toString().padLeft(3, '0');
+  //   final emp = empId.padLeft(2, '0');
+  //   final id = 'ATD-EMP-$emp-$day-$month-$serialStr';
+  //   debugPrint('🆔 [TravelVM] Generated travel ID: $id');
+  //   return id;
+  // }
+
   Future<String> _buildTravelId({required String empId}) async {
     final now = DateTime.now();
     final day = DateFormat('dd').format(now);
     final month = DateFormat('MMM').format(now);
+
     final serial = await _getNextSerialNumber();
     final serialStr = serial.toString().padLeft(3, '0');
     final emp = empId.padLeft(2, '0');
-    final id = 'ATD-EMP-$emp-$day-$month-$serialStr';
-    debugPrint('🆔 [TravelVM] Generated travel ID: $id');
+
+    // Get company code
+    final String companyCode = DBHelper.getCompanyCode() ?? '';
+
+    String id;
+
+    if (companyCode.isNotEmpty) {
+      id = '$companyCode-ATD-EMP-$emp-$day-$month-$serialStr';
+    } else {
+      id = 'ATD-EMP-$emp-$day-$month-$serialStr';
+    }
+
+    debugPrint('🆔 [TravelVM] Generated travel ID: $id (company: $companyCode)');
     return id;
   }
 

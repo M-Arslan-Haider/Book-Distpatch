@@ -157,7 +157,7 @@ class _CodeScreenState extends State<CodeScreen>
 
       final prefs = await SharedPreferences.getInstance();
       String companyName = company['company_name'] ?? 'Unknown';
-      String workspaceName = company['workspace_name'] ?? 'production';
+      String workspaceName = company['workspace_name'] ?? 'gps_workforce';
 
       // Store company information
       await prefs.setString(prefCompanyCode, companyCode);

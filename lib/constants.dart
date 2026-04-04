@@ -148,7 +148,7 @@ final Color subText = const Color(0xFF1F2937).withValues(alpha: 0.5);
 final Color bgColor = const Color(0xFFF8F9FA);
 
 // SINGLE API ENDPOINTS for all companies
-const String baseApiUrl = 'http://oracle.metaxperts.net/ords/production';
+const String baseApiUrl = 'http://oracle.metaxperts.net/ords/gps_workforce';
 const String companyApiEndpoint = '$baseApiUrl/registeredcompanies/get/';
 const String loginApiEndpoint = '$baseApiUrl/loginget/get/';
 // const String attendanceInApi = '$baseApiUrl/attendanceinpost/post/';

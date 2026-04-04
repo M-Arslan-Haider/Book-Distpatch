@@ -45,7 +45,7 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen>
   late Animation<Offset> _slideAnim;
 
   static const String _baseUrl =
-      'http://oracle.metaxperts.net/ords/production/empinfo/get';
+      'http://oracle.metaxperts.net/ords/gps_workforce/empinfo/get';
 
   static const List<String> _possibleIdKeys = [
     'emp_id', 'user_id', 'userId', 'employee_id', 'employeeId',

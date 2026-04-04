@@ -25,6 +25,8 @@
 // import '../geofancing_violation_widgets.dart';
 // import '../location_session_screen.dart';
 //
+// import '../mqtt_work.dart';
+//
 //
 // class TimerCard extends StatefulWidget {
 //   const TimerCard({super.key});
@@ -35,18 +37,20 @@
 //
 // class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 //   // ─── ViewModels ────────────────────────────────────────────────────────────
-//   final locationViewModel    = Get.find<LocationViewModel>();
-//   final attendanceViewModel  = Get.find<AttendanceViewModel>();
+//   final locationViewModel      = Get.find<LocationViewModel>();
+//   final attendanceViewModel    = Get.find<AttendanceViewModel>();
 //   final attendanceOutViewModel = Get.find<AttendanceOutViewModel>();
 //
-//   // Inside _TimerCardState class, add:
 //   final TravelViewModel _travelVM = Get.find<TravelViewModel>();
 //
 //   // Geofence violation tracker
 //   late GeofenceViolationViewModel _violationVM;
 //
+//   // ✅ MQTT Tracker
+//   final MqttTracker _mqttTracker = MqttTracker();
+//
 //   // ─── Location / Connectivity ───────────────────────────────────────────────
-//   final loc.Location location   = loc.Location();
+//   final loc.Location location     = loc.Location();
 //   final Connectivity _connectivity = Connectivity();
 //   late FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin;
 //
@@ -62,11 +66,11 @@
 //   Timer? _autoSyncTimer;
 //   Timer? _distanceUpdateTimer;
 //
-//   bool _wasLocationAvailable  = true;
+//   bool _wasLocationAvailable   = true;
 //   bool _autoClockOutInProgress = false;
 //   bool _isMidnightClockOutScheduled = false;
-//   bool _isOnline   = false;
-//   bool _isSyncing  = false;
+//   bool _isOnline  = false;
+//   bool _isSyncing = false;
 //
 //   DateTime? _localClockInTime;
 //   String    _localElapsedTime = '00:00:00';
@@ -77,18 +81,18 @@
 //   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 //
 //   // ─── SharedPreferences Keys ───────────────────────────────────────────────
-//   static const String KEY_EVENT_TIMESTAMP   = 'critical_event_timestamp';
-//   static const String KEY_EVENT_REASON      = 'critical_event_reason';
-//   static const String KEY_EVENT_DISTANCE    = 'critical_event_distance';
+//   static const String KEY_EVENT_TIMESTAMP    = 'critical_event_timestamp';
+//   static const String KEY_EVENT_REASON       = 'critical_event_reason';
+//   static const String KEY_EVENT_DISTANCE     = 'critical_event_distance';
 //   static const String KEY_HAS_CRITICAL_EVENT = 'has_critical_event_pending';
-//   static const String KEY_EVENT_LATITUDE    = 'critical_event_latitude';
-//   static const String KEY_EVENT_LONGITUDE   = 'critical_event_longitude';
+//   static const String KEY_EVENT_LATITUDE     = 'critical_event_latitude';
+//   static const String KEY_EVENT_LONGITUDE    = 'critical_event_longitude';
 //   static const String KEY_EVENT_ELAPSED_TIME = 'critical_event_elapsed_time';
-//   static const String KEY_IS_TIMER_FROZEN   = 'is_timer_frozen';
+//   static const String KEY_IS_TIMER_FROZEN    = 'is_timer_frozen';
 //   static const String KEY_FROZEN_DISPLAY_TIME = 'frozen_display_time';
-//   static const String KEY_GPX_FINALIZED     = 'gpx_finalized_at';
-//   static const String KEY_GPX_FILE_PATH     = 'currentGpxFilePath';
-//   static const String KEY_PENDING_GPX_CLOSE = 'pending_gpx_close';
+//   static const String KEY_GPX_FINALIZED      = 'gpx_finalized_at';
+//   static const String KEY_GPX_FILE_PATH      = 'currentGpxFilePath';
+//   static const String KEY_PENDING_GPX_CLOSE  = 'pending_gpx_close';
 //
 //   // ══════════════════════════════════════════════════════════════════════════
 //   // LIFECYCLE
@@ -106,6 +110,11 @@
 //     _startDistanceUpdater();
 //     _scheduleMidnightClockOut();
 //     _startNativeMonitoringService();
+//
+//     // ✅ Initialize MQTT Tracker
+//     _mqttTracker.initialize().then((_) {
+//       debugPrint('✅ MQTT Tracker initialized');
+//     });
 //
 //     WidgetsBinding.instance.addPostFrameCallback((_) {
 //       _checkAndProcessCriticalEvent();
@@ -128,6 +137,8 @@
 //     _distanceUpdateTimer?.cancel();
 //     _midnightClockOutTimer?.cancel();
 //     _permissionCheckTimer?.cancel();
+//     // ✅ Dispose MQTT
+//     _mqttTracker.dispose();
 //     super.dispose();
 //   }
 //
@@ -196,8 +207,7 @@
 //     const AndroidInitializationSettings androidSettings =
 //     AndroidInitializationSettings('@mipmap/ic_launcher');
 //
-//     const DarwinInitializationSettings iosSettings =
-//     DarwinInitializationSettings(
+//     const DarwinInitializationSettings iosSettings = DarwinInitializationSettings(
 //       requestAlertPermission: true,
 //       requestBadgePermission: true,
 //       requestSoundPermission: true,
@@ -228,8 +238,7 @@
 //   }) async {
 //     _notificationId++;
 //
-//     const AndroidNotificationDetails androidDetails =
-//     AndroidNotificationDetails(
+//     const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
 //       'urgent_auto_clockout_channel',
 //       'URGENT Auto Clockout Notifications',
 //       channelDescription: 'High-priority auto clockout notifications',
@@ -366,11 +375,11 @@
 //
 //     bool needsGpxFinalization = prefs.getBool(KEY_PENDING_GPX_CLOSE) ?? false;
 //
-//     String? eventTimeStr = prefs.getString(KEY_EVENT_TIMESTAMP);
-//     String? eventReason  = prefs.getString(KEY_EVENT_REASON);
+//     String? eventTimeStr  = prefs.getString(KEY_EVENT_TIMESTAMP);
+//     String? eventReason   = prefs.getString(KEY_EVENT_REASON);
 //     double? eventDistance = prefs.getDouble(KEY_EVENT_DISTANCE);
-//     double? eventLat     = prefs.getDouble(KEY_EVENT_LATITUDE);
-//     double? eventLng     = prefs.getDouble(KEY_EVENT_LONGITUDE);
+//     double? eventLat      = prefs.getDouble(KEY_EVENT_LATITUDE);
+//     double? eventLng      = prefs.getDouble(KEY_EVENT_LONGITUDE);
 //
 //     if (eventTimeStr != null) {
 //       DateTime eventTime = DateTime.parse(eventTimeStr);
@@ -425,10 +434,10 @@
 //
 //   Future<void> _syncCriticalEventData({
 //     required DateTime eventTime,
-//     required String reason,
-//     required double distance,
-//     required double latitude,
-//     required double longitude,
+//     required String   reason,
+//     required double   distance,
+//     required double   latitude,
+//     required double   longitude,
 //   }) async {
 //     try {
 //       SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -459,10 +468,10 @@
 //
 //   Future<void> _saveCriticalEventData({
 //     required DateTime eventTime,
-//     required String reason,
-//     required double distance,
-//     required double latitude,
-//     required double longitude,
+//     required String   reason,
+//     required double   distance,
+//     required double   latitude,
+//     required double   longitude,
 //   }) async {
 //     SharedPreferences prefs = await SharedPreferences.getInstance();
 //     String elapsedAtEvent = _localElapsedTime;
@@ -549,10 +558,10 @@
 //           if (_wasLocationAvailable && !locationEnabled) {
 //             debugPrint('📍 [MONITOR] Location OFF - auto clockout');
 //
-//             DateTime eventTime   = DateTime.now();
-//             double currentDist   = await _getCurrentDistance();
-//             double lat           = locationViewModel.globalLatitude1.value;
-//             double lng           = locationViewModel.globalLongitude1.value;
+//             DateTime eventTime = DateTime.now();
+//             double currentDist = await _getCurrentDistance();
+//             double lat         = locationViewModel.globalLatitude1.value;
+//             double lng         = locationViewModel.globalLongitude1.value;
 //
 //             await _saveCriticalEventData(
 //               eventTime : eventTime,
@@ -603,8 +612,8 @@
 //
 //           DateTime eventTime = DateTime.now();
 //           double currentDist = await _getCurrentDistance();
-//           double lat = locationViewModel.globalLatitude1.value;
-//           double lng = locationViewModel.globalLongitude1.value;
+//           double lat         = locationViewModel.globalLatitude1.value;
+//           double lng         = locationViewModel.globalLongitude1.value;
 //
 //           await _saveCriticalEventData(
 //             eventTime : eventTime,
@@ -647,7 +656,7 @@
 //   // ══════════════════════════════════════════════════════════════════════════
 //
 //   Future<void> _handleAutoClockOut({
-//     required String reason,
+//     required String   reason,
 //     required BuildContext context,
 //     DateTime? eventTime,
 //   }) async {
@@ -657,9 +666,8 @@
 //     _autoClockOutInProgress = true;
 //
 //     DateTime clockOutTime = eventTime ?? DateTime.now();
-//     double finalLat       = locationViewModel.globalLatitude1.value;
-//     double finalLng       = locationViewModel.globalLongitude1.value;
-//     double finalDistance  = _currentDistance > 0 ? _currentDistance : 0.0;
+//     double finalLat      = locationViewModel.globalLatitude1.value;
+//     double finalLng      = locationViewModel.globalLongitude1.value;
 //
 //     debugPrint('⚡ [AUTO CLOCKOUT] Reason: $reason at $clockOutTime');
 //
@@ -680,6 +688,11 @@
 //       } catch (e) {
 //         debugPrint('⚠️ Background mode disable error: $e');
 //       }
+//
+//       // ✅ FIX: call onClockOut() so GPS stream stops, GPX is finalized,
+//       // and the location table record is written with the real distance.
+//       await locationViewModel.onClockOut();
+//       final double finalDistance = locationViewModel.totalDistance.value;
 //
 //       await _finalizeGPXFile(
 //         eventTime     : clockOutTime,
@@ -706,8 +719,8 @@
 //         });
 //       }
 //
-//       attendanceViewModel.isClockedIn.value  = false;
-//       locationViewModel.isClockedIn.value    = false;
+//       attendanceViewModel.isClockedIn.value = false;
+//       locationViewModel.isClockedIn.value   = false;
 //       attendanceViewModel.stopElapsedTimer();
 //
 //       final String empId = _safePrefsString(prefs, 'emp_id');
@@ -832,7 +845,7 @@
 //     try {
 //       SharedPreferences prefs = await SharedPreferences.getInstance();
 //
-//       bool hasPendingGpx    = prefs.getBool('hasPendingGpxData') ?? false;
+//       bool hasPendingGpx     = prefs.getBool('hasPendingGpxData') ?? false;
 //       String? pendingGpxDate = prefs.getString('pendingGpxDate');
 //       DateTime? eventDate;
 //
@@ -856,6 +869,11 @@
 //         duration: const Duration(seconds: 3),
 //       );
 //
+//       // NOTE: GPX consolidation is intentionally removed from here.
+//       // locationViewModel.onClockOut() now handles GPX finalization and
+//       // the location table record directly at the moment of clock-out.
+//       // This block is retained only to sync any legacy pending-GPX flags
+//       // left from a previous app session that crashed before clock-out.
 //       if (hasPendingGpx) {
 //         try {
 //           if (eventDate != null) {
@@ -865,7 +883,7 @@
 //             await locationViewModel.consolidateDailyGPXData();
 //             await locationViewModel.saveLocationFromConsolidatedFile();
 //           }
-//           debugPrint('✅ [AUTO-SYNC] GPX data processed');
+//           debugPrint('✅ [AUTO-SYNC] Legacy GPX data processed');
 //         } catch (e) {
 //           debugPrint('⚠️ [AUTO-SYNC] GPX processing error: $e');
 //         }
@@ -1099,9 +1117,7 @@
 //   }
 //
 //   // ══════════════════════════════════════════════════════════════════════════
-//   // ✅ GEOFENCE — GPS distance check against saved location
-//   // Keys written by LocationSelectionScreen._saveAndGoBack():
-//   //   selected_lat, selected_lng, selected_radius, selected_location_name
+//   // GEOFENCE — GPS distance check against saved location
 //   // ══════════════════════════════════════════════════════════════════════════
 //
 //   Future<bool> _isWithinGeofence({
@@ -1122,7 +1138,7 @@
 //       );
 //
 //       debugPrint('📏 [GEOFENCE] User: ${currentPosition.latitude}, ${currentPosition.longitude}');
-//       debugPrint('📏 [GEOFENCE] Distance from location: ${distanceInMeters.toStringAsFixed(1)} m');
+//       debugPrint('   [GEOFENCE] Distance from location: ${distanceInMeters.toStringAsFixed(1)} m');
 //       debugPrint('📏 [GEOFENCE] Allowed radius: $radiusMeters m');
 //       debugPrint('📏 [GEOFENCE] Within geofence: ${distanceInMeters <= radiusMeters}');
 //
@@ -1169,7 +1185,7 @@
 //   }
 //
 //   // ══════════════════════════════════════════════════════════════════════════
-//   // CLOCK IN — with camera + geofencing
+//   // ✅ CLOCK IN — with camera + geofencing + MQTT + GPS tracking
 //   // ══════════════════════════════════════════════════════════════════════════
 //
 //   Future<void> _handleClockIn(BuildContext context) async {
@@ -1234,20 +1250,14 @@
 //         return;
 //       }
 //
-//       // ══════════════════════════════════════════════════════════════════════
-//       // ✅ FIX: Reset travel state BEFORE clocking in
-//       // ══════════════════════════════════════════════════════════════════════
+//       // ── Reset travel state BEFORE clocking in ─────────────────────────────
 //       final travelVM = Get.find<TravelViewModel>();
-//
-//       // Force reset travel state if it's stuck
 //       if (travelVM.isTravelMode.value || travelVM.hasPendingLocation) {
 //         debugPrint('🔄 [TIMERCARD] Resetting stale travel state before clock-in');
-//         await travelVM.cancelTravel(); // This will clear all travel state
+//         await travelVM.cancelTravel();
 //       }
 //
-//       // ══════════════════════════════════════════════════════════════════════
-//       // ✅ 4. GEOFENCING CHECK
-//       // ══════════════════════════════════════════════════════════════════════
+//       // ── 4. GEOFENCING CHECK ───────────────────────────────────────────────
 //       final double? savedLat    = prefs.getDouble('selected_lat');
 //       final double? savedLng    = prefs.getDouble('selected_lng');
 //       final double? savedRadius = prefs.getDouble('selected_radius');
@@ -1256,7 +1266,7 @@
 //       debugPrint('🔍 [GEOFENCE] Saved location: "$savedName" '
 //           'lat=$savedLat, lng=$savedLng, radius=$savedRadius');
 //
-//       // ── 4a. No location selected at all ───────────────────────────────────
+//       // ── 4a. No location selected ──────────────────────────────────────────
 //       if (savedLat == null || savedLng == null || savedRadius == null || savedName.isEmpty) {
 //         if (Navigator.of(context).canPop()) Navigator.of(context).pop();
 //         Get.snackbar(
@@ -1272,7 +1282,7 @@
 //         return;
 //       }
 //
-//       // ── 4b. GPS distance check against saved location ─────────────────────
+//       // ── 4b. GPS distance check ────────────────────────────────────────────
 //       debugPrint('🔍 [GEOFENCE] Checking GPS distance from "$savedName"...');
 //
 //       final bool withinGeofence = await _isWithinGeofence(
@@ -1303,11 +1313,11 @@
 //       await prefs.remove(KEY_FROZEN_DISPLAY_TIME);
 //
 //       // ── 6. READ EMPLOYEE DATA ─────────────────────────────────────────────
-//       final String empId = _safePrefsString(prefs, 'emp_id');
+//       final String empId   = _safePrefsString(prefs, 'emp_id');
 //       final String empName = _safePrefsStringFallback(prefs, [
 //         'emp_name', 'empName', 'employee_name', 'name', 'userName', 'user_name',
 //       ]);
-//       final String job = _safePrefsStringFallback(prefs, [
+//       final String job  = _safePrefsStringFallback(prefs, [
 //         'job', 'designation', 'role', 'emp_job', 'position', 'jobTitle',
 //       ]);
 //       final String city = _safePrefsStringFallback(prefs, [
@@ -1317,12 +1327,12 @@
 //       debugPrint('👤 [CLOCK-IN] empId=$empId | empName=$empName | job=$job | city=$city');
 //
 //       // ── 7. GPX PATH ────────────────────────────────────────────────────────
-//       final date = DateFormat('dd-MM-yyyy').format(DateTime.now());
+//       final date              = DateFormat('dd-MM-yyyy').format(DateTime.now());
 //       final downloadDirectory = await getDownloadsDirectory();
-//       final filePath = '${downloadDirectory!.path}/track_${empId}_$date.gpx';
+//       final filePath          = '${downloadDirectory!.path}/track_${empId}_$date.gpx';
 //       await prefs.setString(KEY_GPX_FILE_PATH, filePath);
 //
-//       // ── 8. CLOCK IN ────────────────────────────────────────────────────────
+//       // ── 8. ATTENDANCE CLOCK-IN ─────────────────────────────────────────────
 //       await attendanceViewModel.clockIn(
 //         empId     : empId,
 //         empName   : empName,
@@ -1331,19 +1341,26 @@
 //         photoBytes: clockInPhotoBytes,
 //       );
 //
-//       // ── 9. UI UPDATE ───────────────────────────────────────────────────────
+//       // ── 9. ✅ FIX: START GPS TRACKING via LocationViewModel ────────────────
+//       // This initialises the GPX file, starts the position stream and the
+//       // Kalman-filtered distance accumulator. Without this call, totalDistance
+//       // stays 0 and no location table record is ever written on clock-out.
+//       await locationViewModel.onClockIn();
+//       debugPrint('✅ [CLOCK-IN] GPS tracking started via locationViewModel.onClockIn()');
+//
+//       // ── 10. UI UPDATE ──────────────────────────────────────────────────────
 //       setState(() {
 //         _localElapsedTime = '00:00:00';
 //         locationViewModel.isClockedIn.value   = true;
 //         attendanceViewModel.isClockedIn.value = true;
 //       });
 //
-//       // ── 10. START TIMERS ───────────────────────────────────────────────────
+//       // ── 11. START TIMERS ───────────────────────────────────────────────────
 //       _startLocalBackupTimer();
 //       _scheduleMidnightClockOut();
 //       _startPermissionMonitoring();
 //
-//       // ── 11. CLOSE DIALOG ───────────────────────────────────────────────────
+//       // ── 12. CLOSE DIALOG ───────────────────────────────────────────────────
 //       if (Navigator.of(context).canPop()) Navigator.of(context).pop();
 //
 //       Get.snackbar(
@@ -1355,13 +1372,11 @@
 //         duration: const Duration(seconds: 2),
 //       );
 //
-//       // ── VIOLATION MONITORING START ─────────────────────────────────────
-//       // Pehle violations clear karo (naya session)
+//       // ── VIOLATION MONITORING START ─────────────────────────────────────────
 //       await _violationVM.clearViolations();
-//       // Ab monitoring shuru karo selected location ke coordinates se
-//       final double monLat    = savedLat!;
-//       final double monLng    = savedLng!;
-//       final double monRadius = savedRadius!;
+//       final double monLat    = savedLat;
+//       final double monLng    = savedLng;
+//       final double monRadius = savedRadius;
 //       final String monName   = savedName;
 //       unawaited(_violationVM.startMonitoring(
 //         lat          : monLat,
@@ -1369,12 +1384,27 @@
 //         radiusMeters : monRadius,
 //         locationName : monName,
 //       ));
-//       // ── END VIOLATION MONITORING START ────────────────────────────────
+//
+//       // ── MQTT CLOCK IN ──────────────────────────────────────────────────────
+//       final mqttOk = await _mqttTracker.clockInMqtt(deviceId: empId);
+//       if (!mqttOk) {
+//         debugPrint('⚠️ MQTT unavailable — will queue locations offline');
+//         Get.snackbar(
+//           '📶 Offline Mode',
+//           'GPS data will sync when connected',
+//           snackPosition: SnackPosition.TOP,
+//           backgroundColor: Colors.orange.shade700,
+//           colorText: Colors.white,
+//           duration: const Duration(seconds: 3),
+//         );
+//       } else {
+//         debugPrint('✅ MQTT Connected — publishing locations');
+//       }
 //
 //       debugPrint('✅ [CLOCK-IN] UI completed in '
 //           '${DateTime.now().difference(clockInStart).inMilliseconds}ms');
 //
-//       // ── 12. BACKGROUND TASKS ───────────────────────────────────────────────
+//       // ── 13. BACKGROUND TASKS ───────────────────────────────────────────────
 //       _runPostClockInTasks(filePath);
 //     } catch (e) {
 //       debugPrint('❌ [CLOCK-IN] Error: $e');
@@ -1404,19 +1434,13 @@
 //   }
 //
 //   // ══════════════════════════════════════════════════════════════════════════
-//   // CLOCK OUT
+//   // ✅ CLOCK OUT + MQTT
 //   // ══════════════════════════════════════════════════════════════════════════
 //
 //   Future<void> _handleClockOut(BuildContext context) async {
 //     debugPrint('🎯 [TIMERCARD] ===== CLOCK-OUT STARTED =====');
 //
-//     // Capture distance BEFORE any reset
-//     final double capturedDistance = _currentDistance > 0
-//         ? _currentDistance
-//         : await locationViewModel.getImmediateDistance();
-//
-//     debugPrint('📏 [CLOCK-OUT] Captured distance: ${capturedDistance.toStringAsFixed(3)} km');
-//
+//     // ── Stop all UI-side timers immediately ───────────────────────────────
 //     setState(() {
 //       _localElapsedTime = '00:00:00';
 //       _currentDistance  = 0.0;
@@ -1451,26 +1475,30 @@
 //
 //     try {
 //       final clockOutTime = DateTime.now();
-//       final finalDistance = capturedDistance;
-//       final prefs = await SharedPreferences.getInstance();
+//       final prefs        = await SharedPreferences.getInstance();
 //       final String empId = _safePrefsString(prefs, 'emp_id');
 //
-//       debugPrint('👤 [CLOCK-OUT] empId=$empId | distance=${finalDistance.toStringAsFixed(3)} km');
-//
-//       // ===== HANDLE TRAVEL MODE IF ACTIVE =====
+//       // ── Handle travel mode if active ──────────────────────────────────────
 //       final travelVM = Get.find<TravelViewModel>();
-//
 //       if (travelVM.isInTravelMode) {
 //         debugPrint('🚗 [TIMERCARD] Manual clockout while in travel mode - ending travel');
-//
-//         // End travel record properly
 //         await travelVM.handleManualClockOut(
-//           empId: empId,
-//           clockOutTime: clockOutTime,
+//           empId        : empId,
+//           clockOutTime : clockOutTime,
 //         );
 //       }
 //
-//       // Clear all SharedPreferences
+//       // ── ✅ FIX: Stop GPS stream, finalize GPX, write location table record ─
+//       // onClockOut() stops the position stream, flushes the GPX file, computes
+//       // the authoritative distance from that file, and calls _saveLocationRecord
+//       // which writes to the location DB table and triggers a server sync.
+//       await locationViewModel.onClockOut();
+//       final double finalDistance = locationViewModel.totalDistance.value;
+//
+//       debugPrint('📏 [CLOCK-OUT] Final distance from LocationViewModel: '
+//           '${finalDistance.toStringAsFixed(3)} km');
+//
+//       // ── Clear SharedPreferences ────────────────────────────────────────────
 //       await Future.wait([
 //         prefs.remove(KEY_IS_TIMER_FROZEN),
 //         prefs.remove(KEY_FROZEN_DISPLAY_TIME),
@@ -1483,10 +1511,13 @@
 //         prefs.setBool('hasFastClockOutData', true),
 //       ]);
 //
-//       // Close loading dialog
+//       // ── MQTT CLOCK OUT ─────────────────────────────────────────────────────
+//       await _mqttTracker.clockOutMqtt();
+//
+//       // ── Close loading dialog ───────────────────────────────────────────────
 //       if (Navigator.of(context).canPop()) Navigator.of(context).pop();
 //
-//       // Show success message
+//       // ── Success snackbar ───────────────────────────────────────────────────
 //       Get.snackbar(
 //         '✅ Clocked Out',
 //         travelVM.isInTravelMode ? 'Travel ended and data saved' : 'Data saved locally',
@@ -1496,18 +1527,19 @@
 //         duration: const Duration(seconds: 2),
 //       );
 //
-//       // Save attendance out in background
+//       // ── Save attendance-out record (uses real distance) ───────────────────
 //       unawaited(attendanceOutViewModel.fastSaveAttendanceOut(
-//         empId: empId,
-//         clockOutTime: clockOutTime,
+//         empId        : empId,
+//         clockOutTime : clockOutTime,
 //         totalDistance: finalDistance,
-//         isAuto: false,
-//         reason: travelVM.isInTravelMode ? 'manual_clockout_with_travel' : 'manual_clockout',
+//         isAuto       : false,
+//         reason       : travelVM.isInTravelMode
+//             ? 'manual_clockout_with_travel'
+//             : 'manual_clockout',
 //       ));
 //
-//       // Run post clock-out tasks
+//       // ── Post clock-out background tasks ───────────────────────────────────
 //       _runPostClockOutTasks(clockOutTime, finalDistance);
-//
 //     } catch (e) {
 //       debugPrint('❌ [CLOCK-OUT] Error: $e');
 //       if (Navigator.of(context).canPop()) Navigator.of(context).pop();
@@ -1525,13 +1557,12 @@
 //   void _runPostClockOutTasks(DateTime clockOutTime, double distance) {
 //     Future.microtask(() async {
 //       try {
-//         debugPrint('🏁 [CLOCK-OUT] Background: Saving GPX location data...');
+//         debugPrint('🏁 [CLOCK-OUT] Background: stopping services...');
 //
-//         await locationViewModel.consolidateDailyGPXDataForDate(clockOutTime);
-//         debugPrint('✅ [GPX] Consolidated GPX file');
-//
-//         await locationViewModel.saveLocationFromConsolidatedFileForDate(clockOutTime);
-//         debugPrint('✅ [GPX] Saved LocationModel to DB + API');
+//         // NOTE: GPX consolidation and saveLocationFromConsolidatedFile are
+//         // intentionally NOT called here. locationViewModel.onClockOut() already
+//         // handles GPX finalization and the location table write at clock-out
+//         // time. Calling them again here would double-post a 0-distance record.
 //
 //         final service = FlutterBackgroundService();
 //         service.invoke('stopService');
@@ -1571,8 +1602,8 @@
 //
 //     DateTime breakTime = DateTime.now();
 //     double currentDist = await _getCurrentDistance();
-//     double lat = locationViewModel.globalLatitude1.value;
-//     double lng = locationViewModel.globalLongitude1.value;
+//     double lat         = locationViewModel.globalLatitude1.value;
+//     double lng         = locationViewModel.globalLongitude1.value;
 //
 //     await _saveCriticalEventData(
 //       eventTime : breakTime,
@@ -1609,7 +1640,7 @@
 //           String initialGPX = '''<?xml version="1.0" encoding="UTF-8"?>
 // <gpx version="1.1" creator="AttendanceApp">
 //   <trk>
-//     <name>Daily Track ${DateFormat('dd-MM-yyyy').format(DateTime.now())}</name>
+//     <n>Daily Track ${DateFormat('dd-MM-yyyy').format(DateTime.now())}</n>
 //     <trkseg>
 //     </trkseg>
 //   </trk>
@@ -1674,6 +1705,10 @@
 //     return '';
 //   }
 //
+//   // ══════════════════════════════════════════════════════════════════════════
+//   // BUILD
+//   // ══════════════════════════════════════════════════════════════════════════
+//
 //   @override
 //   Widget build(BuildContext context) {
 //     return Center(
@@ -1684,7 +1719,7 @@
 //           mainAxisAlignment: MainAxisAlignment.center,
 //           crossAxisAlignment: CrossAxisAlignment.center,
 //           children: [
-//             // ── Timer Display ──────────────────────────────────────────
+//             // ── Timer Display ──────────────────────────────────────────────
 //             Obx(() {
 //               String displayTime = _localElapsedTime;
 //               if (displayTime == '00:00:00' &&
@@ -1705,7 +1740,7 @@
 //
 //             const SizedBox(height: 8),
 //
-//             // ── Location Selector (shown above Clock In/Out) ───────────
+//             // ── Location Selector ──────────────────────────────────────────
 //             Obx(() {
 //               final isClockedIn = attendanceViewModel.isClockedIn.value;
 //               return GestureDetector(
@@ -1723,8 +1758,10 @@
 //                         'selected_location_id', result['location_id'] ?? 0);
 //                     await prefs.setString(
 //                         'selected_location_name', result['location_name'] ?? '');
-//                     await prefs.setDouble('selected_lat', (result['lat'] ?? 0.0).toDouble());
-//                     await prefs.setDouble('selected_lng', (result['lng'] ?? 0.0).toDouble());
+//                     await prefs.setDouble(
+//                         'selected_lat', (result['lat'] ?? 0.0).toDouble());
+//                     await prefs.setDouble(
+//                         'selected_lng', (result['lng'] ?? 0.0).toDouble());
 //                     await prefs.setDouble(
 //                         'selected_radius', (result['radius'] ?? 100).toDouble());
 //                     if (mounted) setState(() {});
@@ -1749,15 +1786,15 @@
 //                   child: FutureBuilder<SharedPreferences>(
 //                     future: SharedPreferences.getInstance(),
 //                     builder: (context, snap) {
-//                       final prefs = snap.data;
-//                       final name = prefs?.getString('selected_location_name') ?? '';
+//                       final prefs       = snap.data;
+//                       final name        = prefs?.getString('selected_location_name') ?? '';
 //                       final hasLocation = name.isNotEmpty;
 //
 //                       return Row(
 //                         children: [
-//                           // Icon badge
 //                           Container(
-//                             width: 30, height: 30,
+//                             width: 30,
+//                             height: 30,
 //                             decoration: BoxDecoration(
 //                               color: hasLocation
 //                                   ? AppColors.cyan.withOpacity(0.12)
@@ -1775,8 +1812,6 @@
 //                             ),
 //                           ),
 //                           const SizedBox(width: 10),
-//
-//                           // Location name or placeholder
 //                           Expanded(
 //                             child: Column(
 //                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1808,8 +1843,6 @@
 //                               ],
 //                             ),
 //                           ),
-//
-//                           // Arrow or lock
 //                           if (!isClockedIn)
 //                             Icon(
 //                               Icons.chevron_right_rounded,
@@ -1834,10 +1867,7 @@
 //
 //             const SizedBox(height: 10),
 //
-//             // ── Clock In / Clock Out Buttons ───────────────────────────
-//             // In the Obx(() { ... }) builder, replace the buttons section:
-//
-// // ── Clock In / Clock Out Buttons ───────────────────────────
+//             // ── Clock In / Clock Out Buttons ───────────────────────────────
 //             Obx(() {
 //               final isClockedIn = attendanceViewModel.isClockedIn.value;
 //
@@ -1845,7 +1875,7 @@
 //                 padding: const EdgeInsets.symmetric(horizontal: 0),
 //                 child: Row(
 //                   children: [
-//                     // ── Clock In ────────────────────────────────────────
+//                     // ── Clock In ─────────────────────────────────────────────
 //                     Expanded(
 //                       child: GestureDetector(
 //                         onTap: isClockedIn
@@ -1853,14 +1883,14 @@
 //                             : () async => _handleClockIn(context),
 //                         child: AnimatedContainer(
 //                           duration: const Duration(milliseconds: 300),
-//                           height: 40, // Reduced from 48
+//                           height: 40,
 //                           decoration: BoxDecoration(
 //                             gradient: isClockedIn
 //                                 ? null
 //                                 : const LinearGradient(
 //                               colors: [
 //                                 AppColors.greenTeal,
-//                                 AppColors.cyanBright
+//                                 AppColors.cyanBright,
 //                               ],
 //                               begin: Alignment.centerLeft,
 //                               end: Alignment.centerRight,
@@ -1868,7 +1898,7 @@
 //                             color: isClockedIn
 //                                 ? AppColors.greenTeal.withOpacity(0.07)
 //                                 : null,
-//                             borderRadius: BorderRadius.circular(12), // Reduced from 14
+//                             borderRadius: BorderRadius.circular(12),
 //                             border: Border.all(
 //                               color: isClockedIn
 //                                   ? AppColors.greenTeal.withOpacity(0.20)
@@ -1879,10 +1909,9 @@
 //                                 ? []
 //                                 : [
 //                               BoxShadow(
-//                                 color:
-//                                 AppColors.greenTeal.withOpacity(0.25), // Reduced opacity
-//                                 blurRadius: 10, // Reduced from 14
-//                                 offset: const Offset(0, 3), // Reduced from 5
+//                                 color: AppColors.greenTeal.withOpacity(0.25),
+//                                 blurRadius: 10,
+//                                 offset: const Offset(0, 3),
 //                               ),
 //                             ],
 //                           ),
@@ -1890,26 +1919,27 @@
 //                             mainAxisAlignment: MainAxisAlignment.center,
 //                             children: [
 //                               Container(
-//                                 width: 24, height: 24, // Reduced from 28
+//                                 width: 24,
+//                                 height: 24,
 //                                 decoration: BoxDecoration(
 //                                   color: isClockedIn
 //                                       ? AppColors.greenTeal.withOpacity(0.12)
 //                                       : Colors.white.withOpacity(0.18),
-//                                   borderRadius: BorderRadius.circular(7), // Reduced from 8
+//                                   borderRadius: BorderRadius.circular(7),
 //                                 ),
 //                                 child: Icon(Icons.login_rounded,
-//                                     size: 13, // Reduced from 15
+//                                     size: 13,
 //                                     color: isClockedIn
 //                                         ? AppColors.greenTeal
 //                                         : Colors.white),
 //                               ),
-//                               const SizedBox(width: 6), // Reduced from 8
+//                               const SizedBox(width: 6),
 //                               Text(
 //                                 'Clock In',
 //                                 style: TextStyle(
-//                                   fontSize: 12, // Reduced from 13
-//                                   fontWeight: FontWeight.w600, // Reduced from 700
-//                                   letterSpacing: 0.2, // Reduced from 0.3
+//                                   fontSize: 12,
+//                                   fontWeight: FontWeight.w600,
+//                                   letterSpacing: 0.2,
 //                                   color: isClockedIn
 //                                       ? AppColors.greenTeal
 //                                       : Colors.white,
@@ -1921,9 +1951,9 @@
 //                       ),
 //                     ),
 //
-//                     const SizedBox(width: 8), // Reduced from 10
+//                     const SizedBox(width: 8),
 //
-//                     // ── Clock Out ───────────────────────────────────────
+//                     // ── Clock Out ─────────────────────────────────────────────
 //                     Expanded(
 //                       child: GestureDetector(
 //                         onTap: isClockedIn
@@ -1931,13 +1961,13 @@
 //                             : null,
 //                         child: AnimatedContainer(
 //                           duration: const Duration(milliseconds: 300),
-//                           height: 40, // Reduced from 48
+//                           height: 40,
 //                           decoration: BoxDecoration(
 //                             gradient: isClockedIn
 //                                 ? const LinearGradient(
 //                               colors: [
 //                                 Color(0xFFFF4B4B),
-//                                 Color(0xFFFF7676)
+//                                 Color(0xFFFF7676),
 //                               ],
 //                               begin: Alignment.centerLeft,
 //                               end: Alignment.centerRight,
@@ -1946,7 +1976,7 @@
 //                             color: isClockedIn
 //                                 ? null
 //                                 : AppColors.error.withOpacity(0.07),
-//                             borderRadius: BorderRadius.circular(12), // Reduced from 14
+//                             borderRadius: BorderRadius.circular(12),
 //                             border: Border.all(
 //                               color: isClockedIn
 //                                   ? Colors.transparent
@@ -1956,9 +1986,9 @@
 //                             boxShadow: isClockedIn
 //                                 ? [
 //                               BoxShadow(
-//                                 color: AppColors.error.withOpacity(0.25), // Reduced opacity
-//                                 blurRadius: 10, // Reduced from 14
-//                                 offset: const Offset(0, 3), // Reduced from 5
+//                                 color: AppColors.error.withOpacity(0.25),
+//                                 blurRadius: 10,
+//                                 offset: const Offset(0, 3),
 //                               ),
 //                             ]
 //                                 : [],
@@ -1967,26 +1997,27 @@
 //                             mainAxisAlignment: MainAxisAlignment.center,
 //                             children: [
 //                               Container(
-//                                 width: 24, height: 24, // Reduced from 28
+//                                 width: 24,
+//                                 height: 24,
 //                                 decoration: BoxDecoration(
 //                                   color: isClockedIn
 //                                       ? Colors.white.withOpacity(0.18)
 //                                       : AppColors.error.withOpacity(0.10),
-//                                   borderRadius: BorderRadius.circular(7), // Reduced from 8
+//                                   borderRadius: BorderRadius.circular(7),
 //                                 ),
 //                                 child: Icon(Icons.logout_rounded,
-//                                     size: 13, // Reduced from 15
+//                                     size: 13,
 //                                     color: isClockedIn
 //                                         ? Colors.white
 //                                         : AppColors.error),
 //                               ),
-//                               const SizedBox(width: 6), // Reduced from 8
+//                               const SizedBox(width: 6),
 //                               Text(
 //                                 'Clock Out',
 //                                 style: TextStyle(
-//                                   fontSize: 12, // Reduced from 13
-//                                   fontWeight: FontWeight.w600, // Reduced from 700
-//                                   letterSpacing: 0.2, // Reduced from 0.3
+//                                   fontSize: 12,
+//                                   fontWeight: FontWeight.w600,
+//                                   letterSpacing: 0.2,
 //                                   color: isClockedIn
 //                                       ? Colors.white
 //                                       : AppColors.error,
@@ -2001,14 +2032,14 @@
 //                 ),
 //               );
 //             }),
-//             // ── Geofence Violation Report ──────────────────────────
+//
+//             // ── Geofence Violation Report ──────────────────────────────────
 //             const GeofenceViolationReportWidget(),
 //           ],
 //         ),
 //       ),
 //     );
 //   }
-//
 // }
 
 import 'dart:async';
@@ -2031,6 +2062,7 @@ import '../../Database/util.dart';
 import '../../ViewModels/attendance_out_view_model.dart';
 import '../../ViewModels/attendance_view_model.dart';
 import '../../ViewModels/geofancing_violation.dart';
+import '../../ViewModels/location_tracker_viewmodel.dart';
 import '../../ViewModels/location_view_model.dart';
 import '../../ViewModels/travel_session_view_model.dart';
 import '../../constants.dart';
@@ -2038,6 +2070,7 @@ import '../geofancing_violation_widgets.dart';
 import '../location_session_screen.dart';
 
 import '../mqtt_work.dart';
+import 'package:battery_plus/battery_plus.dart'; // ✅ Battery monitoring
 
 
 class TimerCard extends StatefulWidget {
@@ -2049,11 +2082,10 @@ class TimerCard extends StatefulWidget {
 
 class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
   // ─── ViewModels ────────────────────────────────────────────────────────────
-  final locationViewModel    = Get.find<LocationViewModel>();
-  final attendanceViewModel  = Get.find<AttendanceViewModel>();
+  final locationViewModel      = Get.find<LocationViewModel>();
+  final attendanceViewModel    = Get.find<AttendanceViewModel>();
   final attendanceOutViewModel = Get.find<AttendanceOutViewModel>();
 
-  // Inside _TimerCardState class, add:
   final TravelViewModel _travelVM = Get.find<TravelViewModel>();
 
   // Geofence violation tracker
@@ -2062,8 +2094,11 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
   // ✅ MQTT Tracker
   final MqttTracker _mqttTracker = MqttTracker();
 
+  // ✅ Auto Location POST — har 5 min mein lat/lng server ko bhejta hai
+  final LocationTrackerService _locationTrackerService = LocationTrackerService();
+
   // ─── Location / Connectivity ───────────────────────────────────────────────
-  final loc.Location location   = loc.Location();
+  final loc.Location location     = loc.Location();
   final Connectivity _connectivity = Connectivity();
   late FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin;
 
@@ -2079,11 +2114,17 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
   Timer? _autoSyncTimer;
   Timer? _distanceUpdateTimer;
 
-  bool _wasLocationAvailable  = true;
+  // ── Battery ────────────────────────────────────────────────────────────────
+  final Battery _battery     = Battery();
+  int    _batteryLevel       = 0;
+  bool   _isCharging         = false;
+  Timer? _batteryTimer;
+
+  bool _wasLocationAvailable   = true;
   bool _autoClockOutInProgress = false;
   bool _isMidnightClockOutScheduled = false;
-  bool _isOnline   = false;
-  bool _isSyncing  = false;
+  bool _isOnline  = false;
+  bool _isSyncing = false;
 
   DateTime? _localClockInTime;
   String    _localElapsedTime = '00:00:00';
@@ -2094,18 +2135,18 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
   // ─── SharedPreferences Keys ───────────────────────────────────────────────
-  static const String KEY_EVENT_TIMESTAMP   = 'critical_event_timestamp';
-  static const String KEY_EVENT_REASON      = 'critical_event_reason';
-  static const String KEY_EVENT_DISTANCE    = 'critical_event_distance';
+  static const String KEY_EVENT_TIMESTAMP    = 'critical_event_timestamp';
+  static const String KEY_EVENT_REASON       = 'critical_event_reason';
+  static const String KEY_EVENT_DISTANCE     = 'critical_event_distance';
   static const String KEY_HAS_CRITICAL_EVENT = 'has_critical_event_pending';
-  static const String KEY_EVENT_LATITUDE    = 'critical_event_latitude';
-  static const String KEY_EVENT_LONGITUDE   = 'critical_event_longitude';
+  static const String KEY_EVENT_LATITUDE     = 'critical_event_latitude';
+  static const String KEY_EVENT_LONGITUDE    = 'critical_event_longitude';
   static const String KEY_EVENT_ELAPSED_TIME = 'critical_event_elapsed_time';
-  static const String KEY_IS_TIMER_FROZEN   = 'is_timer_frozen';
+  static const String KEY_IS_TIMER_FROZEN    = 'is_timer_frozen';
   static const String KEY_FROZEN_DISPLAY_TIME = 'frozen_display_time';
-  static const String KEY_GPX_FINALIZED     = 'gpx_finalized_at';
-  static const String KEY_GPX_FILE_PATH     = 'currentGpxFilePath';
-  static const String KEY_PENDING_GPX_CLOSE = 'pending_gpx_close';
+  static const String KEY_GPX_FINALIZED      = 'gpx_finalized_at';
+  static const String KEY_GPX_FILE_PATH      = 'currentGpxFilePath';
+  static const String KEY_PENDING_GPX_CLOSE  = 'pending_gpx_close';
 
   // ══════════════════════════════════════════════════════════════════════════
   // LIFECYCLE
@@ -2152,6 +2193,10 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     _permissionCheckTimer?.cancel();
     // ✅ Dispose MQTT
     _mqttTracker.dispose();
+    // ✅ Stop auto location tracker
+    _locationTrackerService.stop();
+    // ✅ Stop battery monitoring
+    _batteryTimer?.cancel();
     super.dispose();
   }
 
@@ -2220,8 +2265,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     const AndroidInitializationSettings androidSettings =
     AndroidInitializationSettings('@mipmap/ic_launcher');
 
-    const DarwinInitializationSettings iosSettings =
-    DarwinInitializationSettings(
+    const DarwinInitializationSettings iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
       requestSoundPermission: true,
@@ -2252,8 +2296,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
   }) async {
     _notificationId++;
 
-    const AndroidNotificationDetails androidDetails =
-    AndroidNotificationDetails(
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
       'urgent_auto_clockout_channel',
       'URGENT Auto Clockout Notifications',
       channelDescription: 'High-priority auto clockout notifications',
@@ -2390,11 +2433,11 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
     bool needsGpxFinalization = prefs.getBool(KEY_PENDING_GPX_CLOSE) ?? false;
 
-    String? eventTimeStr = prefs.getString(KEY_EVENT_TIMESTAMP);
-    String? eventReason  = prefs.getString(KEY_EVENT_REASON);
+    String? eventTimeStr  = prefs.getString(KEY_EVENT_TIMESTAMP);
+    String? eventReason   = prefs.getString(KEY_EVENT_REASON);
     double? eventDistance = prefs.getDouble(KEY_EVENT_DISTANCE);
-    double? eventLat     = prefs.getDouble(KEY_EVENT_LATITUDE);
-    double? eventLng     = prefs.getDouble(KEY_EVENT_LONGITUDE);
+    double? eventLat      = prefs.getDouble(KEY_EVENT_LATITUDE);
+    double? eventLng      = prefs.getDouble(KEY_EVENT_LONGITUDE);
 
     if (eventTimeStr != null) {
       DateTime eventTime = DateTime.parse(eventTimeStr);
@@ -2449,10 +2492,10 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
   Future<void> _syncCriticalEventData({
     required DateTime eventTime,
-    required String reason,
-    required double distance,
-    required double latitude,
-    required double longitude,
+    required String   reason,
+    required double   distance,
+    required double   latitude,
+    required double   longitude,
   }) async {
     try {
       SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -2483,10 +2526,10 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
   Future<void> _saveCriticalEventData({
     required DateTime eventTime,
-    required String reason,
-    required double distance,
-    required double latitude,
-    required double longitude,
+    required String   reason,
+    required double   distance,
+    required double   latitude,
+    required double   longitude,
   }) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     String elapsedAtEvent = _localElapsedTime;
@@ -2573,10 +2616,10 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
           if (_wasLocationAvailable && !locationEnabled) {
             debugPrint('📍 [MONITOR] Location OFF - auto clockout');
 
-            DateTime eventTime   = DateTime.now();
-            double currentDist   = await _getCurrentDistance();
-            double lat           = locationViewModel.globalLatitude1.value;
-            double lng           = locationViewModel.globalLongitude1.value;
+            DateTime eventTime = DateTime.now();
+            double currentDist = await _getCurrentDistance();
+            double lat         = locationViewModel.globalLatitude1.value;
+            double lng         = locationViewModel.globalLongitude1.value;
 
             await _saveCriticalEventData(
               eventTime : eventTime,
@@ -2627,8 +2670,8 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
           DateTime eventTime = DateTime.now();
           double currentDist = await _getCurrentDistance();
-          double lat = locationViewModel.globalLatitude1.value;
-          double lng = locationViewModel.globalLongitude1.value;
+          double lat         = locationViewModel.globalLatitude1.value;
+          double lng         = locationViewModel.globalLongitude1.value;
 
           await _saveCriticalEventData(
             eventTime : eventTime,
@@ -2671,7 +2714,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
   // ══════════════════════════════════════════════════════════════════════════
 
   Future<void> _handleAutoClockOut({
-    required String reason,
+    required String   reason,
     required BuildContext context,
     DateTime? eventTime,
   }) async {
@@ -2681,9 +2724,8 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     _autoClockOutInProgress = true;
 
     DateTime clockOutTime = eventTime ?? DateTime.now();
-    double finalLat       = locationViewModel.globalLatitude1.value;
-    double finalLng       = locationViewModel.globalLongitude1.value;
-    double finalDistance  = _currentDistance > 0 ? _currentDistance : 0.0;
+    double finalLat      = locationViewModel.globalLatitude1.value;
+    double finalLng      = locationViewModel.globalLongitude1.value;
 
     debugPrint('⚡ [AUTO CLOCKOUT] Reason: $reason at $clockOutTime');
 
@@ -2693,6 +2735,12 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       _localBackupTimer?.cancel();
       _midnightClockOutTimer?.cancel();
       _permissionCheckTimer?.cancel();
+      // ✅ Stop auto location POST tracker
+      _locationTrackerService.stop();
+
+      // ✅ Stop battery monitoring
+      _batteryTimer?.cancel();
+      _batteryTimer = null;
 
       final service = FlutterBackgroundService();
       service.invoke('stopService');
@@ -2704,6 +2752,11 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       } catch (e) {
         debugPrint('⚠️ Background mode disable error: $e');
       }
+
+      // ✅ FIX: call onClockOut() so GPS stream stops, GPX is finalized,
+      // and the location table record is written with the real distance.
+      await locationViewModel.onClockOut();
+      final double finalDistance = locationViewModel.totalDistance.value;
 
       await _finalizeGPXFile(
         eventTime     : clockOutTime,
@@ -2730,8 +2783,8 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
         });
       }
 
-      attendanceViewModel.isClockedIn.value  = false;
-      locationViewModel.isClockedIn.value    = false;
+      attendanceViewModel.isClockedIn.value = false;
+      locationViewModel.isClockedIn.value   = false;
       attendanceViewModel.stopElapsedTimer();
 
       final String empId = _safePrefsString(prefs, 'emp_id');
@@ -2856,7 +2909,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     try {
       SharedPreferences prefs = await SharedPreferences.getInstance();
 
-      bool hasPendingGpx    = prefs.getBool('hasPendingGpxData') ?? false;
+      bool hasPendingGpx     = prefs.getBool('hasPendingGpxData') ?? false;
       String? pendingGpxDate = prefs.getString('pendingGpxDate');
       DateTime? eventDate;
 
@@ -2880,6 +2933,11 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
         duration: const Duration(seconds: 3),
       );
 
+      // NOTE: GPX consolidation is intentionally removed from here.
+      // locationViewModel.onClockOut() now handles GPX finalization and
+      // the location table record directly at the moment of clock-out.
+      // This block is retained only to sync any legacy pending-GPX flags
+      // left from a previous app session that crashed before clock-out.
       if (hasPendingGpx) {
         try {
           if (eventDate != null) {
@@ -2889,7 +2947,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
             await locationViewModel.consolidateDailyGPXData();
             await locationViewModel.saveLocationFromConsolidatedFile();
           }
-          debugPrint('✅ [AUTO-SYNC] GPX data processed');
+          debugPrint('✅ [AUTO-SYNC] Legacy GPX data processed');
         } catch (e) {
           debugPrint('⚠️ [AUTO-SYNC] GPX processing error: $e');
         }
@@ -2902,7 +2960,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       await prefs.setBool('clockOutPending', false);
       await prefs.setBool('hasFastClockOutData', false);
       await prefs.setBool('hasPendingGpxData', false);
-      await prefs.remove('KEY_PENDING_GPX_CLOSE');
+      await prefs.remove(KEY_PENDING_GPX_CLOSE);
       await prefs.remove('pendingGpxDate');
 
       debugPrint('✅ [AUTO-SYNC] Completed');
@@ -3123,9 +3181,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // ✅ GEOFENCE — GPS distance check against saved location
-  // Keys written by LocationSelectionScreen._saveAndGoBack():
-  //   selected_lat, selected_lng, selected_radius, selected_location_name
+  // GEOFENCE — GPS distance check against saved location
   // ══════════════════════════════════════════════════════════════════════════
 
   Future<bool> _isWithinGeofence({
@@ -3193,7 +3249,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // CLOCK IN — with camera + geofencing + MQTT
+  // ✅ CLOCK IN — with camera + geofencing + MQTT + GPS tracking
   // ══════════════════════════════════════════════════════════════════════════
 
   Future<void> _handleClockIn(BuildContext context) async {
@@ -3258,20 +3314,14 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
         return;
       }
 
-      // ══════════════════════════════════════════════════════════════════════
-      // ✅ FIX: Reset travel state BEFORE clocking in
-      // ══════════════════════════════════════════════════════════════════════
+      // ── Reset travel state BEFORE clocking in ─────────────────────────────
       final travelVM = Get.find<TravelViewModel>();
-
-      // Force reset travel state if it's stuck
       if (travelVM.isTravelMode.value || travelVM.hasPendingLocation) {
         debugPrint('🔄 [TIMERCARD] Resetting stale travel state before clock-in');
-        await travelVM.cancelTravel(); // This will clear all travel state
+        await travelVM.cancelTravel();
       }
 
-      // ══════════════════════════════════════════════════════════════════════
-      // ✅ 4. GEOFENCING CHECK
-      // ══════════════════════════════════════════════════════════════════════
+      // ── 4. GEOFENCING CHECK ───────────────────────────────────────────────
       final double? savedLat    = prefs.getDouble('selected_lat');
       final double? savedLng    = prefs.getDouble('selected_lng');
       final double? savedRadius = prefs.getDouble('selected_radius');
@@ -3280,7 +3330,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       debugPrint('🔍 [GEOFENCE] Saved location: "$savedName" '
           'lat=$savedLat, lng=$savedLng, radius=$savedRadius');
 
-      // ── 4a. No location selected at all ───────────────────────────────────
+      // ── 4a. No location selected ──────────────────────────────────────────
       if (savedLat == null || savedLng == null || savedRadius == null || savedName.isEmpty) {
         if (Navigator.of(context).canPop()) Navigator.of(context).pop();
         Get.snackbar(
@@ -3296,7 +3346,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
         return;
       }
 
-      // ── 4b. GPS distance check against saved location ─────────────────────
+      // ── 4b. GPS distance check ────────────────────────────────────────────
       debugPrint('🔍 [GEOFENCE] Checking GPS distance from "$savedName"...');
 
       final bool withinGeofence = await _isWithinGeofence(
@@ -3327,11 +3377,11 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       await prefs.remove(KEY_FROZEN_DISPLAY_TIME);
 
       // ── 6. READ EMPLOYEE DATA ─────────────────────────────────────────────
-      final String empId = _safePrefsString(prefs, 'emp_id');
+      final String empId   = _safePrefsString(prefs, 'emp_id');
       final String empName = _safePrefsStringFallback(prefs, [
         'emp_name', 'empName', 'employee_name', 'name', 'userName', 'user_name',
       ]);
-      final String job = _safePrefsStringFallback(prefs, [
+      final String job  = _safePrefsStringFallback(prefs, [
         'job', 'designation', 'role', 'emp_job', 'position', 'jobTitle',
       ]);
       final String city = _safePrefsStringFallback(prefs, [
@@ -3341,12 +3391,12 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       debugPrint('👤 [CLOCK-IN] empId=$empId | empName=$empName | job=$job | city=$city');
 
       // ── 7. GPX PATH ────────────────────────────────────────────────────────
-      final date = DateFormat('dd-MM-yyyy').format(DateTime.now());
+      final date              = DateFormat('dd-MM-yyyy').format(DateTime.now());
       final downloadDirectory = await getDownloadsDirectory();
-      final filePath = '${downloadDirectory!.path}/track_${empId}_$date.gpx';
+      final filePath          = '${downloadDirectory!.path}/track_${empId}_$date.gpx';
       await prefs.setString(KEY_GPX_FILE_PATH, filePath);
 
-      // ── 8. CLOCK IN ────────────────────────────────────────────────────────
+      // ── 8. ATTENDANCE CLOCK-IN ─────────────────────────────────────────────
       await attendanceViewModel.clockIn(
         empId     : empId,
         empName   : empName,
@@ -3355,19 +3405,32 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
         photoBytes: clockInPhotoBytes,
       );
 
-      // ── 9. UI UPDATE ───────────────────────────────────────────────────────
+      // ── 9. ✅ FIX: START GPS TRACKING via LocationViewModel ────────────────
+      // This initialises the GPX file, starts the position stream and the
+      // Kalman-filtered distance accumulator. Without this call, totalDistance
+      // stays 0 and no location table record is ever written on clock-out.
+      await locationViewModel.onClockIn();
+      debugPrint('✅ [CLOCK-IN] GPS tracking started via locationViewModel.onClockIn()');
+
+      // ── 10. UI UPDATE ──────────────────────────────────────────────────────
       setState(() {
         _localElapsedTime = '00:00:00';
         locationViewModel.isClockedIn.value   = true;
         attendanceViewModel.isClockedIn.value = true;
       });
 
-      // ── 10. START TIMERS ───────────────────────────────────────────────────
+      // ── 11. START TIMERS ───────────────────────────────────────────────────
       _startLocalBackupTimer();
       _scheduleMidnightClockOut();
       _startPermissionMonitoring();
 
-      // ── 11. CLOSE DIALOG ───────────────────────────────────────────────────
+      // ✅ Auto location POST — clock-in ke baad har 5 min mein server ko bhejta hai
+      _locationTrackerService.start();
+
+      // ✅ Battery monitoring — clock-in ke baad har 10 sec snackbar
+      _startBatteryMonitoring();
+
+      // ── 12. CLOSE DIALOG ───────────────────────────────────────────────────
       if (Navigator.of(context).canPop()) Navigator.of(context).pop();
 
       Get.snackbar(
@@ -3379,13 +3442,11 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
         duration: const Duration(seconds: 2),
       );
 
-      // ── VIOLATION MONITORING START ─────────────────────────────────────
-      // Pehle violations clear karo (naya session)
+      // ── VIOLATION MONITORING START ─────────────────────────────────────────
       await _violationVM.clearViolations();
-      // Ab monitoring shuru karo selected location ke coordinates se
-      final double monLat    = savedLat!;
-      final double monLng    = savedLng!;
-      final double monRadius = savedRadius!;
+      final double monLat    = savedLat;
+      final double monLng    = savedLng;
+      final double monRadius = savedRadius;
       final String monName   = savedName;
       unawaited(_violationVM.startMonitoring(
         lat          : monLat,
@@ -3393,9 +3454,8 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
         radiusMeters : monRadius,
         locationName : monName,
       ));
-      // ── END VIOLATION MONITORING START ────────────────────────────────
 
-      // ✅ MQTT CLOCK IN
+      // ── MQTT CLOCK IN ──────────────────────────────────────────────────────
       final mqttOk = await _mqttTracker.clockInMqtt(deviceId: empId);
       if (!mqttOk) {
         debugPrint('⚠️ MQTT unavailable — will queue locations offline');
@@ -3414,7 +3474,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       debugPrint('✅ [CLOCK-IN] UI completed in '
           '${DateTime.now().difference(clockInStart).inMilliseconds}ms');
 
-      // ── 12. BACKGROUND TASKS ───────────────────────────────────────────────
+      // ── 13. BACKGROUND TASKS ───────────────────────────────────────────────
       _runPostClockInTasks(filePath);
     } catch (e) {
       debugPrint('❌ [CLOCK-IN] Error: $e');
@@ -3444,23 +3504,24 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // CLOCK OUT + MQTT
+  // ✅ CLOCK OUT + MQTT
   // ══════════════════════════════════════════════════════════════════════════
 
   Future<void> _handleClockOut(BuildContext context) async {
     debugPrint('🎯 [TIMERCARD] ===== CLOCK-OUT STARTED =====');
 
-    // Capture distance BEFORE any reset
-    final double capturedDistance = _currentDistance > 0
-        ? _currentDistance
-        : await locationViewModel.getImmediateDistance();
-
-    debugPrint('📏 [CLOCK-OUT] Captured distance: ${capturedDistance.toStringAsFixed(3)} km');
-
+    // ── Stop all UI-side timers immediately ───────────────────────────────
     setState(() {
       _localElapsedTime = '00:00:00';
       _currentDistance  = 0.0;
     });
+
+    // ✅ Stop auto location POST tracker on clock-out
+    _locationTrackerService.stop();
+
+    // ✅ Stop battery monitoring on clock-out
+    _batteryTimer?.cancel();
+    _batteryTimer = null;
 
     unawaited(_violationVM.stopMonitoring());
     _stopLocationMonitoring();
@@ -3491,26 +3552,30 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
     try {
       final clockOutTime = DateTime.now();
-      final finalDistance = capturedDistance;
-      final prefs = await SharedPreferences.getInstance();
+      final prefs        = await SharedPreferences.getInstance();
       final String empId = _safePrefsString(prefs, 'emp_id');
 
-      debugPrint('👤 [CLOCK-OUT] empId=$empId | distance=${finalDistance.toStringAsFixed(3)} km');
-
-      // ===== HANDLE TRAVEL MODE IF ACTIVE =====
+      // ── Handle travel mode if active ──────────────────────────────────────
       final travelVM = Get.find<TravelViewModel>();
-
       if (travelVM.isInTravelMode) {
         debugPrint('🚗 [TIMERCARD] Manual clockout while in travel mode - ending travel');
-
-        // End travel record properly
         await travelVM.handleManualClockOut(
-          empId: empId,
-          clockOutTime: clockOutTime,
+          empId        : empId,
+          clockOutTime : clockOutTime,
         );
       }
 
-      // Clear all SharedPreferences
+      // ── ✅ FIX: Stop GPS stream, finalize GPX, write location table record ─
+      // onClockOut() stops the position stream, flushes the GPX file, computes
+      // the authoritative distance from that file, and calls _saveLocationRecord
+      // which writes to the location DB table and triggers a server sync.
+      await locationViewModel.onClockOut();
+      final double finalDistance = locationViewModel.totalDistance.value;
+
+      debugPrint('📏 [CLOCK-OUT] Final distance from LocationViewModel: '
+          '${finalDistance.toStringAsFixed(3)} km');
+
+      // ── Clear SharedPreferences ────────────────────────────────────────────
       await Future.wait([
         prefs.remove(KEY_IS_TIMER_FROZEN),
         prefs.remove(KEY_FROZEN_DISPLAY_TIME),
@@ -3523,13 +3588,13 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
         prefs.setBool('hasFastClockOutData', true),
       ]);
 
-      // ✅ MQTT CLOCK OUT
+      // ── MQTT CLOCK OUT ─────────────────────────────────────────────────────
       await _mqttTracker.clockOutMqtt();
 
-      // Close loading dialog
+      // ── Close loading dialog ───────────────────────────────────────────────
       if (Navigator.of(context).canPop()) Navigator.of(context).pop();
 
-      // Show success message
+      // ── Success snackbar ───────────────────────────────────────────────────
       Get.snackbar(
         '✅ Clocked Out',
         travelVM.isInTravelMode ? 'Travel ended and data saved' : 'Data saved locally',
@@ -3539,18 +3604,19 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
         duration: const Duration(seconds: 2),
       );
 
-      // Save attendance out in background
+      // ── Save attendance-out record (uses real distance) ───────────────────
       unawaited(attendanceOutViewModel.fastSaveAttendanceOut(
-        empId: empId,
-        clockOutTime: clockOutTime,
+        empId        : empId,
+        clockOutTime : clockOutTime,
         totalDistance: finalDistance,
-        isAuto: false,
-        reason: travelVM.isInTravelMode ? 'manual_clockout_with_travel' : 'manual_clockout',
+        isAuto       : false,
+        reason       : travelVM.isInTravelMode
+            ? 'manual_clockout_with_travel'
+            : 'manual_clockout',
       ));
 
-      // Run post clock-out tasks
+      // ── Post clock-out background tasks ───────────────────────────────────
       _runPostClockOutTasks(clockOutTime, finalDistance);
-
     } catch (e) {
       debugPrint('❌ [CLOCK-OUT] Error: $e');
       if (Navigator.of(context).canPop()) Navigator.of(context).pop();
@@ -3568,13 +3634,12 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
   void _runPostClockOutTasks(DateTime clockOutTime, double distance) {
     Future.microtask(() async {
       try {
-        debugPrint('🏁 [CLOCK-OUT] Background: Saving GPX location data...');
+        debugPrint('🏁 [CLOCK-OUT] Background: stopping services...');
 
-        await locationViewModel.consolidateDailyGPXDataForDate(clockOutTime);
-        debugPrint('✅ [GPX] Consolidated GPX file');
-
-        await locationViewModel.saveLocationFromConsolidatedFileForDate(clockOutTime);
-        debugPrint('✅ [GPX] Saved LocationModel to DB + API');
+        // NOTE: GPX consolidation and saveLocationFromConsolidatedFile are
+        // intentionally NOT called here. locationViewModel.onClockOut() already
+        // handles GPX finalization and the location table write at clock-out
+        // time. Calling them again here would double-post a 0-distance record.
 
         final service = FlutterBackgroundService();
         service.invoke('stopService');
@@ -3614,8 +3679,8 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
     DateTime breakTime = DateTime.now();
     double currentDist = await _getCurrentDistance();
-    double lat = locationViewModel.globalLatitude1.value;
-    double lng = locationViewModel.globalLongitude1.value;
+    double lat         = locationViewModel.globalLatitude1.value;
+    double lng         = locationViewModel.globalLongitude1.value;
 
     await _saveCriticalEventData(
       eventTime : breakTime,
@@ -3652,7 +3717,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
           String initialGPX = '''<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="AttendanceApp">
   <trk>
-    <name>Daily Track ${DateFormat('dd-MM-yyyy').format(DateTime.now())}</name>
+    <n>Daily Track ${DateFormat('dd-MM-yyyy').format(DateTime.now())}</n>
     <trkseg>
     </trkseg>
   </trk>
@@ -3717,6 +3782,80 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     return '';
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // BATTERY MONITORING
+  // ══════════════════════════════════════════════════════════════════════════
+
+  void _startBatteryMonitoring() async {
+    // Pehla read abhi turant
+    await _updateBattery();
+
+    // Phir har 10 second baad snackbar ke sath
+    _batteryTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+      await _updateBattery();
+      if (!mounted) return;
+
+      final String status   = _isCharging ? '⚡ Charging' : '🔋 On Battery';
+      final Color snackColor = _batteryLevel <= 20
+          ? Colors.red.shade700
+          : _batteryLevel <= 50
+          ? Colors.orange.shade700
+          : Colors.green.shade700;
+
+      final IconData iconData = _isCharging
+          ? Icons.battery_charging_full_rounded
+          : _batteryLevel >= 80
+          ? Icons.battery_full_rounded
+          : _batteryLevel >= 50
+          ? Icons.battery_5_bar_rounded
+          : _batteryLevel >= 20
+          ? Icons.battery_3_bar_rounded
+          : Icons.battery_alert_rounded;
+
+      Get.snackbar(
+        '$status — $_batteryLevel%',
+        _batteryLevel <= 20
+            ? '⚠️ Low battery! Please charge your device.'
+            : _batteryLevel <= 50
+            ? 'Battery moderate — consider charging soon.'
+            : 'Battery is good ✅',
+        snackPosition  : SnackPosition.BOTTOM,
+        backgroundColor: snackColor,
+        colorText      : Colors.white,
+        duration       : const Duration(seconds: 8),
+        margin         : const EdgeInsets.all(12),
+        borderRadius   : 12,
+        icon           : Icon(iconData, color: Colors.white, size: 22),
+        isDismissible  : true,
+      );
+
+      debugPrint('🔋 [BATTERY SNACKBAR] $_batteryLevel% | $status');
+    });
+
+    debugPrint('🔋 [BATTERY] Monitoring started — snackbar every 10 sec');
+  }
+
+  Future<void> _updateBattery() async {
+    try {
+      final int level          = await _battery.batteryLevel;
+      final BatteryState state = await _battery.batteryState;
+      if (mounted) {
+        setState(() {
+          _batteryLevel = level;
+          _isCharging   = state == BatteryState.charging ||
+              state == BatteryState.full;
+        });
+      }
+      debugPrint('🔋 [BATTERY] Level: $level% | Charging: $_isCharging');
+    } catch (e) {
+      debugPrint('❌ [BATTERY] Error reading battery: $e');
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // BUILD
+  // ══════════════════════════════════════════════════════════════════════════
+
   @override
   Widget build(BuildContext context) {
     return Center(
@@ -3727,7 +3866,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // ── Timer Display ──────────────────────────────────────────
+            // ── Timer Display ──────────────────────────────────────────────
             Obx(() {
               String displayTime = _localElapsedTime;
               if (displayTime == '00:00:00' &&
@@ -3746,9 +3885,51 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
               );
             }),
 
+            const SizedBox(height: 4),
+
+            // ── Battery Indicator — sirf clock-in ke baad dikhao ──────────
+            Obx(() {
+              if (!attendanceViewModel.isClockedIn.value) {
+                return const SizedBox.shrink();
+              }
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    _isCharging
+                        ? Icons.battery_charging_full_rounded
+                        : _batteryLevel >= 80
+                        ? Icons.battery_full_rounded
+                        : _batteryLevel >= 50
+                        ? Icons.battery_5_bar_rounded
+                        : _batteryLevel >= 20
+                        ? Icons.battery_3_bar_rounded
+                        : Icons.battery_alert_rounded,
+                    size: 14,
+                    color: _batteryLevel <= 20
+                        ? Colors.red
+                        : _isCharging
+                        ? Colors.green
+                        : Colors.grey.shade600,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '$_batteryLevel%${_isCharging ? " ⚡" : ""}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: _batteryLevel <= 20
+                          ? Colors.red
+                          : Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              );
+            }),
+
             const SizedBox(height: 8),
 
-            // ── Location Selector (shown above Clock In/Out) ───────────
+            // ── Location Selector ──────────────────────────────────────────
             Obx(() {
               final isClockedIn = attendanceViewModel.isClockedIn.value;
               return GestureDetector(
@@ -3766,8 +3947,10 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
                         'selected_location_id', result['location_id'] ?? 0);
                     await prefs.setString(
                         'selected_location_name', result['location_name'] ?? '');
-                    await prefs.setDouble('selected_lat', (result['lat'] ?? 0.0).toDouble());
-                    await prefs.setDouble('selected_lng', (result['lng'] ?? 0.0).toDouble());
+                    await prefs.setDouble(
+                        'selected_lat', (result['lat'] ?? 0.0).toDouble());
+                    await prefs.setDouble(
+                        'selected_lng', (result['lng'] ?? 0.0).toDouble());
                     await prefs.setDouble(
                         'selected_radius', (result['radius'] ?? 100).toDouble());
                     if (mounted) setState(() {});
@@ -3792,15 +3975,15 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
                   child: FutureBuilder<SharedPreferences>(
                     future: SharedPreferences.getInstance(),
                     builder: (context, snap) {
-                      final prefs = snap.data;
-                      final name = prefs?.getString('selected_location_name') ?? '';
+                      final prefs       = snap.data;
+                      final name        = prefs?.getString('selected_location_name') ?? '';
                       final hasLocation = name.isNotEmpty;
 
                       return Row(
                         children: [
-                          // Icon badge
                           Container(
-                            width: 30, height: 30,
+                            width: 30,
+                            height: 30,
                             decoration: BoxDecoration(
                               color: hasLocation
                                   ? AppColors.cyan.withOpacity(0.12)
@@ -3818,8 +4001,6 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
                             ),
                           ),
                           const SizedBox(width: 10),
-
-                          // Location name or placeholder
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -3851,8 +4032,6 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
                               ],
                             ),
                           ),
-
-                          // Arrow or lock
                           if (!isClockedIn)
                             Icon(
                               Icons.chevron_right_rounded,
@@ -3877,7 +4056,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
             const SizedBox(height: 10),
 
-            // ── Clock In / Clock Out Buttons ───────────────────────────
+            // ── Clock In / Clock Out Buttons ───────────────────────────────
             Obx(() {
               final isClockedIn = attendanceViewModel.isClockedIn.value;
 
@@ -3885,7 +4064,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
                 padding: const EdgeInsets.symmetric(horizontal: 0),
                 child: Row(
                   children: [
-                    // ── Clock In ────────────────────────────────────────
+                    // ── Clock In ─────────────────────────────────────────────
                     Expanded(
                       child: GestureDetector(
                         onTap: isClockedIn
@@ -3900,7 +4079,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
                                 : const LinearGradient(
                               colors: [
                                 AppColors.greenTeal,
-                                AppColors.cyanBright
+                                AppColors.cyanBright,
                               ],
                               begin: Alignment.centerLeft,
                               end: Alignment.centerRight,
@@ -3919,8 +4098,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
                                 ? []
                                 : [
                               BoxShadow(
-                                color:
-                                AppColors.greenTeal.withOpacity(0.25),
+                                color: AppColors.greenTeal.withOpacity(0.25),
                                 blurRadius: 10,
                                 offset: const Offset(0, 3),
                               ),
@@ -3930,7 +4108,8 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Container(
-                                width: 24, height: 24,
+                                width: 24,
+                                height: 24,
                                 decoration: BoxDecoration(
                                   color: isClockedIn
                                       ? AppColors.greenTeal.withOpacity(0.12)
@@ -3963,7 +4142,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
                     const SizedBox(width: 8),
 
-                    // ── Clock Out ───────────────────────────────────────
+                    // ── Clock Out ─────────────────────────────────────────────
                     Expanded(
                       child: GestureDetector(
                         onTap: isClockedIn
@@ -3977,7 +4156,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
                                 ? const LinearGradient(
                               colors: [
                                 Color(0xFFFF4B4B),
-                                Color(0xFFFF7676)
+                                Color(0xFFFF7676),
                               ],
                               begin: Alignment.centerLeft,
                               end: Alignment.centerRight,
@@ -4007,7 +4186,8 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Container(
-                                width: 24, height: 24,
+                                width: 24,
+                                height: 24,
                                 decoration: BoxDecoration(
                                   color: isClockedIn
                                       ? Colors.white.withOpacity(0.18)
@@ -4041,7 +4221,8 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
                 ),
               );
             }),
-            // ── Geofence Violation Report ──────────────────────────
+
+            // ── Geofence Violation Report ──────────────────────────────────
             const GeofenceViolationReportWidget(),
           ],
         ),

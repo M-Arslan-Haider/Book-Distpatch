@@ -1368,7 +1368,7 @@ class LeaveHistoryViewModel extends GetxController {
     errorMessage.value = '';
     try {
       final uri = Uri.parse(
-          'http://oracle.metaxperts.net/ords/production/leaves/get'
+          'http://oracle.metaxperts.net/ords/gps_workforce/leaves/get'
               '?emp_id=$empId&company_code=$companyCode');
       final response = await http
           .get(uri, headers: {'Content-Type': 'application/json'})

@@ -124,6 +124,7 @@ dependencies:
   lucide_icons: ^0.257.0
   new_version_plus: ^0.1.2
   synchronized: ^3.4.0
+  battery_plus: ^7.0.0
 
 
 #  flutter_asset_manager: ^0.0.2

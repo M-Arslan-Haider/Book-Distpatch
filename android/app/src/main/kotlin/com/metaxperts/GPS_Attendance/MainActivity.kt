@@ -100,6 +100,7 @@
 package com.metaxperts.GPS_Workforce_Monitor
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -202,6 +203,28 @@ class MainActivity : FlutterActivity(), ProviderInstaller.ProviderInstallListene
                     }
                 }
                 else -> result.notImplemented()
+            }
+        }
+
+        // ✅ REAL LOCATION CHANNEL (bypasses mock GPS)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.metaxperts/real_location").setMethodCallHandler { call, result ->
+            if (call.method == "getRealLocation") {
+                try {
+                    val lm = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+                    val location = lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+                    if (location != null) {
+                        result.success(mapOf(
+                            "latitude"  to location.latitude,
+                            "longitude" to location.longitude
+                        ))
+                    } else {
+                        result.error("UNAVAILABLE", "Real GPS not available", null)
+                    }
+                } catch (e: Exception) {
+                    result.error("ERROR", e.message, null)
+                }
+            } else {
+                result.notImplemented()
             }
         }
     }

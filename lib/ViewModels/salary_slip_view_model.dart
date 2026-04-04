@@ -153,7 +153,7 @@ class SalarySlipViewModel extends GetxController {
   final RxString empId            = ''.obs;
 
   static const String _baseUrl =
-      'http://oracle.metaxperts.net/ords/production/salaryslip/get';
+      'http://oracle.metaxperts.net/ords/gps_workforce/salaryslip/get';
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
   @override

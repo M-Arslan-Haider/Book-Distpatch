@@ -168,7 +168,8 @@
         android:label="GPS Workforce Monitor"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:enableOnBackInvokedCallback="true">
+        android:enableOnBackInvokedCallback="true"
+        android:usesCleartextTraffic="true">   ← ADD THIS LINE>
 
         <service
             android:name="com.metaxperts.GPS_Workforce_Monitor.UltraLocationService"
