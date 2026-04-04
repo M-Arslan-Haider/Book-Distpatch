@@ -11,7 +11,8 @@ class AttendanceOutRepository {
   final DBHelper _dbHelper = DBHelper();
 
   static const String _postApiUrl =
-      'http://oracle.metaxperts.net/ords/production/attendanceout/post/';
+      // 'http://oracle.metaxperts.net/ords/production/attendanceout/post/';
+  'http://oracle.metaxperts.net/ords/gps_workforce/attendanceout/post/';
 
   Future<List<AttendanceOutModel>> getAll() async {
     final rows = await _dbHelper.getAll(DBHelper.attendanceOutTable);

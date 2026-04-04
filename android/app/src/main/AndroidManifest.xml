@@ -1,3 +1,134 @@
+<!--<manifest xmlns:android="http://schemas.android.com/apk/res/android"-->
+<!--    xmlns:tools="http://schemas.android.com/tools"-->
+<!--    package="com.metaxperts.GPS_Workforce_Monitor">-->
+
+<!--    <uses-permission android:name="android.permission.INTERNET" />-->
+<!--    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />-->
+<!--    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />-->
+<!--    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>-->
+<!--    &lt;!&ndash; Location Permissions &ndash;&gt;-->
+<!--    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />-->
+<!--    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />-->
+<!--    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />-->
+<!--    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />-->
+<!--    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />-->
+
+<!--    &lt;!&ndash; Storage Permissions &ndash;&gt;-->
+<!--    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />-->
+<!--    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />-->
+<!--&lt;!&ndash;    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />&ndash;&gt;-->
+
+<!--    &lt;!&ndash; Other Permissions &ndash;&gt;-->
+<!--    <uses-permission android:name="android.permission.CAMERA" />-->
+<!--    &lt;!&ndash; System Permissions for Background Operation &ndash;&gt;-->
+<!--    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />-->
+<!--    <uses-permission android:name="android.permission.RECORD_AUDIO" />-->
+<!--    <uses-permission android:name="android.permission.READ_PHONE_STATE" />-->
+<!--    <uses-permission android:name="android.permission.READ_CONTACTS" />-->
+<!--&lt;!&ndash;    <uses-permission android:name="android.permission.VIBRATE" />&ndash;&gt;-->
+<!--    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />-->
+<!--    <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />-->
+<!--&lt;!&ndash;    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />&ndash;&gt;-->
+<!--    <uses-permission android:name="android.permission.WAKE_LOCK" />-->
+
+<!--    <application-->
+<!--        android:label="GPS Workforce Monitor"-->
+<!--        android:name="${applicationName}"-->
+<!--        android:icon="@mipmap/ic_launcher"-->
+<!--        android:enableOnBackInvokedCallback="true">-->
+
+<!--        <service-->
+<!--            android:name="com.metaxperts.GPS_Workforce_Monitor.UltraLocationService"-->
+<!--            android:enabled="true"-->
+<!--            android:exported="false"-->
+<!--            android:foregroundServiceType="location" />-->
+
+<!--        &lt;!&ndash; Native Location Monitor Service &ndash;&gt;-->
+<!--        <service-->
+<!--            android:name=".LocationMonitorService"-->
+<!--            android:enabled="true"-->
+<!--            android:exported="false"-->
+<!--            android:foregroundServiceType="location"-->
+<!--            android:stopWithTask="false" />-->
+
+<!--        &lt;!&ndash; Boot Receiver to restart service after reboot &ndash;&gt;-->
+<!--        <receiver-->
+<!--            android:name=".BootCompletedReceiver"-->
+<!--            android:enabled="true"-->
+<!--            android:exported="true">-->
+<!--            <intent-filter>-->
+<!--                <action android:name="android.intent.action.BOOT_COMPLETED" />-->
+<!--            </intent-filter>-->
+<!--        </receiver>-->
+
+<!--        &lt;!&ndash; Google Maps API Key &ndash;&gt;-->
+<!--        <meta-data-->
+<!--            android:name="com.google.android.geo.API_KEY"-->
+<!--            android:value="AIzaSyB75e8drxN6oXb4U2V2c56yccRrEjmDmHo" />-->
+<!--&lt;!&ndash;            android:value="AIzaSyA8uucF_ZuwxXOkYhoQgDCD3FEURkTcxSY" />&ndash;&gt;-->
+
+
+<!--        &lt;!&ndash; Google Play Services Version &ndash;&gt;-->
+<!--        <meta-data-->
+<!--            android:name="com.google.android.gms.version"-->
+<!--            android:value="@integer/google_play_services_version" />-->
+
+<!--        &lt;!&ndash; Main Activity &ndash;&gt;-->
+<!--        <activity-->
+<!--            android:name=".MainActivity"-->
+<!--            android:exported="true"-->
+<!--            android:launchMode="singleTop"-->
+<!--            android:taskAffinity=""-->
+<!--            android:theme="@style/LaunchTheme"-->
+<!--            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"-->
+<!--            android:hardwareAccelerated="true"-->
+<!--            android:windowSoftInputMode="adjustResize">-->
+<!--            <meta-data-->
+<!--                android:name="io.flutter.embedding.android.NormalTheme"-->
+<!--                android:resource="@style/NormalTheme" />-->
+<!--            <intent-filter>-->
+<!--                <action android:name="android.intent.action.MAIN" />-->
+<!--                <category android:name="android.intent.category.LAUNCHER" />-->
+<!--            </intent-filter>-->
+<!--        </activity>-->
+
+<!--        &lt;!&ndash; Background Services &ndash;&gt;-->
+<!--        <service-->
+<!--            android:name="id.flutter.flutter_background_service.BackgroundService"-->
+<!--            android:foregroundServiceType="location" />-->
+<!--        &lt;!&ndash; WorkManager Configuration &ndash;&gt;-->
+<!--        <service-->
+<!--            android:name="com.metaxperts.GPS_Workforce_Monitor.workmanager"-->
+<!--            android:exported="false">-->
+<!--            <intent-filter>-->
+<!--                <action android:name="com.google.firebase.MESSAGING_EVENT" />-->
+<!--            </intent-filter>-->
+<!--        </service>-->
+
+<!--        &lt;!&ndash; Background Locator Service &ndash;&gt;-->
+<!--&lt;!&ndash;        <service&ndash;&gt;-->
+<!--&lt;!&ndash;            android:name="yukams.app.background_locator_2.IsolateHolderService"&ndash;&gt;-->
+<!--&lt;!&ndash;            android:permission="android.permission.FOREGROUND_SERVICE"&ndash;&gt;-->
+<!--&lt;!&ndash;            android:exported="true"&ndash;&gt;-->
+<!--&lt;!&ndash;            android:foregroundServiceType="location" />&ndash;&gt;-->
+
+<!--        &lt;!&ndash; Flutter Embedding &ndash;&gt;-->
+<!--        <meta-data-->
+<!--            android:name="flutterEmbedding"-->
+<!--            android:value="2" />-->
+<!--    </application>-->
+
+<!--    &lt;!&ndash; Queries Section &ndash;&gt;-->
+<!--    <queries>-->
+<!--        <intent>-->
+<!--            <action android:name="android.intent.action.PROCESS_TEXT" />-->
+<!--            <data android:mimeType="text/plain" />-->
+<!--        </intent>-->
+<!--    </queries>-->
+<!--</manifest>-->
+
+
+
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     package="com.metaxperts.GPS_Workforce_Monitor">
@@ -16,7 +147,7 @@
     <!-- Storage Permissions -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-<!--    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />-->
+    <!--    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />-->
 
     <!-- Other Permissions -->
     <uses-permission android:name="android.permission.CAMERA" />
@@ -25,11 +156,13 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
-<!--    <uses-permission android:name="android.permission.VIBRATE" />-->
+    <!--    <uses-permission android:name="android.permission.VIBRATE" />-->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
-<!--    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />-->
+    <!--    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />-->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- ✅ MQTT: Exact alarm for service restart -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <application
         android:label="GPS Workforce Monitor"
@@ -43,7 +176,7 @@
             android:exported="false"
             android:foregroundServiceType="location" />
 
-        <!-- Native Location Monitor Service -->
+        <!-- ✅ Native Location Monitor Service (MERGED: Location + MQTT) -->
         <service
             android:name=".LocationMonitorService"
             android:enabled="true"
@@ -65,7 +198,7 @@
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="AIzaSyB75e8drxN6oXb4U2V2c56yccRrEjmDmHo" />
-<!--            android:value="AIzaSyA8uucF_ZuwxXOkYhoQgDCD3FEURkTcxSY" />-->
+        <!--            android:value="AIzaSyA8uucF_ZuwxXOkYhoQgDCD3FEURkTcxSY" />-->
 
 
         <!-- Google Play Services Version -->
@@ -106,11 +239,11 @@
         </service>
 
         <!-- Background Locator Service -->
-<!--        <service-->
-<!--            android:name="yukams.app.background_locator_2.IsolateHolderService"-->
-<!--            android:permission="android.permission.FOREGROUND_SERVICE"-->
-<!--            android:exported="true"-->
-<!--            android:foregroundServiceType="location" />-->
+        <!--        <service-->
+        <!--            android:name="yukams.app.background_locator_2.IsolateHolderService"-->
+        <!--            android:permission="android.permission.FOREGROUND_SERVICE"-->
+        <!--            android:exported="true"-->
+        <!--            android:foregroundServiceType="location" />-->
 
         <!-- Flutter Embedding -->
         <meta-data
@@ -126,5 +259,3 @@
         </intent>
     </queries>
 </manifest>
-
-

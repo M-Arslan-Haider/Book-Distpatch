@@ -10,7 +10,7 @@ import '../Models/leave_model.dart';
 
 class LeaveRepository {
   static const String _baseUrl =
-      'http://oracle.metaxperts.net/ords/production/leavetable/post/';
+      'http://oracle.metaxperts.net/ords/gps_workforce/leavetable/post/';
 
   final DBHelper _db = DBHelper();
 

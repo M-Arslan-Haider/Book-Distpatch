@@ -1,3 +1,4 @@
+//
 // import 'dart:async';
 // import 'dart:io';
 // import 'dart:typed_data';
@@ -17,10 +18,13 @@
 // import '../../Database/util.dart';
 // import '../../ViewModels/attendance_out_view_model.dart';
 // import '../../ViewModels/attendance_view_model.dart';
+// import '../../ViewModels/geofancing_violation.dart';
 // import '../../ViewModels/location_view_model.dart';
 // import '../../ViewModels/travel_session_view_model.dart';
 // import '../../constants.dart';
+// import '../geofancing_violation_widgets.dart';
 // import '../location_session_screen.dart';
+//
 //
 // class TimerCard extends StatefulWidget {
 //   const TimerCard({super.key});
@@ -37,6 +41,9 @@
 //
 //   // Inside _TimerCardState class, add:
 //   final TravelViewModel _travelVM = Get.find<TravelViewModel>();
+//
+//   // Geofence violation tracker
+//   late GeofenceViolationViewModel _violationVM;
 //
 //   // ─── Location / Connectivity ───────────────────────────────────────────────
 //   final loc.Location location   = loc.Location();
@@ -90,6 +97,7 @@
 //   @override
 //   void initState() {
 //     super.initState();
+//     _violationVM = Get.put(GeofenceViolationViewModel());
 //     WidgetsBinding.instance.addObserver(this);
 //
 //     _initializeUrgentNotifications();
@@ -657,6 +665,7 @@
 //
 //     try {
 //       _stopLocationMonitoring();
+//       unawaited(_violationVM.stopMonitoring());
 //       _localBackupTimer?.cancel();
 //       _midnightClockOutTimer?.cancel();
 //       _permissionCheckTimer?.cancel();
@@ -1346,6 +1355,22 @@
 //         duration: const Duration(seconds: 2),
 //       );
 //
+//       // ── VIOLATION MONITORING START ─────────────────────────────────────
+//       // Pehle violations clear karo (naya session)
+//       await _violationVM.clearViolations();
+//       // Ab monitoring shuru karo selected location ke coordinates se
+//       final double monLat    = savedLat!;
+//       final double monLng    = savedLng!;
+//       final double monRadius = savedRadius!;
+//       final String monName   = savedName;
+//       unawaited(_violationVM.startMonitoring(
+//         lat          : monLat,
+//         lng          : monLng,
+//         radiusMeters : monRadius,
+//         locationName : monName,
+//       ));
+//       // ── END VIOLATION MONITORING START ────────────────────────────────
+//
 //       debugPrint('✅ [CLOCK-IN] UI completed in '
 //           '${DateTime.now().difference(clockInStart).inMilliseconds}ms');
 //
@@ -1397,6 +1422,7 @@
 //       _currentDistance  = 0.0;
 //     });
 //
+//     unawaited(_violationVM.stopMonitoring());
 //     _stopLocationMonitoring();
 //     _localBackupTimer?.cancel();
 //     _midnightClockOutTimer?.cancel();
@@ -1975,6 +2001,8 @@
 //                 ),
 //               );
 //             }),
+//             // ── Geofence Violation Report ──────────────────────────
+//             const GeofenceViolationReportWidget(),
 //           ],
 //         ),
 //       ),
@@ -2009,6 +2037,8 @@ import '../../constants.dart';
 import '../geofancing_violation_widgets.dart';
 import '../location_session_screen.dart';
 
+import '../mqtt_work.dart';
+
 
 class TimerCard extends StatefulWidget {
   const TimerCard({super.key});
@@ -2028,6 +2058,9 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
   // Geofence violation tracker
   late GeofenceViolationViewModel _violationVM;
+
+  // ✅ MQTT Tracker
+  final MqttTracker _mqttTracker = MqttTracker();
 
   // ─── Location / Connectivity ───────────────────────────────────────────────
   final loc.Location location   = loc.Location();
@@ -2091,6 +2124,11 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     _scheduleMidnightClockOut();
     _startNativeMonitoringService();
 
+    // ✅ Initialize MQTT Tracker
+    _mqttTracker.initialize().then((_) {
+      debugPrint('✅ MQTT Tracker initialized');
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkAndProcessCriticalEvent();
     });
@@ -2112,6 +2150,8 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     _distanceUpdateTimer?.cancel();
     _midnightClockOutTimer?.cancel();
     _permissionCheckTimer?.cancel();
+    // ✅ Dispose MQTT
+    _mqttTracker.dispose();
     super.dispose();
   }
 
@@ -2862,7 +2902,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       await prefs.setBool('clockOutPending', false);
       await prefs.setBool('hasFastClockOutData', false);
       await prefs.setBool('hasPendingGpxData', false);
-      await prefs.remove(KEY_PENDING_GPX_CLOSE);
+      await prefs.remove('KEY_PENDING_GPX_CLOSE');
       await prefs.remove('pendingGpxDate');
 
       debugPrint('✅ [AUTO-SYNC] Completed');
@@ -3106,7 +3146,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       );
 
       debugPrint('📏 [GEOFENCE] User: ${currentPosition.latitude}, ${currentPosition.longitude}');
-      debugPrint('📏 [GEOFENCE] Distance from location: ${distanceInMeters.toStringAsFixed(1)} m');
+      debugPrint('   [GEOFENCE] Distance from location: ${distanceInMeters.toStringAsFixed(1)} m');
       debugPrint('📏 [GEOFENCE] Allowed radius: $radiusMeters m');
       debugPrint('📏 [GEOFENCE] Within geofence: ${distanceInMeters <= radiusMeters}');
 
@@ -3153,7 +3193,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // CLOCK IN — with camera + geofencing
+  // CLOCK IN — with camera + geofencing + MQTT
   // ══════════════════════════════════════════════════════════════════════════
 
   Future<void> _handleClockIn(BuildContext context) async {
@@ -3355,6 +3395,22 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       ));
       // ── END VIOLATION MONITORING START ────────────────────────────────
 
+      // ✅ MQTT CLOCK IN
+      final mqttOk = await _mqttTracker.clockInMqtt(deviceId: empId);
+      if (!mqttOk) {
+        debugPrint('⚠️ MQTT unavailable — will queue locations offline');
+        Get.snackbar(
+          '📶 Offline Mode',
+          'GPS data will sync when connected',
+          snackPosition: SnackPosition.TOP,
+          backgroundColor: Colors.orange.shade700,
+          colorText: Colors.white,
+          duration: const Duration(seconds: 3),
+        );
+      } else {
+        debugPrint('✅ MQTT Connected — publishing locations');
+      }
+
       debugPrint('✅ [CLOCK-IN] UI completed in '
           '${DateTime.now().difference(clockInStart).inMilliseconds}ms');
 
@@ -3388,7 +3444,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // CLOCK OUT
+  // CLOCK OUT + MQTT
   // ══════════════════════════════════════════════════════════════════════════
 
   Future<void> _handleClockOut(BuildContext context) async {
@@ -3466,6 +3522,9 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
         prefs.setBool('clockOutPending', true),
         prefs.setBool('hasFastClockOutData', true),
       ]);
+
+      // ✅ MQTT CLOCK OUT
+      await _mqttTracker.clockOutMqtt();
 
       // Close loading dialog
       if (Navigator.of(context).canPop()) Navigator.of(context).pop();
@@ -3819,9 +3878,6 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
             const SizedBox(height: 10),
 
             // ── Clock In / Clock Out Buttons ───────────────────────────
-            // In the Obx(() { ... }) builder, replace the buttons section:
-
-// ── Clock In / Clock Out Buttons ───────────────────────────
             Obx(() {
               final isClockedIn = attendanceViewModel.isClockedIn.value;
 
@@ -3837,7 +3893,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
                             : () async => _handleClockIn(context),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 300),
-                          height: 40, // Reduced from 48
+                          height: 40,
                           decoration: BoxDecoration(
                             gradient: isClockedIn
                                 ? null
@@ -3852,7 +3908,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
                             color: isClockedIn
                                 ? AppColors.greenTeal.withOpacity(0.07)
                                 : null,
-                            borderRadius: BorderRadius.circular(12), // Reduced from 14
+                            borderRadius: BorderRadius.circular(12),
                             border: Border.all(
                               color: isClockedIn
                                   ? AppColors.greenTeal.withOpacity(0.20)
@@ -3864,9 +3920,9 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
                                 : [
                               BoxShadow(
                                 color:
-                                AppColors.greenTeal.withOpacity(0.25), // Reduced opacity
-                                blurRadius: 10, // Reduced from 14
-                                offset: const Offset(0, 3), // Reduced from 5
+                                AppColors.greenTeal.withOpacity(0.25),
+                                blurRadius: 10,
+                                offset: const Offset(0, 3),
                               ),
                             ],
                           ),
@@ -3874,26 +3930,26 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Container(
-                                width: 24, height: 24, // Reduced from 28
+                                width: 24, height: 24,
                                 decoration: BoxDecoration(
                                   color: isClockedIn
                                       ? AppColors.greenTeal.withOpacity(0.12)
                                       : Colors.white.withOpacity(0.18),
-                                  borderRadius: BorderRadius.circular(7), // Reduced from 8
+                                  borderRadius: BorderRadius.circular(7),
                                 ),
                                 child: Icon(Icons.login_rounded,
-                                    size: 13, // Reduced from 15
+                                    size: 13,
                                     color: isClockedIn
                                         ? AppColors.greenTeal
                                         : Colors.white),
                               ),
-                              const SizedBox(width: 6), // Reduced from 8
+                              const SizedBox(width: 6),
                               Text(
                                 'Clock In',
                                 style: TextStyle(
-                                  fontSize: 12, // Reduced from 13
-                                  fontWeight: FontWeight.w600, // Reduced from 700
-                                  letterSpacing: 0.2, // Reduced from 0.3
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.2,
                                   color: isClockedIn
                                       ? AppColors.greenTeal
                                       : Colors.white,
@@ -3905,7 +3961,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
                       ),
                     ),
 
-                    const SizedBox(width: 8), // Reduced from 10
+                    const SizedBox(width: 8),
 
                     // ── Clock Out ───────────────────────────────────────
                     Expanded(
@@ -3915,7 +3971,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
                             : null,
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 300),
-                          height: 40, // Reduced from 48
+                          height: 40,
                           decoration: BoxDecoration(
                             gradient: isClockedIn
                                 ? const LinearGradient(
@@ -3930,7 +3986,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
                             color: isClockedIn
                                 ? null
                                 : AppColors.error.withOpacity(0.07),
-                            borderRadius: BorderRadius.circular(12), // Reduced from 14
+                            borderRadius: BorderRadius.circular(12),
                             border: Border.all(
                               color: isClockedIn
                                   ? Colors.transparent
@@ -3940,9 +3996,9 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
                             boxShadow: isClockedIn
                                 ? [
                               BoxShadow(
-                                color: AppColors.error.withOpacity(0.25), // Reduced opacity
-                                blurRadius: 10, // Reduced from 14
-                                offset: const Offset(0, 3), // Reduced from 5
+                                color: AppColors.error.withOpacity(0.25),
+                                blurRadius: 10,
+                                offset: const Offset(0, 3),
                               ),
                             ]
                                 : [],
@@ -3951,26 +4007,26 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Container(
-                                width: 24, height: 24, // Reduced from 28
+                                width: 24, height: 24,
                                 decoration: BoxDecoration(
                                   color: isClockedIn
                                       ? Colors.white.withOpacity(0.18)
                                       : AppColors.error.withOpacity(0.10),
-                                  borderRadius: BorderRadius.circular(7), // Reduced from 8
+                                  borderRadius: BorderRadius.circular(7),
                                 ),
                                 child: Icon(Icons.logout_rounded,
-                                    size: 13, // Reduced from 15
+                                    size: 13,
                                     color: isClockedIn
                                         ? Colors.white
                                         : AppColors.error),
                               ),
-                              const SizedBox(width: 6), // Reduced from 8
+                              const SizedBox(width: 6),
                               Text(
                                 'Clock Out',
                                 style: TextStyle(
-                                  fontSize: 12, // Reduced from 13
-                                  fontWeight: FontWeight.w600, // Reduced from 700
-                                  letterSpacing: 0.2, // Reduced from 0.3
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.2,
                                   color: isClockedIn
                                       ? Colors.white
                                       : AppColors.error,
@@ -3992,5 +4048,4 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       ),
     );
   }
-
 }

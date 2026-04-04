@@ -247,7 +247,8 @@ import '../Models/location_model.dart';
 /// Repository: all DB + API I/O for location tracking records.
 class LocationRepository {
   static const String _apiUrl =
-      'http://oracle.metaxperts.net/ords/production/location/post/';
+      // 'http://oracle.metaxperts.net/ords/production/location/post/';
+  'http://oracle.metaxperts.net/ords/gps_workforce/location/post/';
 
   // ─────────────────────────────────────────────────────────────────────────
   // DB ACCESS
