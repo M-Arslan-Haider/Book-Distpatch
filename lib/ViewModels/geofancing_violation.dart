@@ -1,4 +1,4 @@
-// // lib/ViewModels/geofence_violation_view_model.dart
+//
 //
 // import 'dart:async';
 // import 'dart:convert';
@@ -40,6 +40,7 @@
 //   String  _location_name = '';
 //   String  _emp_id        = '';
 //   String  _emp_name      = '';
+//   String  _company_code  = '';          // ← NEW
 //
 //   static const Duration _checkInterval = Duration(seconds: 10);
 //   static const int _maxRetries = 5;
@@ -101,10 +102,14 @@
 //     _emp_name = _safeGetFallback(prefs, [
 //       'emp_name', 'empName', 'employee_name', 'name', 'userName',
 //     ]);
+//     _company_code = _safeGetFallback(prefs, [       // ← NEW
+//       'company_code', 'companyCode', 'company',     // ← NEW
+//     ]);                                              // ← NEW
 //
 //     debugPrint('👤 [GeofenceVM] Employee Info:');
 //     debugPrint('👤 [GeofenceVM]   - emp_id: "$_emp_id"');
 //     debugPrint('👤 [GeofenceVM]   - emp_name: "$_emp_name"');
+//     debugPrint('👤 [GeofenceVM]   - company_code: "$_company_code"');  // ← NEW
 //
 //     if (_emp_id.isEmpty) {
 //       debugPrint('⚠️ [GeofenceVM] WARNING: emp_id is EMPTY!');
@@ -243,7 +248,17 @@
 //     outsideSeconds.value = 0;
 //
 //     final today        = DateFormat('yyyy-MM-dd').format(out_time);
-//     final violation_id = 'VIO-${_emp_id.padLeft(3, '0')}-${out_time.millisecondsSinceEpoch}';
+//     // final violation_id = 'VIO-${_emp_id.padLeft(3, '0')}-${out_time.millisecondsSinceEpoch}';
+//
+//     final empPart      = _emp_id.padLeft(2, '0');
+//     final day          = DateFormat('dd').format(out_time);
+//     final month        = DateFormat('MMM').format(out_time);
+//     final serial       = (out_time.millisecondsSinceEpoch % 1000).toString().padLeft(3, '0');
+//     final violation_id = _company_code.isNotEmpty
+//         ? '$_company_code-VID-EMP-$empPart-$day-$month-$serial'
+//         : 'VID-EMP-$empPart-$day-$month-$serial';
+//
+//     debugPrint('🆔 [GeofenceVM] Generated violation_id: $violation_id (company: $_company_code)');
 //
 //     final violation = GeofenceViolation(
 //       violation_id   : violation_id,
@@ -254,6 +269,7 @@
 //       violation_date : today,
 //       out_time       : out_time,
 //       in_time        : null,
+//       company_code   : _company_code,   // ← NEW
 //     );
 //
 //     violations.add(violation);
@@ -392,6 +408,7 @@
 //       'out_time'           : outTime,                    // HH:MM:SS
 //       'total_out_duration' : eventType == 'in' ? violation.total_out_duration : '',
 //       'location_name'      : violation.location_name,
+//       'company_code'       : violation.company_code,     // ← NEW
 //       // ✅ IMPORTANT: Don't send created_at - let Oracle use DEFAULT SYSDATE
 //     };
 //
@@ -642,7 +659,7 @@ class GeofenceViolationViewModel extends GetxController {
       'http://oracle.metaxperts.net/ords/gps_workforce/geofencepost/post/';
 
   // ── SharedPreferences keys ────────────────────────────────────────────────
-  static const String _kViolationsKey = 'geofence_violations_today';
+  static const String _kViolationsKey  = 'geofence_violations_today';
   static const String _kFailedPostsKey = 'geofence_failed_posts_queue';
 
   // ── Observables ───────────────────────────────────────────────────────────
@@ -663,11 +680,9 @@ class GeofenceViolationViewModel extends GetxController {
   String  _location_name = '';
   String  _emp_id        = '';
   String  _emp_name      = '';
-  String  _company_code  = '';          // ← NEW
+  String  _company_code  = '';
 
   static const Duration _checkInterval = Duration(seconds: 10);
-  static const int _maxRetries = 5;
-  static const Duration _retryBaseDelay = Duration(seconds: 3);
 
   // ─────────────────────────────────────────────────────────────────────────
   // LIFECYCLE
@@ -701,7 +716,6 @@ class GeofenceViolationViewModel extends GetxController {
     required String locationName,
   }) async {
     debugPrint('🚀 [GeofenceVM] ========== START MONITORING CALLED ==========');
-    debugPrint('🚀 [GeofenceVM] Parameters:');
     debugPrint('🚀 [GeofenceVM]   - lat: $lat');
     debugPrint('🚀 [GeofenceVM]   - lng: $lng');
     debugPrint('🚀 [GeofenceVM]   - radiusMeters: $radiusMeters');
@@ -719,32 +733,24 @@ class GeofenceViolationViewModel extends GetxController {
     _isMonitoring  = true;
 
     final prefs = await SharedPreferences.getInstance();
-    debugPrint('🔧 [GeofenceVM] SharedPreferences instance obtained');
 
-    _emp_id   = _safeGet(prefs, 'emp_id');
+    _emp_id = _safeGet(prefs, 'emp_id');
     _emp_name = _safeGetFallback(prefs, [
       'emp_name', 'empName', 'employee_name', 'name', 'userName',
     ]);
-    _company_code = _safeGetFallback(prefs, [       // ← NEW
-      'company_code', 'companyCode', 'company',     // ← NEW
-    ]);                                              // ← NEW
+    _company_code = _safeGetFallback(prefs, [
+      'company_code', 'companyCode', 'company',
+    ]);
 
-    debugPrint('👤 [GeofenceVM] Employee Info:');
     debugPrint('👤 [GeofenceVM]   - emp_id: "$_emp_id"');
     debugPrint('👤 [GeofenceVM]   - emp_name: "$_emp_name"');
-    debugPrint('👤 [GeofenceVM]   - company_code: "$_company_code"');  // ← NEW
+    debugPrint('👤 [GeofenceVM]   - company_code: "$_company_code"');
 
-    if (_emp_id.isEmpty) {
-      debugPrint('⚠️ [GeofenceVM] WARNING: emp_id is EMPTY!');
-    }
-    if (_emp_name.isEmpty) {
-      debugPrint('⚠️ [GeofenceVM] WARNING: emp_name is EMPTY!');
-    }
+    if (_emp_id.isEmpty)   debugPrint('⚠️ [GeofenceVM] WARNING: emp_id is EMPTY!');
+    if (_emp_name.isEmpty) debugPrint('⚠️ [GeofenceVM] WARNING: emp_name is EMPTY!');
 
     // Clear old day violations
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    debugPrint('📅 [GeofenceVM] Today\'s date: $today');
-
     if (violations.isNotEmpty && violations.first.violation_date != today) {
       debugPrint('🧹 [GeofenceVM] Clearing old violations (date mismatch)');
       violations.clear();
@@ -759,15 +765,9 @@ class GeofenceViolationViewModel extends GetxController {
       if (_isMonitoring) _checkGeofence();
     });
 
-    debugPrint('✅ [GeofenceVM] ══════════════════════════════════');
-    debugPrint('✅ [GeofenceVM] Monitoring STARTED');
-    debugPrint('✅ [GeofenceVM] location_name : "$locationName"');
-    debugPrint('✅ [GeofenceVM] Coords        : ($lat, $lng)');
-    debugPrint('✅ [GeofenceVM] Radius        : ${radiusMeters.toStringAsFixed(1)} m');
-    debugPrint('✅ [GeofenceVM] emp_id        : $_emp_id | emp_name: $_emp_name');
-    debugPrint('✅ [GeofenceVM] Interval      : ${_checkInterval.inSeconds}s');
-    debugPrint('✅ [GeofenceVM] API URL       : $_apiUrl');
-    debugPrint('✅ [GeofenceVM] ══════════════════════════════════');
+    debugPrint('✅ [GeofenceVM] Monitoring STARTED | location: "$locationName" | '
+        'coords: ($lat, $lng) | radius: ${radiusMeters.toStringAsFixed(1)}m | '
+        'emp: $_emp_id / $_emp_name');
 
     // First check after 2s GPS warm-up
     Future.delayed(const Duration(seconds: 2), () {
@@ -777,7 +777,7 @@ class GeofenceViolationViewModel extends GetxController {
 
   // ─────────────────────────────────────────────────────────────────────────
   // PUBLIC – STOP MONITORING
-  // ─────────────────────────────���───────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
 
   Future<void> stopMonitoring() async {
     debugPrint('🛑 [GeofenceVM] ========== STOP MONITORING CALLED ==========');
@@ -794,7 +794,6 @@ class GeofenceViolationViewModel extends GetxController {
 
     isOutside.value      = false;
     outsideSeconds.value = 0;
-
     debugPrint('🛑 [GeofenceVM] Monitoring STOPPED');
   }
 
@@ -816,9 +815,7 @@ class GeofenceViolationViewModel extends GetxController {
   // ─────────────────────────────────────────────────────────────────────────
 
   Future<void> _checkGeofence() async {
-    if (_watch_lat == null || _watch_lng == null || _watch_radius == null) {
-      return;
-    }
+    if (_watch_lat == null || _watch_lng == null || _watch_radius == null) return;
 
     try {
       debugPrint('📍 [GeofenceVM] Geofence check...');
@@ -845,7 +842,8 @@ class GeofenceViolationViewModel extends GetxController {
 
       final within_radius = distance_meters <= _watch_radius!;
 
-      debugPrint('📏 [GeofenceVM] Distance: ${distance_meters.toStringAsFixed(1)}m | Radius: ${_watch_radius!.toStringAsFixed(1)}m | Within: $within_radius');
+      debugPrint('📏 [GeofenceVM] Distance: ${distance_meters.toStringAsFixed(1)}m '
+          '| Radius: ${_watch_radius!.toStringAsFixed(1)}m | Within: $within_radius');
 
       if (!within_radius && !isOutside.value) {
         debugPrint('🚨 [GeofenceVM] TRIGGER: User EXITED geofence!');
@@ -870,18 +868,17 @@ class GeofenceViolationViewModel extends GetxController {
     isOutside.value      = true;
     outsideSeconds.value = 0;
 
-    final today        = DateFormat('yyyy-MM-dd').format(out_time);
-    // final violation_id = 'VIO-${_emp_id.padLeft(3, '0')}-${out_time.millisecondsSinceEpoch}';
+    final today    = DateFormat('yyyy-MM-dd').format(out_time);
+    final empPart  = _emp_id.padLeft(2, '0');
+    final day      = DateFormat('dd').format(out_time);
+    final month    = DateFormat('MMM').format(out_time);
+    final serial   = (out_time.millisecondsSinceEpoch % 1000).toString().padLeft(3, '0');
 
-    final empPart      = _emp_id.padLeft(2, '0');
-    final day          = DateFormat('dd').format(out_time);
-    final month        = DateFormat('MMM').format(out_time);
-    final serial       = (out_time.millisecondsSinceEpoch % 1000).toString().padLeft(3, '0');
     final violation_id = _company_code.isNotEmpty
         ? '$_company_code-VID-EMP-$empPart-$day-$month-$serial'
         : 'VID-EMP-$empPart-$day-$month-$serial';
 
-    debugPrint('🆔 [GeofenceVM] Generated violation_id: $violation_id (company: $_company_code)');
+    debugPrint('🆔 [GeofenceVM] Generated violation_id: $violation_id');
 
     final violation = GeofenceViolation(
       violation_id   : violation_id,
@@ -892,7 +889,7 @@ class GeofenceViolationViewModel extends GetxController {
       violation_date : today,
       out_time       : out_time,
       in_time        : null,
-      company_code   : _company_code,   // ← NEW
+      company_code   : _company_code,
     );
 
     violations.add(violation);
@@ -902,7 +899,7 @@ class GeofenceViolationViewModel extends GetxController {
     debugPrint('🚨 [GeofenceVM] Created violation: ${violation.violation_id}');
 
     // POST "out" row to backend
-    unawaited(_postWithRetry(violation, eventType: 'out', retryCount: 0));
+    unawaited(_postWithRetry(violation, eventType: 'out'));
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -911,7 +908,6 @@ class GeofenceViolationViewModel extends GetxController {
 
   void _onUserReturned(DateTime in_time) {
     debugPrint('✅ [GeofenceVM] ========== USER RETURNED ==========');
-
     isOutside.value = false;
     _outsideCounterTimer?.cancel();
     _closeCurrentViolation(in_time);
@@ -938,51 +934,44 @@ class GeofenceViolationViewModel extends GetxController {
     _persistViolations();
 
     // POST "in" row to backend
-    unawaited(_postWithRetry(updated, eventType: 'in', retryCount: 0));
+    unawaited(_postWithRetry(updated, eventType: 'in'));
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // PRIVATE – POST WITH AUTOMATIC RETRY
+  // PRIVATE – POST WITH RETRY
+  //
+  // FIX: Previously this method BOTH queued to SharedPrefs AND recursively
+  // called itself via Future.delayed — causing the same post to be sent
+  // 7-8 times when internet returned (in-memory chain + periodic queue
+  // processor firing simultaneously).
+  //
+  // Now: one single attempt. On failure → queue ONCE to SharedPrefs.
+  // The periodic _processFailedPostQueue() timer handles all retries.
   // ─────────────────────────────────────────────────────────────────────────
 
   Future<void> _postWithRetry(
       GeofenceViolation violation, {
         required String eventType,
-        required int retryCount,
       }) async {
-    debugPrint('📡 [GeofenceVM] POST attempt ${retryCount + 1}/$_maxRetries for event: $eventType');
+    debugPrint('📡 [GeofenceVM] Attempting POST for event: $eventType | id: ${violation.violation_id}');
 
     try {
       postStatus.value = 'posting';
       await _postViolationEvent(violation, eventType: eventType);
       postStatus.value = 'success';
-      debugPrint('✅ [GeofenceVM] POST SUCCESS on attempt ${retryCount + 1}');
+      debugPrint('✅ [GeofenceVM] POST SUCCESS for: ${violation.violation_id}');
     } catch (e) {
-      debugPrint('❌ [GeofenceVM] POST FAILED (attempt ${retryCount + 1}): $e');
+      debugPrint('❌ [GeofenceVM] POST FAILED: $e');
+      postStatus.value = 'error';
 
-      if (retryCount < _maxRetries) {
-        final delaySeconds = _retryBaseDelay.inSeconds * (1 << retryCount);
-        final delay = Duration(seconds: delaySeconds);
-
-        debugPrint('⏰ [GeofenceVM] Retrying in ${delay.inSeconds}s...');
-
-        await _queueFailedPost(violation, eventType, retryCount + 1);
-
-        Future.delayed(delay, () {
-          if (_isMonitoring) {
-            _postWithRetry(violation, eventType: eventType, retryCount: retryCount + 1);
-          }
-        });
-      } else {
-        debugPrint('❌ [GeofenceVM] MAX RETRIES REACHED.');
-        postStatus.value = 'error';
-        await _queueFailedPost(violation, eventType, -1);
-      }
+      // ✅ FIX: Queue ONCE only. Do NOT also start a Future.delayed retry loop.
+      //    The _retryPostTimer (every 1 min) will pick this up and retry cleanly.
+      await _queueFailedPost(violation, eventType);
     }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // PRIVATE – POST TO BACKEND (CORE) ✅ FIXED FOR ORACLE TABLE SCHEMA
+  // PRIVATE – POST TO BACKEND (CORE)
   // ─────────────────────────────────────────────────────────────────────────
 
   Future<void> _postViolationEvent(
@@ -990,71 +979,46 @@ class GeofenceViolationViewModel extends GetxController {
         required String eventType,
       }) async {
     debugPrint('📡 [GeofenceVM] ========== POSTING TO BACKEND ==========');
-    debugPrint('📡 [GeofenceVM] Event Type: $eventType');
-    debugPrint('📡 [GeofenceVM] Violation ID: ${violation.violation_id}');
+    debugPrint('📡 [GeofenceVM] Event Type   : $eventType');
+    debugPrint('📡 [GeofenceVM] Violation ID : ${violation.violation_id}');
     debugPrint('📡 [GeofenceVM] emp_id: ${violation.emp_id} | emp_name: ${violation.emp_name}');
 
-    // Validate
-    if (violation.emp_id.isEmpty) {
-      throw Exception('❌ emp_id is empty');
-    }
-    if (violation.emp_name.isEmpty) {
-      throw Exception('❌ emp_name is empty');
-    }
-
-    // ✅ FIXED: Format dates according to Oracle table schema
-    // Table expects:
-    // - VIOLATION_DATE: DATE (Oracle DATE type) → send as DD-MMM-YYYY
-    // - OUT_TIME: VARCHAR2(10) → send as HH:MM:SS
-    // - IN_TIME: VARCHAR2(10) → send as HH:MM:SS
-    // - CREATED_AT: DATE with DEFAULT SYSDATE → DON'T SEND (let Oracle use SYSDATE)
+    if (violation.emp_id.isEmpty)   throw Exception('❌ emp_id is empty');
+    if (violation.emp_name.isEmpty) throw Exception('❌ emp_name is empty');
 
     final violationDate = DateFormat('dd-MMM-yyyy')
         .format(DateTime.parse(violation.violation_date));
-    final outTime = violation.outTimeLabel; // Already HH:MM:SS
-    final inTime = violation.in_time != null ? violation.inTimeLabel : null;
+    final outTime = violation.outTimeLabel;
+    final inTime  = violation.in_time != null ? violation.inTimeLabel : null;
 
-    debugPrint('📡 [DEBUG] Formatted dates:');
-    debugPrint('📡 [DEBUG]   violation_date: "$violationDate" (DD-MMM-YYYY)');
-    debugPrint('📡 [DEBUG]   out_time: "$outTime" (HH:MM:SS)');
-    if (inTime != null) {
-      debugPrint('📡 [DEBUG]   in_time: "$inTime" (HH:MM:SS)');
-    }
+    debugPrint('📡 [DEBUG] violation_date: "$violationDate" | out_time: "$outTime"'
+        '${inTime != null ? ' | in_time: "$inTime"' : ''}');
 
-    // Build payload - EXACTLY matching Oracle table columns
     final payload = <String, dynamic>{
       'violation_id'       : violation.violation_id,
       'emp_id'             : violation.emp_id,
       'emp_name'           : violation.emp_name,
       'event_type'         : eventType,
-      'violation_date'     : violationDate,              // DD-MMM-YYYY
-      'out_time'           : outTime,                    // HH:MM:SS
+      'violation_date'     : violationDate,
+      'out_time'           : outTime,
       'total_out_duration' : eventType == 'in' ? violation.total_out_duration : '',
       'location_name'      : violation.location_name,
-      'company_code'       : violation.company_code,     // ← NEW
-      // ✅ IMPORTANT: Don't send created_at - let Oracle use DEFAULT SYSDATE
+      'company_code'       : violation.company_code,
     };
 
-    // Only add in_time if it exists
-    if (inTime != null) {
-      payload['in_time'] = inTime; // HH:MM:SS
-    }
+    if (inTime != null) payload['in_time'] = inTime;
 
-    debugPrint('📡 [GeofenceVM] Final Payload:');
     final requestBody = jsonEncode(payload);
-    debugPrint('📡 [GeofenceVM] $requestBody');
+    debugPrint('📡 [GeofenceVM] Payload: $requestBody');
 
-    // Send HTTP POST
     final client = http.Client();
     try {
-      debugPrint('📡 [GeofenceVM] Sending to: $_apiUrl');
-
       final response = await client
           .post(
         Uri.parse(_apiUrl),
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json',
+          'Accept'      : 'application/json',
         },
         body: requestBody,
       )
@@ -1063,21 +1027,19 @@ class GeofenceViolationViewModel extends GetxController {
       debugPrint('📡 [GeofenceVM] Response Status: ${response.statusCode}');
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
-        debugPrint('✅ [GeofenceVM] ✅ SUCCESS: $eventType event posted');
+        debugPrint('✅ [GeofenceVM] SUCCESS: $eventType posted');
         debugPrint('📡 [GeofenceVM] Response: ${response.body}');
         return;
-      } else {
-        debugPrint('📡 [GeofenceVM] Response Body: ${response.body}');
+      }
 
-        // Try to parse Oracle error
-        try {
-          final errorJson = jsonDecode(response.body) as Map<String, dynamic>;
-          final cause = errorJson['cause'] ?? errorJson['message'] ?? 'Unknown error';
-          debugPrint('❌ [GeofenceVM] Oracle Error: $cause');
-          throw HttpException('Oracle Error: $cause');
-        } catch (e) {
-          throw HttpException('Server returned ${response.statusCode}');
-        }
+      // Non-2xx — try to extract Oracle error message
+      try {
+        final errorJson = jsonDecode(response.body) as Map<String, dynamic>;
+        final cause     = errorJson['cause'] ?? errorJson['message'] ?? 'Unknown error';
+        debugPrint('❌ [GeofenceVM] Oracle Error: $cause');
+        throw HttpException('Oracle Error: $cause');
+      } catch (_) {
+        throw HttpException('Server returned ${response.statusCode}');
       }
     } on TimeoutException {
       throw TimeoutException('POST request timed out (20s)');
@@ -1092,25 +1054,37 @@ class GeofenceViolationViewModel extends GetxController {
 
   // ─────────────────────────────────────────────────────────────────────────
   // PRIVATE – FAILED POST QUEUE
+  //
+  // FIX: Added deduplication check. If the same violation_id + eventType is
+  // already in the queue, we skip adding it again. This is a safety net
+  // against any future code path accidentally calling this twice.
   // ─────────────────────────────────────────────────────────────────────────
 
   Future<void> _queueFailedPost(
       GeofenceViolation violation,
       String eventType,
-      int retryCount,
       ) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs    = await SharedPreferences.getInstance();
       final queueStr = prefs.getString(_kFailedPostsKey) ?? '[]';
-      final queue = List<Map<String, dynamic>>.from(
+      final queue    = List<Map<String, dynamic>>.from(
         (jsonDecode(queueStr) as List).map((e) => e as Map<String, dynamic>),
       );
 
+      // ✅ FIX: Dedup — never queue the same violation_id + eventType twice
+      final alreadyQueued = queue.any((item) =>
+      item['violation']?['violation_id'] == violation.violation_id &&
+          item['eventType'] == eventType);
+
+      if (alreadyQueued) {
+        debugPrint('⚠️ [GeofenceVM] Already queued: ${violation.violation_id} / $eventType — skipping duplicate');
+        return;
+      }
+
       queue.add({
-        'violation': violation.toStorageJson(),
-        'eventType': eventType,
-        'retryCount': retryCount,
-        'timestamp': DateTime.now().toIso8601String(),
+        'violation' : violation.toStorageJson(),
+        'eventType' : eventType,
+        'timestamp' : DateTime.now().toIso8601String(),
       });
 
       await prefs.setString(_kFailedPostsKey, jsonEncode(queue));
@@ -1121,7 +1095,11 @@ class GeofenceViolationViewModel extends GetxController {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // PRIVATE – RETRY QUEUED POSTS (PERIODIC)
+  // PRIVATE – RETRY QUEUED POSTS (PERIODIC — every 1 minute)
+  //
+  // This is now the SINGLE source of retries. When internet returns, this
+  // timer fires, processes every queued item once, and removes successful
+  // ones. No duplicate in-memory retry chains anywhere.
   // ─────────────────────────────────────────────────────────────────────────
 
   void _startRetryProcess() {
@@ -1131,14 +1109,13 @@ class GeofenceViolationViewModel extends GetxController {
     });
     debugPrint('⏱️ [GeofenceVM] Retry process started (every 1 minute)');
 
-    Future.delayed(const Duration(seconds: 2), () {
-      _processFailedPostQueue();
-    });
+    // Also try immediately on startup (catches queued items from previous session)
+    Future.delayed(const Duration(seconds: 2), _processFailedPostQueue);
   }
 
   Future<void> _processFailedPostQueue() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs    = await SharedPreferences.getInstance();
       final queueStr = prefs.getString(_kFailedPostsKey) ?? '[]';
 
       if (queueStr == '[]') return;
@@ -1161,10 +1138,11 @@ class GeofenceViolationViewModel extends GetxController {
           final eventType = item['eventType'] as String;
 
           await _postViolationEvent(violation, eventType: eventType);
-          debugPrint('✅ [GeofenceVM] Retried post successful: ${violation.violation_id}');
+          debugPrint('✅ [GeofenceVM] Retry succeeded: ${violation.violation_id}');
+          // Successfully posted → do NOT add back to newQueue (it is removed)
         } catch (e) {
-          debugPrint('⚠️ [GeofenceVM] Retry still failed: $e');
-          newQueue.add(item);
+          debugPrint('⚠️ [GeofenceVM] Retry still failed: $e — keeping in queue');
+          newQueue.add(item); // Keep for next retry cycle
         }
       }
 
@@ -1236,7 +1214,7 @@ class GeofenceViolationViewModel extends GetxController {
     try {
       final v = prefs.get(key);
       return v?.toString().trim() ?? '';
-    } catch (e) {
+    } catch (_) {
       return '';
     }
   }

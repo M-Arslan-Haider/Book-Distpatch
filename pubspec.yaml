@@ -85,7 +85,7 @@ dependencies:
   cloud_functions: ^5.0.3
   flutter_hooks: ^0.20.5
   firebase_messaging: ^15.2.1
-  geocoding: ^3.0.0
+  geocoding: ^4.0.0
   gpx: ^2.3.0
 #  workmanager: ^0.5.2
   flutter_local_notifications: ^18.0.1

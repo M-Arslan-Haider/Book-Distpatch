@@ -3790,47 +3790,47 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     // Pehla read abhi turant
     await _updateBattery();
 
-    // Phir har 10 second baad snackbar ke sath
-    _batteryTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
-      await _updateBattery();
-      if (!mounted) return;
-
-      final String status   = _isCharging ? '⚡ Charging' : '🔋 On Battery';
-      final Color snackColor = _batteryLevel <= 20
-          ? Colors.red.shade700
-          : _batteryLevel <= 50
-          ? Colors.orange.shade700
-          : Colors.green.shade700;
-
-      final IconData iconData = _isCharging
-          ? Icons.battery_charging_full_rounded
-          : _batteryLevel >= 80
-          ? Icons.battery_full_rounded
-          : _batteryLevel >= 50
-          ? Icons.battery_5_bar_rounded
-          : _batteryLevel >= 20
-          ? Icons.battery_3_bar_rounded
-          : Icons.battery_alert_rounded;
-
-      Get.snackbar(
-        '$status — $_batteryLevel%',
-        _batteryLevel <= 20
-            ? '⚠️ Low battery! Please charge your device.'
-            : _batteryLevel <= 50
-            ? 'Battery moderate — consider charging soon.'
-            : 'Battery is good ✅',
-        snackPosition  : SnackPosition.BOTTOM,
-        backgroundColor: snackColor,
-        colorText      : Colors.white,
-        duration       : const Duration(seconds: 8),
-        margin         : const EdgeInsets.all(12),
-        borderRadius   : 12,
-        icon           : Icon(iconData, color: Colors.white, size: 22),
-        isDismissible  : true,
-      );
-
-      debugPrint('🔋 [BATTERY SNACKBAR] $_batteryLevel% | $status');
-    });
+    // // Phir har 10 second baad snackbar ke sath
+    // _batteryTimer = Timer.periodic(const Duration(seconds: 60), (_) async {
+    //   await _updateBattery();
+    //   if (!mounted) return;
+    //
+    //   final String status   = _isCharging ? '⚡ Charging' : '🔋 On Battery';
+    //   final Color snackColor = _batteryLevel <= 20
+    //       ? Colors.red.shade700
+    //       : _batteryLevel <= 50
+    //       ? Colors.orange.shade700
+    //       : Colors.green.shade700;
+    //
+    //   final IconData iconData = _isCharging
+    //       ? Icons.battery_charging_full_rounded
+    //       : _batteryLevel >= 80
+    //       ? Icons.battery_full_rounded
+    //       : _batteryLevel >= 50
+    //       ? Icons.battery_5_bar_rounded
+    //       : _batteryLevel >= 20
+    //       ? Icons.battery_3_bar_rounded
+    //       : Icons.battery_alert_rounded;
+    //
+    //   Get.snackbar(
+    //     '$status — $_batteryLevel%',
+    //     _batteryLevel <= 20
+    //         ? '⚠️ Low battery! Please charge your device.'
+    //         : _batteryLevel <= 50
+    //         ? 'Battery moderate — consider charging soon.'
+    //         : 'Battery is good ✅',
+    //     snackPosition  : SnackPosition.BOTTOM,
+    //     backgroundColor: snackColor,
+    //     colorText      : Colors.white,
+    //     duration       : const Duration(seconds: 8),
+    //     margin         : const EdgeInsets.all(12),
+    //     borderRadius   : 12,
+    //     icon           : Icon(iconData, color: Colors.white, size: 22),
+    //     isDismissible  : true,
+    //   );
+    //
+    //   debugPrint('🔋 [BATTERY SNACKBAR] $_batteryLevel% | $status');
+    // });
 
     debugPrint('🔋 [BATTERY] Monitoring started — snackbar every 10 sec');
   }
