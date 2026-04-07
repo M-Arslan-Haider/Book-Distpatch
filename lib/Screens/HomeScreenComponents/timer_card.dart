@@ -5960,7 +5960,11 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       ));
 
       // ── MQTT CLOCK IN ──────────────────────────────────────────────────────
-      final mqttOk = await _mqttTracker.clockInMqtt(deviceId: empId);
+      final mqttOk = await _mqttTracker.clockInMqtt(
+        deviceId    : empId,
+        companyCode : prefs.getString(prefCompanyCode) ?? '',  // ← use the same constant
+        empName     : empName,                                  // ← already in scope
+      );
       if (!mqttOk) {
         debugPrint('⚠️ MQTT unavailable — will queue locations offline');
         Get.snackbar(
