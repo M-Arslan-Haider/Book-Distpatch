@@ -4211,8 +4211,8 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
         totalDistance: finalDistance,
         isAuto       : false,
         reason       : travelVM.isInTravelMode
-            ? 'manual_clockout_with_travel'
-            : 'manual_clockout',
+            ? 'user_clockout_with_travel'
+            : 'user_clockout',
       ));
 
       // ── Post clock-out background tasks ───────────────────────────────────
