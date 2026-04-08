@@ -104,8 +104,16 @@ class _TravelSessionCardState extends State<TravelSessionCard> {
   // ── Build ──────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    return Obx(() {
-      if (!_attendanceVM.isClockedIn.value) return const SizedBox.shrink();
+    // return Obx(() {
+    //   if (!_attendanceVM.isClockedIn.value) return const SizedBox.shrink();
+    return FutureBuilder<SharedPreferences>(
+        future: SharedPreferences.getInstance(),
+        builder: (context, prefsSnap) {
+          final geoFlag = (prefsSnap.data?.getString('geoFencing') ?? 'yes').toLowerCase().trim();
+          if (geoFlag == 'no') return const SizedBox.shrink(); // ← hide entire card
+
+          return Obx(() {
+            if (!_attendanceVM.isClockedIn.value) return const SizedBox.shrink();
 
       final inTravel  = _travelVM.isInTravelMode;
       final hasPending = _travelVM.hasPendingLocation &&
@@ -254,8 +262,10 @@ class _TravelSessionCardState extends State<TravelSessionCard> {
           ],
         ),
       );
-    });
-  }
+          });      // closes Obx
+        },
+    );           // closes FutureBuilder
+  }              // closes build
 
   // ── UI helpers ─────────────────────────────────────────────────────────────
 
