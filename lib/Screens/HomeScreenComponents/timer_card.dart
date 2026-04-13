@@ -1496,66 +1496,44 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
   Future<DateTime?> _fetchEmployeeEndTime() async {
     try {
-      final prefs      = await SharedPreferences.getInstance();
-      final String empId       = _safePrefsString(prefs, 'emp_id');
-      final String companyCode = _safePrefsStringFallback(prefs, [
-        'company_code', 'companyCode', 'company',
-      ]);
+      final prefs = await SharedPreferences.getInstance();
 
-      // ── 1. Try live API first (uses http package, same as login_repository) ─
-      if (empId.isNotEmpty && companyCode.isNotEmpty) {
-        try {
-          final uri = Uri.http(
-            'oracle.metaxperts.net',
-            '/ords/gps_workforce/endtime/get/',
-            {'emp_id': empId, 'company_code': companyCode},
-          );
+      // Read cached end_time from login
+      final cachedEndTime = prefs.getString('cached_end_time');
+      final cachedOvertime = prefs.getString('cached_overtime');
+      final cachedShift = prefs.getString('cached_shift');
 
-          debugPrint('🌐 [END TIME] Fetching live: $uri');
+      debugPrint('📦 [END TIME] Cached from login: end_time=$cachedEndTime, over_time=$cachedOvertime, shift=$cachedShift');
 
-          final response = await http
-              .get(uri, headers: {'Accept': 'application/json'})
-              .timeout(const Duration(seconds: 8));
-
-          debugPrint('📥 [END TIME] Status: ${response.statusCode}');
-          debugPrint('📥 [END TIME] Body: ${response.body}');
-
-          if (response.statusCode == 200) {
-            final liveStr = _parseEndTimeFromBody(response.body);
-            if (liveStr != null) {
-              // Refresh cache so offline mode stays current
-              await prefs.setString('cached_end_time', liveStr);
-              await prefs.setString('cached_end_time_emp_id', empId);
-              debugPrint('✅ [END TIME] Live value cached: $liveStr');
-              return _endTimeStringToDateTime(liveStr);
-            } else {
-              debugPrint('⚠️ [END TIME] Could not find end_time field in response');
-            }
-          }
-        } catch (e, stack) {
-          debugPrint('⚠️ [END TIME] Live fetch failed: $e');
-          debugPrint('⚠️ [END TIME] Stack: $stack');
-        }
-      } else {
-        debugPrint('⚠️ [END TIME] emp_id or company_code missing — skipping live fetch');
+      if (cachedEndTime == null || cachedEndTime.isEmpty) {
+        debugPrint('❌ [END TIME] No end time available from login data');
+        return null;
       }
 
-      // ── 2. Offline fallback: value cached at login time ───────────────────
-      final cached = prefs.getString('cached_end_time');
-      debugPrint('📦 [END TIME] Cached value: $cached');
-      if (cached != null && cached.isNotEmpty) {
-        debugPrint('📦 [END TIME] Using cached end time: $cached');
-        return _endTimeStringToDateTime(cached);
+      // Parse the end time
+      final endTime = _endTimeStringToDateTime(cachedEndTime);
+
+      if (endTime != null) {
+        debugPrint('✅ [END TIME] Using cached end time: $cachedEndTime (shift: ${cachedShift ?? 'Day'})');
+        debugPrint('   [END TIME] Overtime allowed: ${cachedOvertime?.toLowerCase() == 'yes'}');
       }
 
-      debugPrint('❌ [END TIME] No end time available (neither online nor cached)');
-      return null;
+      return endTime;
     } catch (e) {
-      debugPrint('❌ [END TIME] Unexpected error: $e');
+      debugPrint('❌ [END TIME] Error reading cached data: $e');
       return null;
     }
   }
 
+  /// Get shift info for display
+  Future<Map<String, dynamic>> _getEmployeeShiftInfo() async {
+    final prefs = await SharedPreferences.getInstance();
+    return {
+      'end_time': prefs.getString('cached_end_time') ?? '',
+      'over_time': prefs.getString('cached_overtime') ?? 'No',
+      'shift': prefs.getString('cached_shift') ?? 'Day',
+    };
+  }
   /// Parses end-time string from a raw JSON response body.
   /// Handles: flat map, items array, bare array.
   String? _parseEndTimeFromBody(String body) {
@@ -1605,7 +1583,10 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
   // ══════════════════════════════════════════════════════════════════════════
 
   Future<bool> _showEarlyClockOutDialog(BuildContext context, DateTime endTime) async {
+    final shiftInfo = await _getEmployeeShiftInfo();
     final endStr = DateFormat('hh:mm a').format(endTime);
+    final shift = shiftInfo['shift'];
+    final overtime = shiftInfo['over_time'].toLowerCase() == 'yes' ? ' (Overtime allowed)' : '';
 
     final result = await showDialog<bool>(
       context: context,
@@ -1637,15 +1618,15 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
               ),
               const SizedBox(height: 10),
               Text(
-                'You are clocking out before the end of your workday ($endStr).'
-                    '\nDo you want to proceed?',
+                'Your shift ends at $endStr ($shift shift$overtime).\n'
+                    'You are clocking out before the end of your workday.\n'
+                    'Do you want to proceed?',
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 14, color: Colors.black54, height: 1.5),
               ),
               const SizedBox(height: 24),
               Row(
                 children: [
-                  // NO button
                   Expanded(
                     child: OutlinedButton(
                       onPressed: () => Navigator.of(ctx).pop(false),
@@ -1661,7 +1642,6 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  // YES button
                   Expanded(
                     child: ElevatedButton(
                       onPressed: () => Navigator.of(ctx).pop(true),
@@ -1688,7 +1668,6 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
     return result ?? false;
   }
-
   Future<void> _handleClockOut(BuildContext context) async {
     debugPrint('🎯 [TIMERCARD] ===== CLOCK-OUT STARTED =====');
 
