@@ -1,3 +1,4 @@
+// File: android/app/build.gradle
 
 plugins {
     id("com.android.application")
@@ -27,7 +28,11 @@ android {
     }
 
     packagingOptions {
-        exclude 'META-INF/*'
+        exclude 'META-INF/INDEX.LIST'
+        exclude 'META-INF/DEPENDENCIES'
+        exclude 'META-INF/LICENSE'
+        exclude 'META-INF/NOTICE'
+        exclude 'META-INF/io.netty.versions.properties'
     }
 
     defaultConfig {
@@ -48,7 +53,6 @@ android {
             }
         }
     }
-
     buildTypes {
         release {
             signingConfig signingConfigs.release
@@ -76,10 +80,12 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-
     implementation 'org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5'
     implementation 'org.eclipse.paho:org.eclipse.paho.android.service:1.1.1'
     implementation 'org.json:json:20231013'
+
+    // ✅ ADD WorkManager
+    implementation 'androidx.work:work-runtime-ktx:2.8.1'
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'

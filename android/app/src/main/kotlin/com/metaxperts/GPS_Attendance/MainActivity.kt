@@ -1,102 +1,3 @@
-////package com.metaxperts.GPS_Workforce_Monitor
-////
-////import android.content.Intent
-////import android.os.Bundle
-////import com.google.android.gms.common.GoogleApiAvailability
-////import com.google.android.gms.security.ProviderInstaller
-////import io.flutter.embedding.android.FlutterActivity
-////
-////class MainActivity : FlutterActivity(), ProviderInstaller.ProviderInstallListener {
-////
-////    override fun onCreate(savedInstanceState: Bundle?) {
-////        super.onCreate(savedInstanceState)
-////        installProvider()
-////    }
-////
-////    private fun installProvider() {
-////        ProviderInstaller.installIfNeededAsync(this, this)
-////    }
-////
-////    override fun onProviderInstalled() {
-////        // Provider installed successfully
-////    }
-////
-////    override fun onProviderInstallFailed(errorCode: Int, intent: Intent?) {
-////        // Provider installation failed, handle the error here
-////        GoogleApiAvailability.getInstance().showErrorNotification(this, errorCode)
-////    }
-////}
-////
-//
-//package com.metaxperts.GPS_Workforce_Monitor
-//
-//import android.content.Intent
-//import android.os.Bundle
-//import com.google.android.gms.common.GoogleApiAvailability
-//import com.google.android.gms.security.ProviderInstaller
-//import io.flutter.embedding.android.FlutterActivity
-//import io.flutter.embedding.engine.FlutterEngine
-//import io.flutter.plugin.common.MethodChannel
-//
-//class MainActivity : FlutterActivity(), ProviderInstaller.ProviderInstallListener {
-//
-//    private val CHANNEL = "com.metaxperts.GPS_Workforce_Monitor/location_monitor"
-//
-//    override fun onCreate(savedInstanceState: Bundle?) {
-//        super.onCreate(savedInstanceState)
-//        installProvider()
-//    }
-//
-//    private fun installProvider() {
-//        ProviderInstaller.installIfNeededAsync(this, this)
-//    }
-//
-//    override fun onProviderInstalled() {
-//        // Provider installed successfully
-//    }
-//
-//    override fun onProviderInstallFailed(errorCode: Int, intent: Intent?) {
-//        // Provider installation failed, handle the error here
-//        GoogleApiAvailability.getInstance().showErrorNotification(this, errorCode)
-//    }
-//
-//    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
-//        super.configureFlutterEngine(flutterEngine)
-//
-//        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
-//            when (call.method) {
-//                "startMonitoring" -> {
-//                    try {
-//                        val intent = Intent(this, LocationMonitorService::class.java)
-//                        startForegroundService(intent)
-//                        result.success(true)
-//                    } catch (e: Exception) {
-//                        result.error("START_ERROR", e.message, null)
-//                    }
-//                }
-//                "stopMonitoring" -> {
-//                    try {
-//                        val intent = Intent(this, LocationMonitorService::class.java)
-//                        stopService(intent)
-//                        result.success(true)
-//                    } catch (e: Exception) {
-//                        result.error("STOP_ERROR", e.message, null)
-//                    }
-//                }
-//                "isServiceRunning" -> {
-//                    val manager = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
-//                    val running = manager.getRunningServices(Integer.MAX_VALUE)
-//                        .any { it.service.className == LocationMonitorService::class.java.name }
-//                    result.success(running)
-//                }
-//                else -> {
-//                    result.notImplemented()
-//                }
-//            }
-//        }
-//    }
-//}
-
 package com.metaxperts.GPS_Workforce_Monitor
 
 import android.Manifest
@@ -129,12 +30,9 @@ class MainActivity : FlutterActivity(), ProviderInstaller.ProviderInstallListene
         ProviderInstaller.installIfNeededAsync(this, this)
     }
 
-    override fun onProviderInstalled() {
-        // Provider installed successfully
-    }
+    override fun onProviderInstalled() {}
 
     override fun onProviderInstallFailed(errorCode: Int, intent: Intent?) {
-        // Provider installation failed, handle the error here
         GoogleApiAvailability.getInstance().showErrorNotification(this, errorCode)
     }
 
@@ -168,18 +66,35 @@ class MainActivity : FlutterActivity(), ProviderInstaller.ProviderInstallListene
                         .any { it.service.className == LocationMonitorService::class.java.name }
                     result.success(running)
                 }
-                else -> {
-                    result.notImplemented()
-                }
+                else -> result.notImplemented()
             }
         }
 
         // ✅ MQTT SERVICE CHANNEL
+        // FIX: "startService" now reads deviceId / companyCode / empName
+        //      from the MethodChannel arguments and passes them as Intent
+        //      extras to LocationMonitorService. Previously these were
+        //      ignored, so the service started with empty identity and
+        //      published to topic "gps//" instead of "gps/{company}/{user}".
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MQTT_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "startService" -> {
                     if (hasLocationPermission()) {
-                        LocationMonitorService.start(this)
+                        // ── FIX #1: Extract identity from Dart arguments ──
+                        val deviceId    = call.argument<String>("deviceId") ?: ""
+                        val companyCode = call.argument<String>("companyCode") ?: ""
+                        val empName     = call.argument<String>("empName") ?: ""
+
+                        android.util.Log.d("MainActivity",
+                            "startService → deviceId=$deviceId company=$companyCode emp=$empName")
+
+                        // Pass identity to the service via the overloaded start()
+                        if (deviceId.isNotEmpty() && companyCode.isNotEmpty()) {
+                            LocationMonitorService.start(this, deviceId, companyCode, empName)
+                        } else {
+                            // Fallback: start without extras (service reads from SharedPreferences)
+                            LocationMonitorService.start(this)
+                        }
                         result.success(null)
                     } else {
                         result.error("NO_PERMISSION", "Location permission not granted", null)

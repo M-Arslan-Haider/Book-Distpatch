@@ -1,5 +1,3 @@
-
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -69,6 +67,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
   // ─── Timer state ───────────────────────────────────────────────────────────
   Timer? _locationMonitorTimer;
   Timer? _midnightClockOutTimer;
+  Timer? _shiftEndClockOutTimer;   // ✅ NEW: Shift end auto clock-out
   Timer? _permissionCheckTimer;
   Timer? _localBackupTimer;
   Timer? _autoSyncTimer;
@@ -123,6 +122,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     _startAutoSyncMonitoring();
     _startDistanceUpdater();
     _scheduleMidnightClockOut();
+    _scheduleShiftEndClockOut();   // ✅ NEW
     _startNativeMonitoringService();
 
     // ✅ Initialize MQTT Tracker
@@ -150,6 +150,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     _connectivitySubscription?.cancel();
     _distanceUpdateTimer?.cancel();
     _midnightClockOutTimer?.cancel();
+    _shiftEndClockOutTimer?.cancel();   // ✅ NEW: Shift end auto clock-out
     _permissionCheckTimer?.cancel();
     // ✅ Dispose MQTT
     _mqttTracker.dispose();
@@ -168,6 +169,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       _restoreEverything();
       _checkConnectivityAndSync();
       _rescheduleMidnightClockOut();
+      _scheduleShiftEndClockOut();       // ✅ NEW
       _startNativeMonitoringService();
     } else if (state == AppLifecycleState.paused) {
       debugPrint('✅ [LIFECYCLE] Paused - native service continues monitoring');
@@ -583,7 +585,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
             await _saveCriticalEventData(
               eventTime : eventTime,
-              reason    : 'location_off_auto',
+              reason    : 'System Location - Off Clockout',
               distance  : currentDist,
               latitude  : lat,
               longitude : lng,
@@ -592,11 +594,11 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
             await _showUrgentNotification(
               title  : '⚠️ LOCATION TURNED OFF',
               body   : 'Auto clockout triggered because location was turned off',
-              payload: 'location_off_auto',
+              payload: 'System Clock out - Location Off',
             );
 
             await _handleAutoClockOut(
-              reason   : 'location_off_auto',
+              reason   : 'System Clock out - Location Off',
               context  : context,
               eventTime: eventTime,
             );
@@ -635,7 +637,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
           await _saveCriticalEventData(
             eventTime : eventTime,
-            reason    : 'midnight_auto',
+            reason    : 'System Midnight - Clockout',
             distance  : currentDist,
             latitude  : lat,
             longitude : lng,
@@ -644,11 +646,11 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
           await _showUrgentNotification(
             title  : '⚠️ AUTO CLOCKOUT - 11:58 PM',
             body   : 'You have been automatically clocked out\nDuration: $_localElapsedTime',
-            payload: 'midnight_auto',
+            payload: 'System Midnight - Clockout',
           );
 
           await _handleAutoClockOut(
-            reason   : 'midnight_auto',
+            reason   : 'System Midnight - Clockout',
             context  : context,
             eventTime: eventTime,
           );
@@ -666,6 +668,159 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       if (!isFrozen && attendanceViewModel.isClockedIn.value) {
         _scheduleMidnightClockOut();
       }
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SHIFT END AUTO CLOCKOUT  ✅ NEW
+  // Reads END_TIME set during login (cached_end_time in SharedPreferences).
+  // Schedules a one-shot Timer that fires when device clock reaches that time.
+  // Works in foreground. Native LocationMonitorService handles background /
+  // app-killed cases using the same SharedPreferences key (flutter.cached_end_time).
+  // Reason stored: "shift_end_auto"
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // HELPER: Normalize any time string → [hour24, minute]
+  //
+  // Handles ALL server/device formats:
+  //   "17:33"        → [17, 33]   (server 24-hour — primary format)
+  //   "5:33 PM"      → [17, 33]   (12-hour with space)
+  //   "5:33PM"       → [17, 33]   (12-hour without space)
+  //   "05:33 pm"     → [17, 33]   (lowercase am/pm)
+  //   "5:33"         → [5,  33]   (ambiguous — treated as 24-hour, i.e. 5 AM)
+  //   "17:33:00"     → [17, 33]   (with seconds)
+  //
+  // Returns null if the string cannot be parsed at all.
+  // ──────────────────────────────────────────────────────────────────────────
+  List<int>? _parseTimeTo24h(String raw) {
+    try {
+      final String upper = raw.trim().toUpperCase();
+      final bool isPM    = upper.contains('PM');
+      final bool isAM    = upper.contains('AM');
+
+      // Strip AM/PM and any trailing whitespace
+      final String cleaned = upper
+          .replaceAll('PM', '')
+          .replaceAll('AM', '')
+          .trim();
+
+      final List<String> parts = cleaned.split(':');
+      if (parts.length < 2) return null;
+
+      int? hour       = int.tryParse(parts[0].trim());
+      // parts[1] may be "33" or "33 " — take only digits
+      int? minute = int.tryParse(parts[1].trim().split(RegExp(r'\s+'))[0]);
+
+      if (hour == null || minute == null) return null;
+
+      // Convert 12-hour → 24-hour
+      if (isPM && hour != 12) hour += 12;
+      if (isAM && hour == 12) hour  = 0;
+
+      return [hour, minute];
+    } catch (e) {
+      debugPrint('⚠️ [PARSE TIME] Error: $e  raw="$raw"');
+      return null;
+    }
+  }
+
+  void _scheduleShiftEndClockOut() {
+    SharedPreferences.getInstance().then((prefs) {
+      bool isFrozen = prefs.getBool(KEY_IS_TIMER_FROZEN) ?? false;
+      if (isFrozen || !attendanceViewModel.isClockedIn.value) return;
+
+      final String? endTimeStr = prefs.getString('cached_end_time');
+      if (endTimeStr == null || endTimeStr.isEmpty) {
+        debugPrint('⏰ [SHIFT END] No cached_end_time — skipping');
+        return;
+      }
+
+      // ✅ NEW: Check overtime flag - if overtime allowed, skip shift-end auto clockout entirely
+      final String overtime = (prefs.getString('cached_overtime') ?? 'no').toLowerCase().trim();
+      final bool overtimeAllowed = overtime == 'yes' || overtime == 'y' || overtime == 'true';
+
+      if (overtimeAllowed) {
+        debugPrint('⏰ [SHIFT END] Overtime allowed — shift-end auto clockout DISABLED');
+        return;
+      }
+
+      // ── Normalize: handles "17:33", "5:33 PM", "5:33pm", "17:33:00", etc. ─
+      final List<int>? parsed = _parseTimeTo24h(endTimeStr);
+      if (parsed == null) {
+        debugPrint('⏰ [SHIFT END] Cannot parse end_time: "$endTimeStr"');
+        return;
+      }
+
+      final int endHour   = parsed[0];
+      final int endMinute = parsed[1];
+
+      debugPrint('⏰ [SHIFT END] Parsed "$endTimeStr" → ${endHour.toString().padLeft(2, '0')}:${endMinute.toString().padLeft(2, '0')} (24h)');
+
+      _shiftEndClockOutTimer?.cancel();
+
+      bool shiftEndFired = false;
+
+      _shiftEndClockOutTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
+        if (shiftEndFired) { timer.cancel(); return; }
+
+        final p      = await SharedPreferences.getInstance();
+        final frozen = p.getBool(KEY_IS_TIMER_FROZEN) ?? false;
+
+        if (frozen) {
+          shiftEndFired = true;
+          timer.cancel();
+          debugPrint('⏰ [SHIFT END] Native service already handled — processing in Flutter');
+          if (mounted) _checkAndProcessCriticalEvent();
+          return;
+        }
+
+        if (!attendanceViewModel.isClockedIn.value) {
+          timer.cancel();
+          return;
+        }
+
+        final DateTime now          = DateTime.now();
+        final int endTotalMin       = endHour * 60 + endMinute;
+        final int nowTotalMin       = now.hour * 60 + now.minute;
+        final int diffMinutes       = nowTotalMin - endTotalMin;
+
+        debugPrint('⏰ [SHIFT END] now=${now.hour}:${now.minute}  end=$endHour:$endMinute  diff=${diffMinutes}min');
+
+        if (diffMinutes >= 0 && diffMinutes < 480) {
+          shiftEndFired = true;
+          timer.cancel();
+
+          debugPrint('⏰ [SHIFT END] ✅ FIRING auto clockout — end=$endTimeStr diff=${diffMinutes}min');
+
+          final DateTime eventTime = DateTime.now();
+          final double currentDist = await _getCurrentDistance();
+          final double lat         = locationViewModel.globalLatitude1.value;
+          final double lng         = locationViewModel.globalLongitude1.value;
+
+          await _saveCriticalEventData(
+            eventTime : eventTime,
+            reason    : 'System Shift End - Clockout',
+            distance  : currentDist,
+            latitude  : lat,
+            longitude : lng,
+          );
+
+          await _showUrgentNotification(
+            title  : '⏰ SHIFT END AUTO CLOCKOUT',
+            body   : 'You have been automatically clocked out at shift end ($endTimeStr)',
+            payload: 'System Clock out - On Shift end',
+          );
+
+          await _handleAutoClockOut(
+            reason   : 'System Clock out - On Shift end',
+            context  : context,
+            eventTime: eventTime,
+          );
+        }
+      });
+
+      debugPrint('⏰ [SHIFT END] Wall-clock poll started for $endTimeStr (every 5s)');
     });
   }
 
@@ -694,6 +849,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       unawaited(_violationVM.stopMonitoring());
       _localBackupTimer?.cancel();
       _midnightClockOutTimer?.cancel();
+      _shiftEndClockOutTimer?.cancel();   // ✅ NEW: Shift end auto clock-out
       _permissionCheckTimer?.cancel();
       // ✅ Stop auto location POST tracker
       _locationTrackerService.stop();
@@ -973,6 +1129,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       _startLocationMonitoring();
       _startLocalBackupTimer();
       _scheduleMidnightClockOut();
+      _scheduleShiftEndClockOut();   // ✅ NEW
       _startPermissionMonitoring();
       debugPrint('✅ [INIT] Full clocked-in state restored');
     }
@@ -1000,6 +1157,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
       _startLocalBackupTimer();
       _scheduleMidnightClockOut();
+      _scheduleShiftEndClockOut();   // ✅ NEW
       _startPermissionMonitoring();
 
       if (mounted) setState(() {});
@@ -1209,12 +1367,92 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
+  // ✅ SHIFT END BLOCK CHECK
+  //
+  // Returns true  → clocking is BLOCKED (current time is past END_TIME and
+  //                 OVER_TIME is not "yes"). Caller must abort.
+  // Returns false → clocking is ALLOWED.
+  //
+  // Rules:
+  //   • OVER_TIME = "yes" / "y" / "true"  → always allow (return false).
+  //   • OVER_TIME = anything else / null   → treat as "No".
+  //   • END_TIME missing or unparseable    → allow (fail-open, return false).
+  //   • Device current time > END_TIME     → block  (return true).
+  //
+  // Snackbar is shown here so the caller only needs a single `if` guard.
+  // ══════════════════════════════════════════════════════════════════════════
+  Future<bool> _isShiftEndBlocked() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // ── Read overtime flag ────────────────────────────────────────────────
+      final String overtime =
+      (prefs.getString('cached_overtime') ?? 'no').toLowerCase().trim();
+      final bool overtimeAllowed =
+          overtime == 'yes' || overtime == 'y' || overtime == 'true';
+
+      if (overtimeAllowed) {
+        debugPrint('✅ [SHIFT BLOCK] Overtime allowed — clocking permitted');
+        return false;
+      }
+
+      // ── Read and parse END_TIME ───────────────────────────────────────────
+      final String? endTimeStr = prefs.getString('cached_end_time');
+      if (endTimeStr == null || endTimeStr.isEmpty) {
+        debugPrint('⏰ [SHIFT BLOCK] No cached_end_time — clocking permitted');
+        return false;
+      }
+
+      final List<int>? parsed = _parseTimeTo24h(endTimeStr);
+      if (parsed == null) {
+        debugPrint('⚠️ [SHIFT BLOCK] Cannot parse end_time "$endTimeStr" — clocking permitted');
+        return false;
+      }
+
+      final int endHour   = parsed[0];
+      final int endMinute = parsed[1];
+
+      final DateTime now    = DateTime.now();
+      final int endTotalMin = endHour * 60 + endMinute;
+      final int nowTotalMin = now.hour * 60 + now.minute;
+
+      debugPrint('⏰ [SHIFT BLOCK] now=${now.hour}:${now.minute}  '
+          'end=$endHour:$endMinute  overtime=$overtime  '
+          'blocked=${nowTotalMin > endTotalMin}');
+
+      if (nowTotalMin > endTotalMin) {
+        if (mounted) {
+          Get.snackbar(
+            '🚫 Clocking Not Allowed',
+            'Clocking is not allowed after your shift end time',
+            snackPosition: SnackPosition.TOP,
+            backgroundColor: Colors.red.shade700,
+            colorText: Colors.white,
+            duration: const Duration(seconds: 4),
+            icon: const Icon(Icons.access_time_filled_rounded, color: Colors.white),
+          );
+        }
+        debugPrint('🚫 [SHIFT BLOCK] Clocking BLOCKED — past shift end ($endTimeStr)');
+        return true;
+      }
+
+      return false;
+    } catch (e) {
+      debugPrint('⚠️ [SHIFT BLOCK] Exception: $e — clocking permitted (fail-open)');
+      return false;
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
   // ✅ CLOCK IN — with camera + geofencing + MQTT + GPS tracking
   // ══════════════════════════════════════════════════════════════════════════
 
   Future<void> _handleClockIn(BuildContext context) async {
     debugPrint('🎯 [TIMERCARD] ===== CLOCK-IN STARTED =====');
     final clockInStart = DateTime.now();
+
+    // ── 0. SHIFT END BLOCK CHECK ───────────────────────────────────────────
+    if (await _isShiftEndBlocked()) return;
 
     // ── 1. CAMERA CAPTURE ──────────────────────────────────────────────────
     final Uint8List? clockInPhotoBytes = await _captureClockInPhoto();
@@ -1394,6 +1632,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       // ── 11. START TIMERS ───────────────────────────────────────────────────
       _startLocalBackupTimer();
       _scheduleMidnightClockOut();
+      _scheduleShiftEndClockOut();   // ✅ NEW: must be called here at actual clock-in
       _startPermissionMonitoring();
 
       // ✅ Auto location POST — clock-in ke baad har 5 min mein server ko bhejta hai
@@ -1438,7 +1677,9 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       final mqttOk = await _mqttTracker.clockInMqtt(
         deviceId    : empId,
         companyCode : prefs.getString(prefCompanyCode) ?? '',  // ← use the same constant
-        empName     : empName,                                  // ← already in scope
+        empName     : empName,
+        empImage    : prefs.getString('cached_image_url') ?? '',// ← already in scope
+        depId       : prefs.getString('cached_dep_id') ?? '',
       );
       if (!mqttOk) {
         debugPrint('⚠️ MQTT unavailable — will queue locations offline');
@@ -1671,6 +1912,9 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
   Future<void> _handleClockOut(BuildContext context) async {
     debugPrint('🎯 [TIMERCARD] ===== CLOCK-OUT STARTED =====');
 
+    // ── 0. SHIFT END BLOCK CHECK ───────────────────────────────────────────
+    if (await _isShiftEndBlocked()) return;
+
     // ── Check if clocking out early ───────────────────────────────────────
     final DateTime? endTime = await _fetchEmployeeEndTime();
     if (endTime != null && DateTime.now().isBefore(endTime)) {
@@ -1784,8 +2028,8 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
         totalDistance: finalDistance,
         isAuto       : false,
         reason       : travelVM.isInTravelMode
-            ? 'user_clockout_with_travel'
-            : 'user_clockout',
+            ? 'System Clockout With - Travel Start'
+            : 'System Clockout With - Travel Start',
       ));
 
       // ── Post clock-out background tasks ───────────────────────────────────
@@ -1857,7 +2101,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
     await _saveCriticalEventData(
       eventTime : breakTime,
-      reason    : 'break_clockout',
+      reason    : 'Lunch Break: User Clock Out',
       distance  : currentDist,
       latitude  : lat,
       longitude : lng,
@@ -1866,11 +2110,11 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     await _showUrgentNotification(
       title  : '⏸️ BREAK STARTED',
       body   : 'Auto clocked out because Break time started\nDuration: $_localElapsedTime',
-      payload: 'break_clockout',
+      payload: 'Lunch Break: User Clock Out',
     );
 
     await _handleAutoClockOut(
-      reason   : 'break_clockout',
+      reason   : 'System Break  - Clockout',
       context  : context,
       eventTime: breakTime,
     );
@@ -1906,12 +2150,16 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
   String _getReasonMessage(String reason) {
     switch (reason) {
-      case 'midnight_auto':
+      case 'System midnight auto - Clockout':
         return 'Automatically clocked out at 11:58 PM';
-      case 'location_off_auto':
+      case 'System Clock out - Location Off':
         return 'Auto clockout because location services were turned off';
-      case 'break_clockout':
+      case 'User break - Clockout':
         return 'Auto clocked out because Break time started';
+      case 'System Clock out - On Shift end':
+        return 'System Clock Out – On Shift End';
+      case 'System Clock out - Location Off':                          // ← YEH ADD KARO
+        return 'Auto clockout because location permission was revoked';
       default:
         return 'Auto clockout completed successfully';
     }
@@ -2103,137 +2351,137 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
             // const SizedBox(height: 8),
 
             // ── Location Selector ──────────────────────────────────────────
-        FutureBuilder<SharedPreferences>(
-            future: SharedPreferences.getInstance(),
-            builder: (context, prefsSnap) {
-              final geoFlag = (prefsSnap.data?.getString('geoFencing') ?? 'yes').toLowerCase().trim();
-              if (geoFlag == 'no') return const SizedBox.shrink(); // ← hide for no-geofencing employees
+            FutureBuilder<SharedPreferences>(
+              future: SharedPreferences.getInstance(),
+              builder: (context, prefsSnap) {
+                final geoFlag = (prefsSnap.data?.getString('geoFencing') ?? 'yes').toLowerCase().trim();
+                if (geoFlag == 'no') return const SizedBox.shrink(); // ← hide for no-geofencing employees
 
-              return Obx(() {
-                final isClockedIn = attendanceViewModel.isClockedIn.value;
-                return GestureDetector(
-                onTap: isClockedIn
-                    ? null
-                    : () async {
-                  final result = await Get.to<Map<String, dynamic>>(
-                        () => const LocationSelectionScreen(),
-                    transition: Transition.rightToLeft,
-                    duration: const Duration(milliseconds: 300),
-                  );
-                  if (result != null) {
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.setInt(
-                        'selected_location_id', result['location_id'] ?? 0);
-                    await prefs.setString(
-                        'selected_location_name', result['location_name'] ?? '');
-                    await prefs.setDouble(
-                        'selected_lat', (result['lat'] ?? 0.0).toDouble());
-                    await prefs.setDouble(
-                        'selected_lng', (result['lng'] ?? 0.0).toDouble());
-                    await prefs.setDouble(
-                        'selected_radius', (result['radius'] ?? 100).toDouble());
-                    if (mounted) setState(() {});
-                  }
-                },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-                  decoration: BoxDecoration(
-                    color: isClockedIn
-                        ? AppColors.cardBg
-                        : AppColors.cyan.withOpacity(0.06),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: isClockedIn
-                          ? AppColors.divider
-                          : AppColors.cyan.withOpacity(0.30),
-                      width: 1,
-                    ),
-                  ),
-                  child: FutureBuilder<SharedPreferences>(
-                    future: SharedPreferences.getInstance(),
-                    builder: (context, snap) {
-                      final prefs       = snap.data;
-                      final name        = prefs?.getString('selected_location_name') ?? '';
-                      final hasLocation = name.isNotEmpty;
-
-                      return Row(
-                        children: [
-                          Container(
-                            width: 30,
-                            height: 30,
-                            decoration: BoxDecoration(
-                              color: hasLocation
-                                  ? AppColors.cyan.withOpacity(0.12)
-                                  : AppColors.divider.withOpacity(0.5),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Icon(
-                              hasLocation
-                                  ? Icons.location_on_rounded
-                                  : Icons.location_off_rounded,
-                              size: 15,
-                              color: hasLocation
-                                  ? AppColors.cyan
-                                  : AppColors.textSecondary,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  hasLocation ? name : 'No location selected',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: hasLocation
-                                        ? AppColors.textPrimary
-                                        : AppColors.textSecondary,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                Text(
-                                  isClockedIn
-                                      ? 'Active session location'
-                                      : hasLocation
-                                      ? 'Tap to change location'
-                                      : 'Tap to select before clocking in',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: AppColors.textSecondary,
-                                    fontWeight: FontWeight.w400,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (!isClockedIn)
-                            Icon(
-                              Icons.chevron_right_rounded,
-                              color: hasLocation
-                                  ? AppColors.cyan
-                                  : AppColors.textSecondary,
-                              size: 18,
-                            )
-                          else
-                            Icon(
-                              Icons.lock_outline_rounded,
-                              color: AppColors.textSecondary,
-                              size: 15,
-                            ),
-                        ],
+                return Obx(() {
+                  final isClockedIn = attendanceViewModel.isClockedIn.value;
+                  return GestureDetector(
+                    onTap: isClockedIn
+                        ? null
+                        : () async {
+                      final result = await Get.to<Map<String, dynamic>>(
+                            () => const LocationSelectionScreen(),
+                        transition: Transition.rightToLeft,
+                        duration: const Duration(milliseconds: 300),
                       );
+                      if (result != null) {
+                        final prefs = await SharedPreferences.getInstance();
+                        await prefs.setInt(
+                            'selected_location_id', result['location_id'] ?? 0);
+                        await prefs.setString(
+                            'selected_location_name', result['location_name'] ?? '');
+                        await prefs.setDouble(
+                            'selected_lat', (result['lat'] ?? 0.0).toDouble());
+                        await prefs.setDouble(
+                            'selected_lng', (result['lng'] ?? 0.0).toDouble());
+                        await prefs.setDouble(
+                            'selected_radius', (result['radius'] ?? 100).toDouble());
+                        if (mounted) setState(() {});
+                      }
                     },
-                  ),
-                ),
-              );
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                      decoration: BoxDecoration(
+                        color: isClockedIn
+                            ? AppColors.cardBg
+                            : AppColors.cyan.withOpacity(0.06),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: isClockedIn
+                              ? AppColors.divider
+                              : AppColors.cyan.withOpacity(0.30),
+                          width: 1,
+                        ),
+                      ),
+                      child: FutureBuilder<SharedPreferences>(
+                        future: SharedPreferences.getInstance(),
+                        builder: (context, snap) {
+                          final prefs       = snap.data;
+                          final name        = prefs?.getString('selected_location_name') ?? '';
+                          final hasLocation = name.isNotEmpty;
+
+                          return Row(
+                            children: [
+                              Container(
+                                width: 30,
+                                height: 30,
+                                decoration: BoxDecoration(
+                                  color: hasLocation
+                                      ? AppColors.cyan.withOpacity(0.12)
+                                      : AppColors.divider.withOpacity(0.5),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(
+                                  hasLocation
+                                      ? Icons.location_on_rounded
+                                      : Icons.location_off_rounded,
+                                  size: 15,
+                                  color: hasLocation
+                                      ? AppColors.cyan
+                                      : AppColors.textSecondary,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      hasLocation ? name : 'No location selected',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: hasLocation
+                                            ? AppColors.textPrimary
+                                            : AppColors.textSecondary,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    Text(
+                                      isClockedIn
+                                          ? 'Active session location'
+                                          : hasLocation
+                                          ? 'Tap to change location'
+                                          : 'Tap to select before clocking in',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: AppColors.textSecondary,
+                                        fontWeight: FontWeight.w400,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (!isClockedIn)
+                                Icon(
+                                  Icons.chevron_right_rounded,
+                                  color: hasLocation
+                                      ? AppColors.cyan
+                                      : AppColors.textSecondary,
+                                  size: 18,
+                                )
+                              else
+                                Icon(
+                                  Icons.lock_outline_rounded,
+                                  color: AppColors.textSecondary,
+                                  size: 15,
+                                ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                  );
                 });   // closes Obx
-            },
-        ),
+              },
+            ),
 
             const SizedBox(height: 10),
 

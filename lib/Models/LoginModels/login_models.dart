@@ -1,45 +1,5 @@
-//
-//
-// /// Login model - company filtering is handled by backend API
-// class LoginModels {
-//   int? emp_id;
-//   String? portal_password;
-//   String? emp_name;
-//   String? job;
-//   String? geo_fencing;
-//   String? company_code; // ✅ Added for dual validation
-//
-//   LoginModels({
-//     this.emp_id,
-//     this.portal_password,
-//     this.emp_name,
-//     this.job,
-//     this.geo_fencing,
-//     this.company_code,
-//   });
-//
-//   factory LoginModels.fromJson(Map<String, dynamic> json) {
-//     return LoginModels(
-//       emp_id: json['emp_id'],
-//       portal_password: json['portal_password'],
-//       emp_name: json['emp_name'],
-//       job: json['job'],
-//       geo_fencing: json['geo_fencing'],
-//       company_code: json['company_code'],
-//     );
-//   }
-//
-//   Map<String, dynamic> toJson() {
-//     return {
-//       'emp_id': emp_id,
-//       'portal_password': portal_password,
-//       'emp_name': emp_name,
-//       'job': job,
-//       'geo_fencing': geo_fencing,
-//       'company_code': company_code,
-//     };
-//   }
-// }
+import 'package:flutter/cupertino.dart';
+
 /// Login model - company filtering is handled by backend API
 class LoginModels {
   int? emp_id;
@@ -48,11 +8,15 @@ class LoginModels {
   String? job;
   String? geo_fencing;
   String? company_code;
+  String? dep_id;  // Added dep_id field
 
   // New fields for end time, overtime, and shift
   String? end_time;
   String? over_time;
   String? shift;
+
+  // Profile image URL (null if no image uploaded)
+  String? image_url;
 
   LoginModels({
     this.emp_id,
@@ -61,12 +25,17 @@ class LoginModels {
     this.job,
     this.geo_fencing,
     this.company_code,
+    this.dep_id,  // Added dep_id parameter
     this.end_time,
     this.over_time,
     this.shift,
+    this.image_url,
   });
 
   factory LoginModels.fromJson(Map<String, dynamic> json) {
+    debugPrint('📝 [LOGIN MODELS] Parsing JSON: ${json.keys}');
+    debugPrint('📝 [LOGIN MODELS] dep_id from JSON: ${json['dep_id'] ?? json['DEP_ID']}');
+
     return LoginModels(
       emp_id: json['emp_id'],
       portal_password: json['portal_password'],
@@ -74,9 +43,11 @@ class LoginModels {
       job: json['job'],
       geo_fencing: json['geo_fencing'],
       company_code: json['company_code'],
+      dep_id: json['dep_id']?.toString() ?? json['DEP_ID']?.toString(),  // Added dep_id mapping
       end_time: json['END_TIME']?.toString() ?? json['end_time']?.toString(),
       over_time: json['OVER_TIME']?.toString() ?? json['over_time']?.toString(),
       shift: json['SHIFT']?.toString() ?? json['shift']?.toString(),
+      image_url: json['image_url']?.toString(),
     );
   }
 
@@ -88,32 +59,47 @@ class LoginModels {
       'job': job,
       'geo_fencing': geo_fencing,
       'company_code': company_code,
+      'DEP_ID': dep_id,  // Added dep_id to JSON output
       'END_TIME': end_time,
       'OVER_TIME': over_time,
       'SHIFT': shift,
+      'image_url': image_url,
     };
   }
 
   // Helper methods
   bool get isOvertimeAllowed {
     final overtime = over_time?.toLowerCase().trim();
+    debugPrint('🔍 [LOGIN MODELS] Checking overtime: $overtime -> ${overtime == 'yes' || overtime == 'y' || overtime == 'true'}');
     return overtime == 'yes' || overtime == 'y' || overtime == 'true';
   }
 
   String get effectiveShift {
     final shiftValue = shift?.toLowerCase().trim();
-    if (shiftValue == 'night') return 'Night';
+    if (shiftValue == 'night') {
+      debugPrint('🌙 [LOGIN MODELS] Shift detected: Night');
+      return 'Night';
+    }
+    debugPrint('☀️ [LOGIN MODELS] Shift detected: Day');
     return 'Day'; // Default to Day for null or any other value
   }
 
   DateTime? get parsedEndTime {
-    if (end_time == null || end_time!.isEmpty) return null;
+    if (end_time == null || end_time!.isEmpty) {
+      debugPrint('⏰ [LOGIN MODELS] No end_time provided');
+      return null;
+    }
     final now = DateTime.now();
     final parts = end_time!.split(':');
-    if (parts.length < 2) return null;
+    if (parts.length < 2) {
+      debugPrint('⚠️ [LOGIN MODELS] Invalid end_time format: ${end_time}');
+      return null;
+    }
     final hour = int.tryParse(parts[0]) ?? 0;
     final minute = int.tryParse(parts[1]) ?? 0;
     final second = parts.length > 2 ? (int.tryParse(parts[2]) ?? 0) : 0;
-    return DateTime(now.year, now.month, now.day, hour, minute, second);
+    final parsedTime = DateTime(now.year, now.month, now.day, hour, minute, second);
+    debugPrint('⏰ [LOGIN MODELS] Parsed end_time: $parsedTime');
+    return parsedTime;
   }
 }

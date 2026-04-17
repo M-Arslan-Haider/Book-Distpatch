@@ -14,6 +14,9 @@ class BootCompletedReceiver : BroadcastReceiver() {
 
             // Only restart if clocked in and not already frozen (event handled)
             if (isClockedIn && !isFrozen) {
+                // Identity (deviceId, companyCode, empName) will be read from
+                // SharedPreferences by LocationMonitorService.onStartCommand()
+                // because the service now persists them on every start.
                 val serviceIntent = Intent(context, LocationMonitorService::class.java)
                 context.startForegroundService(serviceIntent)
             }
