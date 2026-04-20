@@ -9,12 +9,15 @@ import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../Models/location_model.dart';
+import '../Services/remote_config_service.dart';
 
 /// Repository: all DB + API I/O for location tracking records.
 class LocationRepository {
-  static const String _apiUrl =
-      // 'http://oracle.metaxperts.net/ords/production/location/post/';
-  'http://oracle.metaxperts.net/ords/gps_workforce/location/post/';
+  // static const String _apiUrl =
+  //     // 'http://oracle.metaxperts.net/ords/production/location/post/';
+  // 'http://oracle.metaxperts.net/ords/gps_workforce/location/post/';
+  // WITH:
+  static String get _apiUrl => RemoteConfigService.getLocationUrl();
 
   // ─────────────────────────────────────────────────────────────────────────
   // DB ACCESS

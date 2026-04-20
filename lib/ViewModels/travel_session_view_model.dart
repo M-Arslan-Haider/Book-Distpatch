@@ -1,4 +1,5 @@
 //
+//
 // import 'dart:async';
 // import 'dart:convert';
 // import 'dart:typed_data';
@@ -7,6 +8,7 @@
 // import 'package:flutter/material.dart';
 // import 'package:get/get.dart';
 // import 'package:geolocator/geolocator.dart';
+// import 'package:geocoding/geocoding.dart';  // ✅ ADDED for reverse geocoding
 // import 'package:intl/intl.dart';
 // import 'package:shared_preferences/shared_preferences.dart';
 //
@@ -90,6 +92,53 @@
 //   }
 //
 //   // ─────────────────────────────────────────────────────────────────────────
+//   // PRIVATE – Reverse Geocoding Helper
+//   // ─────────────────────────────────────────────────────────────────────────
+//
+//   /// Convert latitude and longitude to human-readable address
+//   Future<String> _getAddressFromLatLng(double lat, double lng) async {
+//     try {
+//       List<Placemark> placemarks = await placemarkFromCoordinates(lat, lng);
+//
+//       if (placemarks.isNotEmpty) {
+//         final Placemark place = placemarks.first;
+//
+//         final List<String> addressParts = [];
+//
+//         if (place.subLocality != null && place.subLocality!.isNotEmpty) {
+//           addressParts.add(place.subLocality!);
+//         }
+//         if (place.locality != null && place.locality!.isNotEmpty) {
+//           addressParts.add(place.locality!);
+//         }
+//         if (place.subAdministrativeArea != null && place.subAdministrativeArea!.isNotEmpty) {
+//           addressParts.add(place.subAdministrativeArea!);
+//         }
+//         if (place.administrativeArea != null && place.administrativeArea!.isNotEmpty) {
+//           addressParts.add(place.administrativeArea!);
+//         }
+//         if (place.country != null && place.country!.isNotEmpty) {
+//           addressParts.add(place.country!);
+//         }
+//
+//         if (addressParts.isEmpty) {
+//           if (place.name != null && place.name!.isNotEmpty) {
+//             return place.name!;
+//           }
+//           return '$lat, $lng';
+//         }
+//
+//         return addressParts.join(', ');
+//       }
+//
+//       return '$lat, $lng';
+//     } catch (e) {
+//       debugPrint('❌ [TravelVM Geocoding] Error: $e');
+//       return '$lat, $lng';
+//     }
+//   }
+//
+//   // ─────────────────────────────────────────────────────────────────────────
 //   // PRIVATE – Get next serial number from shared counter
 //   // ─────────────────────────────────────────────────────────────────────────
 //   Future<int> _getNextSerialNumber() async {
@@ -104,18 +153,6 @@
 //   // ─────────────────────────────────────────────────────────────────────────
 //   // PRIVATE — Travel ID builder (uses shared counter from attendance)
 //   // ─────────────────────────────────────────────────────────────────────────
-//   // Future<String> _buildTravelId({required String empId}) async {
-//   //   final now = DateTime.now();
-//   //   final day = DateFormat('dd').format(now);
-//   //   final month = DateFormat('MMM').format(now);
-//   //   final serial = await _getNextSerialNumber();
-//   //   final serialStr = serial.toString().padLeft(3, '0');
-//   //   final emp = empId.padLeft(2, '0');
-//   //   final id = 'ATD-EMP-$emp-$day-$month-$serialStr';
-//   //   debugPrint('🆔 [TravelVM] Generated travel ID: $id');
-//   //   return id;
-//   // }
-//
 //   Future<String> _buildTravelId({required String empId}) async {
 //     final now = DateTime.now();
 //     final day = DateFormat('dd').format(now);
@@ -263,10 +300,31 @@
 //     final outTime = clockOutTime ?? DateTime.now();
 //     final prefs   = await SharedPreferences.getInstance();
 //
-//     // Get the real address of current location for the clock-out record
-//     final address = prefs.getString(_kCurrentAddress) ??
-//         prefs.getString('selected_location_address') ??
-//         prefs.getString(_kCurrentLoc) ?? '';
+//     // Get current GPS location for address
+//     double currentLat = _locationVM.globalLatitude1.value;
+//     double currentLng = _locationVM.globalLongitude1.value;
+//     String currentAddress = '';
+//
+//     try {
+//       final currentPosition = await Geolocator.getCurrentPosition(
+//         desiredAccuracy: LocationAccuracy.high,
+//         timeLimit: const Duration(seconds: 5),
+//       ).timeout(const Duration(seconds: 7));
+//       currentLat = currentPosition.latitude;
+//       currentLng = currentPosition.longitude;
+//       currentAddress = await _getAddressFromLatLng(currentLat, currentLng);
+//       debugPrint('📍 [TravelVM] Manual clock-out address: $currentAddress');
+//     } catch (e) {
+//       debugPrint('⚠️ [TravelVM] Using cached location for manual clock-out: $e');
+//       currentAddress = prefs.getString(_kCurrentAddress) ??
+//           prefs.getString('selected_location_address') ??
+//           'Unknown location';
+//     }
+//
+//     // Get current location name
+//     final String currentLocName = prefs.getString(_kCurrentLoc) ??
+//         prefs.getString('selected_location_name') ??
+//         'Unknown Location';
 //
 //     if (isTravelMode.value &&
 //         travelId.value.isNotEmpty &&
@@ -274,14 +332,15 @@
 //       final dur = outTime.difference(travelStartTime.value!);
 //
 //       await _attendanceOutVM.addAttendanceOut(AttendanceOutModel(
-//         attendance_out_id  : travelId.value,   // same ID as clock-in, no increment
+//         attendance_out_id  : travelId.value,
 //         emp_id             : empId,
 //         total_time         : _fmt(dur),
 //         total_distance     : travelDistance.value.toString(),
-//         lat_out            : _locationVM.globalLatitude1.value.toString(),
-//         lng_out            : _locationVM.globalLongitude1.value.toString(),
-//         address            : address,
-//         reason             : 'travel_end_manual',
+//         lat_out            : currentLat.toString(),
+//         lng_out            : currentLng.toString(),
+//         address            : currentAddress,           // ✅ Full address
+//         location_name      : currentLocName,           // ✅ Location name
+//         reason             : 'Manual Clock-Out',       // ✅ Manual Clock-Out reason
 //         attendance_out_time: outTime,
 //         attendance_out_date: outTime,
 //         posted             : 0,
@@ -327,24 +386,46 @@
 //             prefs.getString('selected_location_name') ??
 //             'Current Location';
 //
+//         // Get current address for clock-out
+//         double currentLat = _locationVM.globalLatitude1.value;
+//         double currentLng = _locationVM.globalLongitude1.value;
+//         String currentAddress = '';
+//
+//         try {
+//           final currentPosition = await Geolocator.getCurrentPosition(
+//             desiredAccuracy: LocationAccuracy.high,
+//             timeLimit: const Duration(seconds: 5),
+//           ).timeout(const Duration(seconds: 7));
+//           currentLat = currentPosition.latitude;
+//           currentLng = currentPosition.longitude;
+//           currentAddress = await _getAddressFromLatLng(currentLat, currentLng);
+//         } catch (e) {
+//           debugPrint('⚠️ [TravelVM] Using cached location: $e');
+//           currentAddress = prefs.getString(_kCurrentAddress) ??
+//               prefs.getString('selected_location_address') ??
+//               'Unknown address';
+//         }
+//
 //         // ── CLOCK-OUT: previous work location ─────────────────────────────
 //         final prevId = await _attendanceVM.getCurrentAttendanceId();
 //         if (prevId != null && prevId.isNotEmpty) {
 //           final distance = await _locationVM.getImmediateDistance();
-//           // Keep reason under 50 chars (Oracle column limit)
-//           // Format: "Office ended" — truncate name so total ≤ 50
-//           // " ended" = 6 chars → location name budget = 44 chars
-//           final _locLabel = currentLocName.length > 44
-//               ? currentLocName.substring(0, 44)
-//               : currentLocName;
+//
+//           // ✅ Reason: "Travel Started"
+//           // ✅ Location Name: current location name
+//           // ✅ Address: current full address
 //           await _attendanceOutVM.clockOut(
 //             empId        : empId,
 //             clockOutTime : now,
 //             totalDistance: distance,
 //             isAuto       : true,
-//             reason       : '$_locLabel ended',
+//             reason       : 'Travel Started',  // ✅ Reason for start travel
+//             customLocationName: currentLocName,  // ✅ Pass location name
+//             customAddress: currentAddress,  // ✅ Pass address
 //           );
-//           debugPrint('✅ [TravelVM] [startTravel] Previous location clocked OUT');
+//           debugPrint('✅ [TravelVM] [startTravel] Previous location clocked OUT with reason: "Travel Started"');
+//           debugPrint('   📍 Location: $currentLocName');
+//           debugPrint('   📍 Address: $currentAddress');
 //         } else {
 //           debugPrint('⚠️ [TravelVM] [startTravel] No active attendance — clock-out skipped');
 //         }
@@ -378,7 +459,7 @@
 //         final lng = currentPos.longitude.toString();
 //
 //         // Get address for travel start location
-//         final travelAddress = 'Travelling from $currentLocName to next location';
+//         final travelAddress = await _getAddressFromLatLng(currentPos.latitude, currentPos.longitude);
 //
 //         debugPrint('📝 [TravelVM] Attempting to insert travel record: $finalTravelId');
 //         debugPrint('   - lat: $lat, lng: $lng');
@@ -444,26 +525,42 @@
 //         if (travelId.value.isNotEmpty && travelStartTime.value != null) {
 //           final dur = now.difference(travelStartTime.value!);
 //
-//           // Keep reason under 50 chars (Oracle column limit)
-//           final _shortName   = newLocationName.length > 28
-//               ? newLocationName.substring(0, 28)
-//               : newLocationName;
-//           final _switchReason = 'switched_to_$_shortName'; // max 40 chars
+//           // ✅ Reason: "Switched to [New Location Name]"
+//           final _switchReason = 'Switched to $newLocationName';
+//
+//           // Get current location for travel clock-out (where user switched from)
+//           double currentLat = _locationVM.globalLatitude1.value;
+//           double currentLng = _locationVM.globalLongitude1.value;
+//           String currentAddress = '';
+//
+//           try {
+//             final currentPosition = await Geolocator.getCurrentPosition(
+//               desiredAccuracy: LocationAccuracy.high,
+//               timeLimit: const Duration(seconds: 5),
+//             ).timeout(const Duration(seconds: 7));
+//             currentLat = currentPosition.latitude;
+//             currentLng = currentPosition.longitude;
+//             currentAddress = await _getAddressFromLatLng(currentLat, currentLng);
+//           } catch (e) {
+//             debugPrint('⚠️ [TravelVM] Using cached location for switch: $e');
+//             currentAddress = prefs.getString(_kCurrentAddress) ?? 'Unknown address';
+//           }
 //
 //           await _attendanceOutVM.addAttendanceOut(AttendanceOutModel(
-//             attendance_out_id  : travelId.value,  // same ID as travel clock-in
+//             attendance_out_id  : travelId.value,
 //             emp_id             : empId,
 //             total_time         : _fmt(dur),
 //             total_distance     : travelDistance.value.toString(),
-//             lat_out            : newLat.toString(),
-//             lng_out            : newLng.toString(),
-//             address            : newAddress,       // real address of destination
-//             reason             : _switchReason,
+//             lat_out            : currentLat.toString(),
+//             lng_out            : currentLng.toString(),
+//             address            : currentAddress,              // ✅ Address where user switched from
+//             location_name      : prefs.getString(_kCurrentLoc) ?? 'Travel Mode',  // ✅ Location name
+//             reason             : _switchReason,              // ✅ "Switched to [New Location Name]"
 //             attendance_out_time: now,
 //             attendance_out_date: now,
 //             posted             : 0,
 //           ));
-//           debugPrint('✅ [TravelVM] [switchLocation] Travel clocked OUT');
+//           debugPrint('✅ [TravelVM] [switchLocation] Travel clocked OUT with reason: "$_switchReason"');
 //         }
 //
 //         // ── CLOCK-IN: new work location ────────────────────────────────────
@@ -522,7 +619,7 @@
 //         unawaited(_attendanceOutVM.syncUnposted());
 //
 //         _snack('📍 Location Switched',
-//             'New Location $newLocationName',
+//             'Switched to $newLocationName',
 //             Colors.green,
 //             dur: 3);
 //         break;
@@ -821,6 +918,7 @@
 //     required this.locationName,
 //   });
 // }
+
 
 
 import 'dart:async';
@@ -1518,6 +1616,21 @@ class TravelViewModel extends GetxController {
   Future<void> _restoreTravelState() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+
+      // ── PRIORITY: Check if the background service auto-clocked-out a travel ──
+      // This happens when location is turned off or permission is revoked while
+      // the employee is in travel mode. The Kotlin service writes these keys and
+      // we must close the open travel record with the correct reason before
+      // restoring any other state.
+      final hasTravelFastClockOut = prefs.getBool('flutter.hasTravelFastClockOut') ?? false;
+      if (hasTravelFastClockOut) {
+        await _restoreTravelFastClockOut(prefs);
+        // After closing the travel record, clear travel mode state and return.
+        await _clearAllTravelState();
+        return;
+      }
+      // ─────────────────────────────────────────────────────────────────────
+
       isTravelMode.value = prefs.getBool(_kTravelMode) ?? false;
 
       final tStr = prefs.getString(_kTravelStartTime);
@@ -1541,6 +1654,95 @@ class TravelViewModel extends GetxController {
     } catch (e) {
       debugPrint('❌ [TravelVM] _restoreTravelState: $e');
     }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // PRIVATE — Process the travel fast-clockout written by LocationMonitorService
+  //           when location was turned off / permission revoked during travel.
+  // ─────────────────────────────────────────────────────────────────────────
+  Future<void> _restoreTravelFastClockOut(SharedPreferences prefs) async {
+    try {
+      debugPrint('🚗 [TravelVM] Restoring travel fast clock-out from background service...');
+
+      // Read the data the Kotlin service wrote
+      final jsonStr   = prefs.getString('flutter.travelFastClockOutData') ?? '{}';
+      final timeStr   = prefs.getString('flutter.travelFastClockOutTime');
+      final reason    = prefs.getString('flutter.travelFastClockOutReason') ?? 'System Clockout - Location Off';
+      final savedId   = prefs.getString('flutter.travelFastClockOutId') ?? '';
+
+      Map<String, dynamic> data = {};
+      try { data = jsonDecode(jsonStr) as Map<String, dynamic>; } catch (_) {}
+
+      // Resolve the clock-out timestamp
+      final String? resolvedTimeStr = timeStr ?? data['travel_clockOutTime'] as String?;
+      if (resolvedTimeStr == null || resolvedTimeStr.isEmpty) {
+        debugPrint('⚠️ [TravelVM] No travel fast clockout timestamp — skipping');
+        await _clearTravelFastClockOutKeys(prefs);
+        return;
+      }
+
+      final DateTime clockOutTime = DateTime.parse(resolvedTimeStr);
+
+      // Resolve the travel attendance ID (from dedicated key, fallback to JSON, fallback to prefs)
+      String attendanceId = savedId.isNotEmpty
+          ? savedId
+          : (data['travel_attendanceId'] as String? ?? '');
+      if (attendanceId.isEmpty) {
+        attendanceId = prefs.getString(_kTravelId) ?? '';
+      }
+
+      // Resolve total time and distance from the JSON payload
+      final String totalTime = data['travel_totalTime'] as String? ?? '00:00:00';
+      final double totalDist = (data['travel_totalDistance'] as num?)?.toDouble()
+          ?? prefs.getDouble(_kTravelDist) ?? 0.0;
+
+      // Resolve employee id
+      final String empId = prefs.getString('emp_id')
+          ?? prefs.getString('user_name')
+          ?? '';
+
+      debugPrint('🚗 [TravelVM] Travel fast clockout → id=$attendanceId reason=$reason time=$clockOutTime dist=$totalDist');
+
+      if (attendanceId.isNotEmpty) {
+        // Write the attendance-out record for the travel session
+        await _attendanceOutVM.addAttendanceOut(AttendanceOutModel(
+          attendance_out_id  : attendanceId,
+          emp_id             : empId,
+          total_time         : totalTime,
+          total_distance     : totalDist.toString(),
+          lat_out            : '0',
+          lng_out            : '0',
+          address            : 'Auto ended: $reason',
+          reason             : reason,
+          attendance_out_time: clockOutTime,
+          attendance_out_date: clockOutTime,
+          posted             : 0,
+        ));
+        debugPrint('✅ [TravelVM] Travel fast clockout record saved: $attendanceId');
+        unawaited(_attendanceOutVM.syncUnposted());
+      } else {
+        debugPrint('⚠️ [TravelVM] Could not resolve travel attendance ID — fast clockout skipped');
+      }
+
+      // Clear all the fast-clockout keys so we don't process again
+      await _clearTravelFastClockOutKeys(prefs);
+
+    } catch (e) {
+      debugPrint('❌ [TravelVM] _restoreTravelFastClockOut error: $e');
+    }
+  }
+
+  /// Remove the fast-clockout marker keys written by LocationMonitorService.
+  Future<void> _clearTravelFastClockOutKeys(SharedPreferences prefs) async {
+    await prefs.remove('flutter.hasTravelFastClockOut');
+    await prefs.remove('flutter.travelFastClockOutData');
+    await prefs.remove('flutter.travelFastClockOutTime');
+    await prefs.remove('flutter.travelFastClockOutReason');
+    await prefs.remove('flutter.travelFastClockOutId');
+    // Also clear persisted travel-mode flags so the UI doesn't show travel card
+    await prefs.setBool(_kTravelMode, false);
+    await prefs.remove(_kTravelId);
+    await prefs.remove(_kTravelStartTime);
   }
 
   // ─────────────────────────────────────────────────────────────────────────

@@ -396,11 +396,16 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../Services/remote_config_service.dart';
 import '../constants.dart';
 
 class LocationTrackerService {
-  static const String _apiUrl =
-      'http://oracle.metaxperts.net/ords/gps_workforce/emplocation/post/';
+  // static const String _apiUrl =
+  //     'http://oracle.metaxperts.net/ords/gps_workforce/emplocation/post/';
+
+  ///firebase
+  // WITH:
+  static String get _apiUrl => RemoteConfigService.getEmpLocationUrl();
 
   static const String _keyEmpId       = 'emp_id';
   static const String _keyEmpName     = 'emp_name';

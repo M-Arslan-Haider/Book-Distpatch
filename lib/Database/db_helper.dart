@@ -1,4 +1,5 @@
 //
+//
 // import 'package:flutter/foundation.dart';
 // import 'package:shared_preferences/shared_preferences.dart';
 // import 'package:sqflite/sqflite.dart';
@@ -62,7 +63,7 @@
 //     String path = join(await getDatabasesPath(), dbName);
 //     return await openDatabase(
 //       path,
-//       version: 8, // Bumped to 8 to add location_name column
+//       version: 10, // Bumped to 10 to force migration if v9 was skipped
 //       onCreate: _createDB,
 //       onUpgrade: _onUpgrade,
 //     );
@@ -178,6 +179,27 @@
 //         '✅ [DB] v8 — location_name column added to attendance_in',
 //       );
 //     }
+//
+//     // ── v9: Add location_name column to attendance_out ─────────────────────────
+//     if (oldVersion < 9) {
+//       await _safeAlter(db,
+//         'ALTER TABLE $attendanceOutTable ADD COLUMN location_name TEXT',
+//         '✅ [DB] v9 — location_name column added to attendance_out',
+//       );
+//     }
+//
+//     // ── v10: Safety check - ensure location_name exists (in case v9 was missed) ──
+//     if (oldVersion < 10) {
+//       try {
+//         // Try to add it again (safe if already exists)
+//         await _safeAlter(db,
+//           'ALTER TABLE $attendanceOutTable ADD COLUMN location_name TEXT',
+//           '✅ [DB] v10 — safety check: location_name column ensured',
+//         );
+//       } catch (e) {
+//         debugPrint('✅ [DB] v10 — location_name column already exists');
+//       }
+//     }
 //   }
 //
 //   /// Runs an ALTER TABLE and swallows errors
@@ -223,6 +245,7 @@
 //       lng_out             TEXT,
 //       total_distance      TEXT,
 //       address             TEXT,
+//       location_name       TEXT,
 //       reason              TEXT DEFAULT 'manual',
 //       posted              INTEGER DEFAULT 0,
 //       company_code        TEXT
@@ -517,6 +540,7 @@ class DBHelper {
   static const String leaveTable         = "leave_application";
   static const String taskTable          = "tasks";
   static const String fakeGpsTable       = "fake_gps_logs";
+  static const String locationTrackingTable = "location_tracking";
 
   static const String _taskTableDDL = '''
     CREATE TABLE IF NOT EXISTS tasks(
@@ -562,7 +586,7 @@ class DBHelper {
     String path = join(await getDatabasesPath(), dbName);
     return await openDatabase(
       path,
-      version: 10, // Bumped to 10 to force migration if v9 was skipped
+      version: 11, // Bumped to 11 for location_tracking table
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -699,6 +723,36 @@ class DBHelper {
         debugPrint('✅ [DB] v10 — location_name column already exists');
       }
     }
+
+    // ── v11: Add location_tracking table for offline GPS storage ──────────────
+    if (oldVersion < 11) {
+      await db.execute('''
+      CREATE TABLE IF NOT EXISTS $locationTrackingTable(
+        id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+        locationtracking_id   TEXT UNIQUE,
+        locationtracking_date TEXT,
+        locationtracking_time TEXT,
+        user_id               TEXT,
+        lat_in                REAL,
+        lng_in                REAL,
+        booker_name           TEXT,
+        designation           TEXT,
+        company_code          TEXT,
+        posted                INTEGER DEFAULT 0,
+        created_at            TEXT DEFAULT (datetime('now'))
+      )
+      ''');
+
+      try {
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_location_tracking_posted ON $locationTrackingTable(posted)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_location_tracking_company ON $locationTrackingTable(company_code)');
+        debugPrint('✅ [DB] v11 — location_tracking table and indexes created');
+      } catch (e) {
+        debugPrint('⚠️ [DB] v11 — index creation error: $e');
+      }
+
+      debugPrint('✅ [DB] v11 migration complete');
+    }
   }
 
   /// Runs an ALTER TABLE and swallows errors
@@ -825,6 +879,30 @@ class DBHelper {
       posted        INTEGER DEFAULT 0
     )
     ''');
+
+    await db.execute('''
+    CREATE TABLE IF NOT EXISTS $locationTrackingTable(
+      id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+      locationtracking_id   TEXT UNIQUE,
+      locationtracking_date TEXT,
+      locationtracking_time TEXT,
+      user_id               TEXT,
+      lat_in                REAL,
+      lng_in                REAL,
+      booker_name           TEXT,
+      designation           TEXT,
+      company_code          TEXT,
+      posted                INTEGER DEFAULT 0,
+      created_at            TEXT DEFAULT (datetime('now'))
+    )
+    ''');
+
+    try {
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_location_tracking_posted ON $locationTrackingTable(posted)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_location_tracking_company ON $locationTrackingTable(company_code)');
+    } catch (e) {
+      debugPrint('⚠️ [DB] Index creation error: $e');
+    }
   }
 
   // ── INSERT ─────────────────────────────────────────────────────────────────
@@ -1018,5 +1096,98 @@ class DBHelper {
       _currentCompanyCode = companyCode;
     }
     return companyCode;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // LOCATION TRACKING BULK OPERATIONS (v11)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Insert multiple location tracking records in bulk
+  Future<int> insertLocationTrackingBulk(List<Map<String, dynamic>> records) async {
+    final db = await database;
+    int inserted = 0;
+
+    for (final record in records) {
+      try {
+        final data = Map<String, dynamic>.from(record);
+
+        // Add company_code if missing
+        if (_currentCompanyCode != null && data['company_code'] == null) {
+          data['company_code'] = _currentCompanyCode;
+        }
+
+        // Remove 'id' if present (auto-increment)
+        data.remove('id');
+
+        await db.insert(
+          locationTrackingTable,
+          data,
+          conflictAlgorithm: ConflictAlgorithm.ignore, // Ignore duplicates
+        );
+        inserted++;
+      } catch (e) {
+        debugPrint('⚠️ [DB] Insert location tracking error: $e');
+      }
+    }
+
+    debugPrint('💾 [DB] Inserted $inserted location tracking records');
+    return inserted;
+  }
+
+  /// Get unposted location tracking records
+  Future<List<Map<String, dynamic>>> getUnpostedLocationTracking({int limit = 500}) async {
+    final db = await database;
+
+    String whereClause = 'posted = ?';
+    List<dynamic> whereArgs = [0];
+
+    if (_currentCompanyCode != null) {
+      whereClause += ' AND company_code = ?';
+      whereArgs.add(_currentCompanyCode);
+    }
+
+    return await db.query(
+      locationTrackingTable,
+      where: whereClause,
+      whereArgs: whereArgs,
+      orderBy: 'created_at ASC',
+      limit: limit,
+    );
+  }
+
+  /// Mark location tracking records as posted
+  Future<int> markLocationTrackingAsPosted(List<int> ids) async {
+    if (ids.isEmpty) return 0;
+
+    final db = await database;
+    final placeholders = ids.map((_) => '?').join(',');
+
+    final result = await db.rawUpdate(
+      'UPDATE $locationTrackingTable SET posted = 1 WHERE id IN ($placeholders)',
+      ids,
+    );
+
+    debugPrint('✅ [DB] Marked $result location tracking records as posted');
+    return result;
+  }
+
+  /// Get count of unposted location tracking records
+  Future<int> getUnpostedLocationTrackingCount() async {
+    final db = await database;
+
+    String whereClause = 'posted = ?';
+    List<dynamic> whereArgs = [0];
+
+    if (_currentCompanyCode != null) {
+      whereClause += ' AND company_code = ?';
+      whereArgs.add(_currentCompanyCode);
+    }
+
+    final result = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM $locationTrackingTable WHERE $whereClause',
+      whereArgs,
+    );
+
+    return result.first['count'] as int? ?? 0;
   }
 }

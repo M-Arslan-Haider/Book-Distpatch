@@ -1,5 +1,5 @@
 //// ============================================================
-////  LocationMonitorService.kt — BACKGROUND MQTT FIX
+////  LocationMonitorService.kt — BACKGROUND MQTT FIX + BULK TRACKING
 ////
 ////  BUGS FIXED:
 ////    1. Identity (deviceId/companyCode/empName) now persisted to
@@ -8,6 +8,9 @@
 ////    3. Network callback no longer nukes all handler runnables
 ////    4. Removed screen wake lock cycling (caused OEM battery kill)
 ////    5. MQTT keepAlive = 30 to match Dart client
+////  BULK TRACKING ADDED:
+////    6. Captures location every 1 second
+////    7. Posts bulk data every 10 seconds to /location/bulk
 //// ============================================================
 //
 //package com.metaxperts.GPS_Workforce_Monitor
@@ -51,6 +54,7 @@
 //import org.eclipse.paho.client.mqttv3.MqttMessage
 //import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence
 //
+//import org.json.JSONArray
 //import org.json.JSONObject
 //
 //import java.io.OutputStreamWriter
@@ -75,6 +79,11 @@
 //    private val HTTP_POST_MS  = 2 * 60 * 1000L
 //    private val HTTP_POST_URL = "http://oracle.metaxperts.net/ords/gps_workforce/emplocation/post/"
 //
+//    // BULK TRACKING CONSTANTS
+//    private val BULK_CAPTURE_MS = 1_000L  // 1 second capture
+//    private val BULK_POST_MS    = 10_000L // 10 seconds post
+//    private val BULK_POST_URL   = "http://103.149.33.102:8001/location/bulk"
+//
 //    private val MQTT_HOST = "103.149.33.102"
 //    private val MQTT_PORT = 1883
 //
@@ -94,6 +103,8 @@
 //    private var httpPostRunnable: Runnable? = null
 //    private var watchdogRunnable: Runnable? = null
 //    private var heartbeatRunnable: Runnable? = null
+//    private var bulkCaptureRunnable: Runnable? = null
+//    private var bulkPostRunnable: Runnable? = null
 //    private var isDestroyed = false
 //
 //    // FIX #2: PARTIAL_WAKE_LOCK — the ONLY type that prevents CPU sleep
@@ -126,6 +137,11 @@
 //    private var deviceId    = ""
 //    private var companyCode = ""
 //    private var empName     = ""
+//    private var depId       = ""
+//    private var empImage    = ""
+//
+//    // BULK TRACKING BUFFER
+//    private val bulkLocationBuffer = mutableListOf<JSONObject>()
 //
 //    private val FAKE_GPS_API         = "http://oracle.metaxperts.net/ords/gps_workforce/fakegps/post/"
 //    private var lastFakeGpsReportTime: Long = 0
@@ -203,6 +219,14 @@
 //        }
 //    }
 //
+//    private fun firstNonEmptyPref(prefs: android.content.SharedPreferences, keys: List<String>): String {
+//        for (key in keys) {
+//            val value = prefString(prefs, key).trim()
+//            if (value.isNotEmpty()) return value
+//        }
+//        return ""
+//    }
+//
 //    override fun onCreate() {
 //        super.onCreate()
 //        handler = Handler(Looper.getMainLooper())
@@ -239,6 +263,10 @@
 //        empName     = intent?.getStringExtra(EXTRA_EMP_NAME)?.takeIf { it.isNotEmpty() }
 //            ?: prefString(prefs, "emp_name")
 //
+//        // Read dept_id and emp_image from login-cached SharedPreferences
+//        depId    = prefString(prefs, "flutter.cached_dep_id")
+//        empImage = prefString(prefs, "flutter.cached_image_url")
+//
 //        // FIX #1b: Persist identity so boot receiver / alarm restart can recover
 //        prefs.edit().apply {
 //            if (deviceId.isNotEmpty())    putString("user_name",    deviceId)
@@ -273,7 +301,7 @@
 //
 //        if (clockedIn && !isFrozen) {
 //            if (!wasPermissionGranted) {
-//                handler.postDelayed({ handleCriticalEvent("permission_revoked_auto") }, 500)
+//                handler.postDelayed({ handleCriticalEvent("System Clockout - Permission Revoked") }, 500)
 //                return START_STICKY
 //            }
 //            if (!wasLocationEnabled) {
@@ -328,8 +356,160 @@
 //            if (!isDestroyed) handler.postDelayed(it, HTTP_POST_MS)
 //        }
 //
+//        // BULK CAPTURE RUNNABLE - captures location every 1 second
+//        bulkCaptureRunnable = object : Runnable {
+//            override fun run() {
+//                if (isDestroyed) return
+//                val p = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+//                val clocked = p.getBoolean(KEY_IS_CLOCKED_IN, false)
+//                val frozen  = p.getBoolean(KEY_IS_TIMER_FROZEN, false)
+//                if (clocked && !frozen) {
+//                    captureBulkLocationSnapshot()
+//                }
+//                if (!isDestroyed) handler.postDelayed(this, BULK_CAPTURE_MS)
+//            }
+//        }
+//        handler.postDelayed(bulkCaptureRunnable!!, BULK_CAPTURE_MS)
+//
+//        // BULK POST RUNNABLE - posts bulk data every 10 seconds
+//        bulkPostRunnable = object : Runnable {
+//            override fun run() {
+//                if (isDestroyed) return
+//                val p = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+//                val clocked = p.getBoolean(KEY_IS_CLOCKED_IN, false)
+//                if (clocked && isNetworkAvailable()) {
+//                    postBulkLocationToApi()
+//                }
+//                if (!isDestroyed) handler.postDelayed(this, BULK_POST_MS)
+//            }
+//        }
+//        handler.postDelayed(bulkPostRunnable!!, BULK_POST_MS)
+//
 //        startMqttWatchdog()
 //        startHeartbeatWatchdog()
+//    }
+//
+//    // BULK CAPTURE FUNCTION
+//    private fun captureBulkLocationSnapshot() {
+//        try {
+//            val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+//
+//            var lat = if (lastLat != 0.0) lastLat else 0.0
+//            var lng = if (lastLon != 0.0) lastLon else 0.0
+//
+//            if (lat == 0.0 && lng == 0.0) {
+//                try {
+//                    val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+//                    if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+//                        listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER).forEach { provider ->
+//                            if (lat != 0.0 || lng != 0.0) return@forEach
+//                            val loc = lm.getLastKnownLocation(provider)
+//                            if (loc != null) {
+//                                lat = loc.latitude
+//                                lng = loc.longitude
+//                            }
+//                        }
+//                    }
+//                } catch (_: Exception) {}
+//            }
+//
+//            if (lat == 0.0 && lng == 0.0) return
+//
+//            val userId = firstNonEmptyPref(prefs, listOf("flutter.user_id", "user_id", "flutter.emp_id", "emp_id"))
+//                .ifEmpty { deviceId }
+//
+//            val bookerName = firstNonEmptyPref(prefs, listOf("flutter.booker_name", "booker_name", "flutter.emp_name", "emp_name"))
+//                .ifEmpty { empName }
+//
+//            val designation = firstNonEmptyPref(prefs, listOf(
+//                "flutter.cached_designation",
+//                "flutter.userDesignation",
+//                "userDesignation",
+//                "designation",
+//                "flutter.designation",
+//                "job",
+//                "role"
+//            )).ifEmpty { "GPS" }
+//
+//            val company = firstNonEmptyPref(prefs, listOf("flutter.company_code", "company_code"))
+//                .ifEmpty { companyCode }
+//
+//            val now = Date()
+//            val locationTrackingId = now.time.toString()
+//
+//            // ✅ FIX #1: Match Flutter date format (yyyy-MM-dd)
+//            val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(now)
+//            val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(now)
+//
+//            val snap = JSONObject().apply {
+//                put("locationtracking_id", locationTrackingId)
+//                put("locationtracking_date", dateStr)        // ✅ yyyy-MM-dd
+//                put("locationtracking_time", timeStr)        // ✅ HH:mm:ss
+//                put("user_id", userId)
+//                put("lat_in", lat)                           // ✅ Double
+//                put("lng_in", lng)                           // ✅ Double
+//                put("booker_name", bookerName)
+//                put("designation", designation)
+//                put("posted", false)                         // ✅ FIX #2: boolean false (not 0)
+//                put("company_code", company)
+//            }
+//
+//            synchronized(bulkLocationBuffer) {
+//                bulkLocationBuffer.add(snap)
+//                android.util.Log.d("LocationMonitor",
+//                    "📦 [BULK] buffered=${bulkLocationBuffer.size} user_id=$userId designation=$designation lat=$lat lng=$lng date=$dateStr")
+//            }
+//        } catch (e: Exception) {
+//            android.util.Log.e("LocationMonitor", "captureBulkLocationSnapshot error: ${e.message}")
+//        }
+//    }
+//    // BULK POST FUNCTION
+//    private fun postBulkLocationToApi() {
+//        try {
+//            val snapshot = synchronized(bulkLocationBuffer) {
+//                if (bulkLocationBuffer.isEmpty()) return
+//                val copy = bulkLocationBuffer.toList()
+//                bulkLocationBuffer.clear()
+//                copy
+//            }
+//
+//            if (snapshot.isEmpty()) return
+//
+//            Thread {
+//                try {
+//                    val jsonArray = JSONArray()
+//                    snapshot.forEach { jsonArray.put(it) }
+//
+//                    val rootObj = JSONObject().apply {
+//                        put("records", jsonArray)
+//                    }
+//
+//                    val conn = (URL(BULK_POST_URL).openConnection() as HttpURLConnection).apply {
+//                        requestMethod = "POST"
+//                        setRequestProperty("Content-Type", "application/json")
+//                        setRequestProperty("Accept", "application/json")
+//                        doOutput = true
+//                        connectTimeout = 15000
+//                        readTimeout = 15000
+//                    }
+//
+//                    android.util.Log.d("LocationMonitor", "🚀 [BULK] sending ${snapshot.size} records")
+//
+//                    OutputStreamWriter(conn.outputStream).use { it.write(rootObj.toString()) }
+//                    val code = conn.responseCode
+//                    android.util.Log.d("LocationMonitor", "✅ [BULK] response=$code")
+//                    conn.disconnect()
+//                } catch (e: Exception) {
+//                    android.util.Log.e("LocationMonitor", "❌ [BULK] send failed: ${e.message}")
+//                    // Re-add to buffer on failure
+//                    synchronized(bulkLocationBuffer) {
+//                        bulkLocationBuffer.addAll(0, snapshot)
+//                    }
+//                }
+//            }.start()
+//        } catch (e: Exception) {
+//            android.util.Log.e("LocationMonitor", "❌ [BULK] post error: ${e.message}")
+//        }
 //    }
 //
 //    private fun startMqttWatchdog() {
@@ -439,10 +619,10 @@
 //
 //        if (wasPermissionGranted && !currentPermissionGranted) {
 //            val currentTime = System.currentTimeMillis()
-//            if (currentTime - lastEventTime > 5000 && lastEventReason != "permission_revoked_auto") {
+//            if (currentTime - lastEventTime > 5000 && lastEventReason != "System Clockout - Permission Revoked") {
 //                lastEventTime   = currentTime
-//                lastEventReason = "permission_revoked_auto"
-//                handleCriticalEvent("permission_revoked_auto")
+//                lastEventReason = "System Clockout - Permission Revoked"
+//                handleCriticalEvent("System Clockout - Permission Revoked")
 //                return
 //            }
 //        }
@@ -502,6 +682,13 @@
 //        httpPostRunnable?.let { handler.removeCallbacks(it) }
 //        watchdogRunnable?.let { handler.removeCallbacks(it) }
 //        heartbeatRunnable?.let { handler.removeCallbacks(it) }
+//        bulkCaptureRunnable?.let { handler.removeCallbacks(it) }
+//        bulkPostRunnable?.let { handler.removeCallbacks(it) }
+//
+//        // Flush bulk buffer before disconnect
+//        if (bulkLocationBuffer.isNotEmpty()) {
+//            postBulkLocationToApi()
+//        }
 //
 //        disconnectMqtt()
 //
@@ -539,7 +726,7 @@
 //                try {
 //                    if (locationManager?.isProviderEnabled(p) == true) {
 //                        locationManager?.requestLocationUpdates(
-//                            p, 4000L, 0f, locationListener!!, Looper.getMainLooper()
+//                            p, 1000L, 0f, locationListener!!, Looper.getMainLooper()
 //                        )
 //                    }
 //                } catch (_: Exception) {}
@@ -634,6 +821,8 @@
 //            put("device_id",    deviceId)
 //            put("company_code", companyCode)
 //            put("emp_name",     empName)
+//            put("dept_id",      depId)
+//            put("emp_image",    empImage)
 //            put("track_id",     System.currentTimeMillis())
 //            put("lat",          lastLat)
 //            put("lon",          lastLon)
@@ -864,10 +1053,10 @@
 //    private fun showCriticalNotification(reason: String, time: String) {
 //        val title = when (reason) {
 //            "System Clockout - Location Off"       -> "⚠️ LOCATION TURNED OFF"
-//            "permission_revoked_auto" -> "⚠️ PERMISSION REVOKED"
-//            "System Clockout - Midnight Time"           -> "⚠️ MIDNIGHT AUTO CLOCKOUT"
+//            "System Clockout - Permission Revoked" -> "⚠️ PERMISSION REVOKED"
+//            "System Clockout - Midnight Time"      -> "⚠️ MIDNIGHT AUTO CLOCKOUT"
 //            "System Clockout - Shift End"          -> "⏰ SHIFT END AUTO CLOCKOUT"
-//            else                      -> "⚠️ AUTO CLOCKOUT"
+//            else                                   -> "⚠️ AUTO CLOCKOUT"
 //        }
 //        val message = "Time: $time\nApp was closed - Event captured. Open app to sync."
 //        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
@@ -935,21 +1124,22 @@
 //        httpPostRunnable?.let { handler.removeCallbacks(it) }
 //        watchdogRunnable?.let { handler.removeCallbacks(it) }
 //        heartbeatRunnable?.let { handler.removeCallbacks(it) }
+//        bulkCaptureRunnable?.let { handler.removeCallbacks(it) }
+//        bulkPostRunnable?.let { handler.removeCallbacks(it) }
+//
+//        // Flush bulk buffer before destroy if network available
+//        if (bulkLocationBuffer.isNotEmpty() && isNetworkAvailable()) {
+//            postBulkLocationToApi()
+//        }
 //
 //        // ── PERMISSION-REVOKED AUTO CLOCKOUT ───────────────────────────────
-//        // Jab Android App Info se location permission revoke hoti hai, OS
-//        // service ko forcibly destroy kar deta hai.  checkLocationAndPermission()
-//        // us waqt run nahi hota, isliye yahan check karo:
-//        // Agar user clocked-in tha AUR permission ab nahi hai AUR timer abhi
-//        // frozen nahi tha → critical event save karo taake Flutter app khulne
-//        // par auto-clockout reason dikh sake.
 //        try {
 //            val prefs    = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 //            val clocked  = prefs.getBoolean(KEY_IS_CLOCKED_IN, false)
 //            val frozen   = prefs.getBoolean(KEY_IS_TIMER_FROZEN, false)
-//            val permNow  = checkLocationPermission()   // will return false if revoked
+//            val permNow  = checkLocationPermission()
 //            if (clocked && !frozen && !permNow) {
-//                handleCriticalEvent("permission_revoked_auto")
+//                handleCriticalEvent("System Clockout - Permission Revoked")
 //                android.util.Log.d("LocationMonitor",
 //                    "onDestroy: permission revoked while clocked-in → auto clockout saved")
 //            }
@@ -968,8 +1158,10 @@
 //        super.onDestroy()
 //    }
 //}
+
+
 // ============================================================
-//  LocationMonitorService.kt — BACKGROUND MQTT FIX
+//  LocationMonitorService.kt — BACKGROUND MQTT FIX + BULK TRACKING
 //
 //  BUGS FIXED:
 //    1. Identity (deviceId/companyCode/empName) now persisted to
@@ -978,6 +1170,9 @@
 //    3. Network callback no longer nukes all handler runnables
 //    4. Removed screen wake lock cycling (caused OEM battery kill)
 //    5. MQTT keepAlive = 30 to match Dart client
+//  BULK TRACKING ADDED:
+//    6. Captures location every 1 second
+//    7. Posts bulk data every 10 seconds to /location/bulk
 // ============================================================
 
 package com.metaxperts.GPS_Workforce_Monitor
@@ -1021,6 +1216,7 @@ import org.eclipse.paho.client.mqttv3.MqttConnectOptions
 import org.eclipse.paho.client.mqttv3.MqttMessage
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence
 
+import org.json.JSONArray
 import org.json.JSONObject
 
 import java.io.OutputStreamWriter
@@ -1045,6 +1241,11 @@ class LocationMonitorService : Service() {
     private val HTTP_POST_MS  = 2 * 60 * 1000L
     private val HTTP_POST_URL = "http://oracle.metaxperts.net/ords/gps_workforce/emplocation/post/"
 
+    // BULK TRACKING CONSTANTS
+    private val BULK_CAPTURE_MS = 1_000L  // 1 second capture
+    private val BULK_POST_MS    = 10_000L // 10 seconds post
+    private val BULK_POST_URL   = "http://103.149.33.102:8001/location/bulk"
+
     private val MQTT_HOST = "103.149.33.102"
     private val MQTT_PORT = 1883
 
@@ -1064,6 +1265,8 @@ class LocationMonitorService : Service() {
     private var httpPostRunnable: Runnable? = null
     private var watchdogRunnable: Runnable? = null
     private var heartbeatRunnable: Runnable? = null
+    private var bulkCaptureRunnable: Runnable? = null
+    private var bulkPostRunnable: Runnable? = null
     private var isDestroyed = false
 
     // FIX #2: PARTIAL_WAKE_LOCK — the ONLY type that prevents CPU sleep
@@ -1098,6 +1301,9 @@ class LocationMonitorService : Service() {
     private var empName     = ""
     private var depId       = ""
     private var empImage    = ""
+
+    // BULK TRACKING BUFFER
+    private val bulkLocationBuffer = mutableListOf<JSONObject>()
 
     private val FAKE_GPS_API         = "http://oracle.metaxperts.net/ords/gps_workforce/fakegps/post/"
     private var lastFakeGpsReportTime: Long = 0
@@ -1173,6 +1379,14 @@ class LocationMonitorService : Service() {
         } catch (e: Exception) {
             ""
         }
+    }
+
+    private fun firstNonEmptyPref(prefs: android.content.SharedPreferences, keys: List<String>): String {
+        for (key in keys) {
+            val value = prefString(prefs, key).trim()
+            if (value.isNotEmpty()) return value
+        }
+        return ""
     }
 
     override fun onCreate() {
@@ -1304,8 +1518,160 @@ class LocationMonitorService : Service() {
             if (!isDestroyed) handler.postDelayed(it, HTTP_POST_MS)
         }
 
+        // BULK CAPTURE RUNNABLE - captures location every 1 second
+        bulkCaptureRunnable = object : Runnable {
+            override fun run() {
+                if (isDestroyed) return
+                val p = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                val clocked = p.getBoolean(KEY_IS_CLOCKED_IN, false)
+                val frozen  = p.getBoolean(KEY_IS_TIMER_FROZEN, false)
+                if (clocked && !frozen) {
+                    captureBulkLocationSnapshot()
+                }
+                if (!isDestroyed) handler.postDelayed(this, BULK_CAPTURE_MS)
+            }
+        }
+        handler.postDelayed(bulkCaptureRunnable!!, BULK_CAPTURE_MS)
+
+        // BULK POST RUNNABLE - posts bulk data every 10 seconds
+        bulkPostRunnable = object : Runnable {
+            override fun run() {
+                if (isDestroyed) return
+                val p = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                val clocked = p.getBoolean(KEY_IS_CLOCKED_IN, false)
+                if (clocked && isNetworkAvailable()) {
+                    postBulkLocationToApi()
+                }
+                if (!isDestroyed) handler.postDelayed(this, BULK_POST_MS)
+            }
+        }
+        handler.postDelayed(bulkPostRunnable!!, BULK_POST_MS)
+
         startMqttWatchdog()
         startHeartbeatWatchdog()
+    }
+
+    // BULK CAPTURE FUNCTION
+    private fun captureBulkLocationSnapshot() {
+        try {
+            val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+            var lat = if (lastLat != 0.0) lastLat else 0.0
+            var lng = if (lastLon != 0.0) lastLon else 0.0
+
+            if (lat == 0.0 && lng == 0.0) {
+                try {
+                    val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+                    if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                        listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER).forEach { provider ->
+                            if (lat != 0.0 || lng != 0.0) return@forEach
+                            val loc = lm.getLastKnownLocation(provider)
+                            if (loc != null) {
+                                lat = loc.latitude
+                                lng = loc.longitude
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
+            if (lat == 0.0 && lng == 0.0) return
+
+            val userId = firstNonEmptyPref(prefs, listOf("flutter.user_id", "user_id", "flutter.emp_id", "emp_id"))
+                .ifEmpty { deviceId }
+
+            val bookerName = firstNonEmptyPref(prefs, listOf("flutter.booker_name", "booker_name", "flutter.emp_name", "emp_name"))
+                .ifEmpty { empName }
+
+            val designation = firstNonEmptyPref(prefs, listOf(
+                "flutter.cached_designation",
+                "flutter.userDesignation",
+                "userDesignation",
+                "designation",
+                "flutter.designation",
+                "job",
+                "role"
+            )).ifEmpty { "GPS" }
+
+            val company = firstNonEmptyPref(prefs, listOf("flutter.company_code", "company_code"))
+                .ifEmpty { companyCode }
+
+            val now = Date()
+            val locationTrackingId = now.time.toString()
+
+            // ✅ FIX #1: Match Flutter date format (yyyy-MM-dd)
+            val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(now)
+            val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(now)
+
+            val snap = JSONObject().apply {
+                put("locationtracking_id", locationTrackingId)
+                put("locationtracking_date", dateStr)        // ✅ yyyy-MM-dd
+                put("locationtracking_time", timeStr)        // ✅ HH:mm:ss
+                put("user_id", userId)
+                put("lat_in", lat)                           // ✅ Double
+                put("lng_in", lng)                           // ✅ Double
+                put("booker_name", bookerName)
+                put("designation", designation)
+                put("posted", false)                         // ✅ FIX #2: boolean false (not 0)
+                put("company_code", company)
+            }
+
+            synchronized(bulkLocationBuffer) {
+                bulkLocationBuffer.add(snap)
+                android.util.Log.d("LocationMonitor",
+                    "📦 [BULK] buffered=${bulkLocationBuffer.size} user_id=$userId designation=$designation lat=$lat lng=$lng date=$dateStr")
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("LocationMonitor", "captureBulkLocationSnapshot error: ${e.message}")
+        }
+    }
+    // BULK POST FUNCTION
+    private fun postBulkLocationToApi() {
+        try {
+            val snapshot = synchronized(bulkLocationBuffer) {
+                if (bulkLocationBuffer.isEmpty()) return
+                val copy = bulkLocationBuffer.toList()
+                bulkLocationBuffer.clear()
+                copy
+            }
+
+            if (snapshot.isEmpty()) return
+
+            Thread {
+                try {
+                    val jsonArray = JSONArray()
+                    snapshot.forEach { jsonArray.put(it) }
+
+                    val rootObj = JSONObject().apply {
+                        put("records", jsonArray)
+                    }
+
+                    val conn = (URL(BULK_POST_URL).openConnection() as HttpURLConnection).apply {
+                        requestMethod = "POST"
+                        setRequestProperty("Content-Type", "application/json")
+                        setRequestProperty("Accept", "application/json")
+                        doOutput = true
+                        connectTimeout = 15000
+                        readTimeout = 15000
+                    }
+
+                    android.util.Log.d("LocationMonitor", "🚀 [BULK] sending ${snapshot.size} records")
+
+                    OutputStreamWriter(conn.outputStream).use { it.write(rootObj.toString()) }
+                    val code = conn.responseCode
+                    android.util.Log.d("LocationMonitor", "✅ [BULK] response=$code")
+                    conn.disconnect()
+                } catch (e: Exception) {
+                    android.util.Log.e("LocationMonitor", "❌ [BULK] send failed: ${e.message}")
+                    // Re-add to buffer on failure
+                    synchronized(bulkLocationBuffer) {
+                        bulkLocationBuffer.addAll(0, snapshot)
+                    }
+                }
+            }.start()
+        } catch (e: Exception) {
+            android.util.Log.e("LocationMonitor", "❌ [BULK] post error: ${e.message}")
+        }
     }
 
     private fun startMqttWatchdog() {
@@ -1468,6 +1834,47 @@ class LocationMonitorService : Service() {
         val fastJson = """{"fast_attendanceId":"","fast_userId":"","fast_clockOutTime":"$timestamp","fast_totalTime":"00:00:00","fast_totalDistance":0.0,"fast_reason":"$reason","fast_clockInTime":"$clockInTime"}"""
         editor.putString("flutter.fastClockOutData", fastJson)
 
+        // ── TRAVEL MODE: also close the open travel record ─────────────────────
+        // If the employee was in travel mode when location was turned off or
+        // permission was revoked, we must also save a fast-clockout for the
+        // travel attendance record so TravelViewModel can close it on next launch.
+        val isTravelMode = prefs.getBoolean("flutter.is_travel_mode", false)
+        if (isTravelMode) {
+            val travelId        = prefs.getString("flutter.travel_id", "") ?: ""
+            val travelStartStr  = prefs.getString("flutter.travel_start_time", "") ?: ""
+            val travelDist      = prefs.getFloat("flutter.travel_distance", 0.0f)
+
+            // Compute elapsed travel time if we have a start timestamp
+            var travelElapsed = "00:00:00"
+            try {
+                if (travelStartStr.isNotEmpty()) {
+                    val sdf   = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
+                    val start = sdf.parse(travelStartStr)
+                    if (start != null) {
+                        val elapsedSec = ((Date().time - start.time) / 1000).toInt()
+                        val h = elapsedSec / 3600
+                        val m = (elapsedSec % 3600) / 60
+                        val s = elapsedSec % 60
+                        travelElapsed = String.format("%02d:%02d:%02d", h, m, s)
+                    }
+                }
+            } catch (_: Exception) {}
+
+            val travelFastJson = """{"travel_attendanceId":"$travelId","travel_clockOutTime":"$timestamp","travel_totalTime":"$travelElapsed","travel_totalDistance":${travelDist.toDouble()},"travel_reason":"$reason","travel_clockInTime":"$travelStartStr"}"""
+
+            editor.putBoolean("flutter.hasTravelFastClockOut", true)
+            editor.putString("flutter.travelFastClockOutData", travelFastJson)
+            editor.putString("flutter.travelFastClockOutTime", timestamp)
+            editor.putString("flutter.travelFastClockOutReason", reason)
+            editor.putString("flutter.travelFastClockOutId", travelId)
+            // Clear travel-mode flag so TravelViewModel knows travel ended
+            editor.putBoolean("flutter.is_travel_mode", false)
+
+            android.util.Log.d("LocationMonitor",
+                "🚗 [TRAVEL] Auto clockout during travel → id=$travelId reason=$reason elapsed=$travelElapsed dist=$travelDist")
+        }
+        // ───────────────────────────────────────────────────────────────────────
+
         try { editor.commit() } catch (e: Exception) { editor.apply() }
 
         showCriticalNotification(reason, timestamp)
@@ -1478,6 +1885,13 @@ class LocationMonitorService : Service() {
         httpPostRunnable?.let { handler.removeCallbacks(it) }
         watchdogRunnable?.let { handler.removeCallbacks(it) }
         heartbeatRunnable?.let { handler.removeCallbacks(it) }
+        bulkCaptureRunnable?.let { handler.removeCallbacks(it) }
+        bulkPostRunnable?.let { handler.removeCallbacks(it) }
+
+        // Flush bulk buffer before disconnect
+        if (bulkLocationBuffer.isNotEmpty()) {
+            postBulkLocationToApi()
+        }
 
         disconnectMqtt()
 
@@ -1515,7 +1929,7 @@ class LocationMonitorService : Service() {
                 try {
                     if (locationManager?.isProviderEnabled(p) == true) {
                         locationManager?.requestLocationUpdates(
-                            p, 4000L, 0f, locationListener!!, Looper.getMainLooper()
+                            p, 1000L, 0f, locationListener!!, Looper.getMainLooper()
                         )
                     }
                 } catch (_: Exception) {}
@@ -1843,9 +2257,9 @@ class LocationMonitorService : Service() {
         val title = when (reason) {
             "System Clockout - Location Off"       -> "⚠️ LOCATION TURNED OFF"
             "System Clockout - Permission Revoked" -> "⚠️ PERMISSION REVOKED"
-            "System Clockout - Midnight Time"           -> "⚠️ MIDNIGHT AUTO CLOCKOUT"
+            "System Clockout - Midnight Time"      -> "⚠️ MIDNIGHT AUTO CLOCKOUT"
             "System Clockout - Shift End"          -> "⏰ SHIFT END AUTO CLOCKOUT"
-            else                      -> "⚠️ AUTO CLOCKOUT"
+            else                                   -> "⚠️ AUTO CLOCKOUT"
         }
         val message = "Time: $time\nApp was closed - Event captured. Open app to sync."
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
@@ -1913,19 +2327,20 @@ class LocationMonitorService : Service() {
         httpPostRunnable?.let { handler.removeCallbacks(it) }
         watchdogRunnable?.let { handler.removeCallbacks(it) }
         heartbeatRunnable?.let { handler.removeCallbacks(it) }
+        bulkCaptureRunnable?.let { handler.removeCallbacks(it) }
+        bulkPostRunnable?.let { handler.removeCallbacks(it) }
+
+        // Flush bulk buffer before destroy if network available
+        if (bulkLocationBuffer.isNotEmpty() && isNetworkAvailable()) {
+            postBulkLocationToApi()
+        }
 
         // ── PERMISSION-REVOKED AUTO CLOCKOUT ───────────────────────────────
-        // Jab Android App Info se location permission revoke hoti hai, OS
-        // service ko forcibly destroy kar deta hai.  checkLocationAndPermission()
-        // us waqt run nahi hota, isliye yahan check karo:
-        // Agar user clocked-in tha AUR permission ab nahi hai AUR timer abhi
-        // frozen nahi tha → critical event save karo taake Flutter app khulne
-        // par auto-clockout reason dikh sake.
         try {
             val prefs    = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             val clocked  = prefs.getBoolean(KEY_IS_CLOCKED_IN, false)
             val frozen   = prefs.getBoolean(KEY_IS_TIMER_FROZEN, false)
-            val permNow  = checkLocationPermission()   // will return false if revoked
+            val permNow  = checkLocationPermission()
             if (clocked && !frozen && !permNow) {
                 handleCriticalEvent("System Clockout - Permission Revoked")
                 android.util.Log.d("LocationMonitor",

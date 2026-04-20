@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "115431751416",
+    "project_id": "gps-workforce-monitor-2d20d",
+    "storage_bucket": "gps-workforce-monitor-2d20d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:115431751416:android:6bccee31dac5d29797450d",
+        "android_client_info": {
+          "package_name": "com.metaxperts.GPS_Workforce_Monitor"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDBTP5hZ-E49eU40yBRkcw9VEIuKVHCg3U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

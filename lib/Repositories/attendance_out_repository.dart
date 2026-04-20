@@ -6,13 +6,17 @@ import 'package:uuid/uuid.dart';
 
 import '../Database/db_helper.dart';
 import '../Models/attendanceOut_model.dart';
+import '../Services/remote_config_service.dart';
 
 class AttendanceOutRepository {
   final DBHelper _dbHelper = DBHelper();
 
-  static const String _postApiUrl =
-      // 'http://oracle.metaxperts.net/ords/production/attendanceout/post/';
-  'http://oracle.metaxperts.net/ords/gps_workforce/attendanceout/post/';
+  // static const String _postApiUrl =
+  //     // 'http://oracle.metaxperts.net/ords/production/attendanceout/post/';
+  // 'http://oracle.metaxperts.net/ords/gps_workforce/attendanceout/post/';
+///firebaaee
+  static String get _postApiUrl => RemoteConfigService.getAttendanceOutUrl();
+
 
   Future<List<AttendanceOutModel>> getAll() async {
     final rows = await _dbHelper.getAll(DBHelper.attendanceOutTable);

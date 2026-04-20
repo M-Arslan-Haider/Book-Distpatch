@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../Database/db_helper.dart';
+import '../Services/remote_config_service.dart';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // MODEL
@@ -105,8 +106,11 @@ class FakeGpsModel {
 class FakeGpsLog {
   FakeGpsLog._();
 
-  static const String _apiUrl =
-      'http://oracle.metaxperts.net/ords/gps_workforce/fakegps/post/';
+  // static const String _apiUrl =
+  //     'http://oracle.metaxperts.net/ords/gps_workforce/fakegps/post/';
+  ///firebase
+  // WITH:
+  static String get _apiUrl => RemoteConfigService.getFakeGpsUrl();
 
   static const String _table = DBHelper.fakeGpsTable;
 

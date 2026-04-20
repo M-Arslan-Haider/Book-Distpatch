@@ -652,11 +652,16 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../Models/geofancing_violation_model.dart';
+import '../Services/remote_config_service.dart';
 
 class GeofenceViolationViewModel extends GetxController {
   // ── API URL ───────────────────────────────────────────────────────────────
-  static const String _apiUrl =
-      'http://oracle.metaxperts.net/ords/gps_workforce/geofencepost/post/';
+  // static const String _apiUrl =
+  //     'http://oracle.metaxperts.net/ords/gps_workforce/geofencepost/post/';
+
+  ///firebase
+  // WITH:
+  static String get _apiUrl => RemoteConfigService.getGeofencePostUrl();
 
   // ── SharedPreferences keys ────────────────────────────────────────────────
   static const String _kViolationsKey  = 'geofence_violations_today';
