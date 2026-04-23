@@ -4,22 +4,40 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../Database/db_helper.dart';
 import '../Models/LoginModels/login_models.dart';
 import '../Repositories/LoginRepositories/login_repository.dart';
+import '../Services/biometric_service.dart';
 import '../constants.dart';
 import '../ViewModels/attendance_view_model.dart';
 
 class LoginViewModel extends GetxController {
   final LoginRepository _loginRepository = Get.find<LoginRepository>();
 
-  var isLoading = false.obs;
-  var currentUser = Rx<LoginModels?>(null);
-  var loginError = ''.obs;
-  var currentCompanyCode = ''.obs;
+  var isLoading             = false.obs;
+  var currentUser           = Rx<LoginModels?>(null);
+  var loginError            = ''.obs;
+  var currentCompanyCode    = ''.obs;
 
+  // ── Biometric state ───────────────────────────────────────────────────────
+  var isBiometricEnabled = false.obs;
+
+  /// The primary biometric modality available on this device (face / fingerprint).
+  /// Exposed so the UI can pick the correct icon and label without extra logic.
+  var biometricModality = BiometricModality.none.obs;
+
+  /// In-memory cache of the last successful login credentials.
+  /// Populated in [login] so the drawer can enable biometric without
+  /// asking the user to re-type their password.
+  String _cachedEmpId    = '';
+  String _cachedPassword = '';
+
+  // ─────────────────────────────────────────────────────────────────────────
   @override
   void onInit() {
     super.onInit();
     _loadCurrentCompany();
+    _loadBiometricState();
   }
+
+  // ── Existing: company loading ─────────────────────────────────────────────
 
   Future<void> _loadCurrentCompany() async {
     final prefs = await SharedPreferences.getInstance();
@@ -44,6 +62,8 @@ class LoginViewModel extends GetxController {
     await _loadCurrentCompany();
     debugPrint('🔄 Company code refreshed: ${currentCompanyCode.value}');
   }
+
+  // ── Existing: password login ──────────────────────────────────────────────
 
   Future<bool> login(String employeeId, String password) async {
     try {
@@ -84,6 +104,10 @@ class LoginViewModel extends GetxController {
 
         debugPrint('✅ Login success: ${employee.emp_name} (${employee.job})');
         debugPrint('📦 Cached end_time: ${employee.end_time}, over_time: ${employee.over_time}, shift: ${employee.shift}');
+
+        // Cache credentials in memory for biometric setup
+        _cachedEmpId    = employeeId;
+        _cachedPassword = password;
 
         final attendanceVM = Get.find<AttendanceViewModel>();
 
@@ -143,6 +167,8 @@ class LoginViewModel extends GetxController {
     }
   }
 
+  // ── Existing: routing & logout ────────────────────────────────────────────
+
   String getHomeRoute() => routeHome;
 
   Future<void> logout() async {
@@ -154,6 +180,169 @@ class LoginViewModel extends GetxController {
     await prefs.remove('geoFencing');
     await prefs.setBool(prefIsAuthenticated, false);
     currentUser.value = null;
+
+    // Clear in-memory credential cache on logout
+    _cachedEmpId    = '';
+    _cachedPassword = '';
+
     Get.offAllNamed(routeCodeScreen);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Biometric helpers
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Reads persisted biometric preference, detects the device modality
+  /// (face vs fingerprint) and refreshes [isBiometricEnabled] +
+  /// [biometricModality].
+  Future<void> _loadBiometricState() async {
+    final prefs = await SharedPreferences.getInstance();
+    isBiometricEnabled.value = prefs.getBool(prefBiometricEnabled) ?? false;
+
+    // Detect face vs fingerprint so UI can show the right icon/label
+    biometricModality.value = await BiometricService.getPrimaryModality();
+
+    debugPrint('🔏 Biometric enabled: ${isBiometricEnabled.value}');
+    debugPrint('🔏 Biometric modality: ${biometricModality.value}');
+  }
+
+  /// Returns the human-readable label for the current modality.
+  /// e.g. "Face ID" or "Fingerprint"
+  String get biometricLabel {
+    switch (biometricModality.value) {
+      case BiometricModality.face:
+        return 'Face ID';
+      case BiometricModality.fingerprint:
+        return 'Fingerprint';
+      case BiometricModality.none:
+        return 'Biometric';
+    }
+  }
+
+  /// Returns the OS-dialog reason string tailored to the modality.
+  String get _authReason {
+    switch (biometricModality.value) {
+      case BiometricModality.face:
+        return 'Look at your phone to sign in';
+      case BiometricModality.fingerprint:
+        return 'Scan your fingerprint to sign in';
+      case BiometricModality.none:
+        return 'Authenticate to sign in';
+    }
+  }
+
+  /// Returns the enable-flow OS-dialog reason string.
+  String get _enableReason {
+    switch (biometricModality.value) {
+      case BiometricModality.face:
+        return 'Verify your face to enable Face ID login';
+      case BiometricModality.fingerprint:
+        return 'Verify your fingerprint to enable biometric login';
+      case BiometricModality.none:
+        return 'Verify your identity to enable biometric login';
+    }
+  }
+
+  /// Called from the side drawer to enable biometric login (face or finger).
+  ///
+  /// [chosenModality] — when the user explicitly selects face or fingerprint
+  /// from the choice sheet, pass it here so the reason strings and labels
+  /// reflect their actual pick instead of the auto-detected device default.
+  ///
+  /// Returns an empty string on success, or a human-readable error message.
+  Future<String> enableBiometricLogin({
+    BiometricModality? chosenModality,
+  }) async {
+    // Use the user's explicit choice when provided; otherwise auto-detect
+    if (chosenModality != null) {
+      biometricModality.value = chosenModality;
+    } else {
+      biometricModality.value = await BiometricService.getPrimaryModality();
+    }
+
+    // Verify the device supports biometrics
+    final available = await BiometricService.isAvailable();
+    if (!available) {
+      final typeLabel = biometricModality.value == BiometricModality.face
+          ? 'Face ID'
+          : 'biometric authentication';
+      return 'Your device does not support $typeLabel, '
+          'or no biometric has been enrolled in device settings.';
+    }
+
+    // We need the credentials from the most recent successful login
+    if (_cachedEmpId.isEmpty || _cachedPassword.isEmpty) {
+      return 'Session credentials unavailable. '
+          'Please log out and sign in with your password once, then try again.';
+    }
+
+    // Ask the user to verify their biometric before enabling
+    final verified = await BiometricService.authenticate(reason: _enableReason);
+    if (!verified) {
+      return biometricModality.value == BiometricModality.face
+          ? 'Face verification failed or was cancelled.'
+          : 'Fingerprint verification failed or was cancelled.';
+    }
+
+    // Persist the credentials so they can be used on the next cold launch
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(prefBiometricEnabled, true);
+    await prefs.setString(prefBiometricUserId, _cachedEmpId);
+    await prefs.setString(prefBiometricPassword, _cachedPassword);
+    isBiometricEnabled.value = true;
+
+    debugPrint('✅ ${biometricLabel} login enabled for: $_cachedEmpId');
+    return ''; // empty == success
+  }
+
+  /// Called from the side drawer to disable biometric login.
+  Future<void> disableBiometricLogin() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(prefBiometricEnabled);
+    await prefs.remove(prefBiometricUserId);
+    await prefs.remove(prefBiometricPassword);
+    isBiometricEnabled.value = false;
+    debugPrint('🚫 ${biometricLabel} login disabled');
+  }
+
+  /// Full biometric login flow used by [LoginScreen]:
+  ///   1. Prompt the OS biometric sheet (face or fingerprint, platform decides)
+  ///   2. Retrieve stored credentials
+  ///   3. Call the existing [login] method
+  Future<bool> loginWithBiometric() async {
+    try {
+      loginError.value = '';
+
+      // Refresh modality so reason string is always accurate
+      biometricModality.value = await BiometricService.getPrimaryModality();
+
+      final authenticated = await BiometricService.authenticate(
+        reason: _authReason,
+      );
+      if (!authenticated) {
+        loginError.value = biometricModality.value == BiometricModality.face
+            ? 'Face ID authentication was cancelled or failed.'
+            : 'Biometric authentication was cancelled or failed.';
+        return false;
+      }
+
+      final prefs    = await SharedPreferences.getInstance();
+      final empId    = prefs.getString(prefBiometricUserId)   ?? '';
+      final password = prefs.getString(prefBiometricPassword) ?? '';
+
+      if (empId.isEmpty || password.isEmpty) {
+        // Biometric pref exists but credentials are missing — clean up
+        await disableBiometricLogin();
+        loginError.value = '${biometricLabel} session expired. Please sign in with your password.';
+        return false;
+      }
+
+      debugPrint('🔓 ${biometricLabel} login for: $empId');
+      return await login(empId, password);
+    } catch (e) {
+      loginError.value = '${biometricLabel} authentication failed. Please try again.';
+      debugPrint('❌ loginWithBiometric error: $e');
+      return false;
+    }
   }
 }

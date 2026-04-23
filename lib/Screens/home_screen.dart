@@ -1,11 +1,11 @@
-
-
 import 'package:GPS_Workforce_Monitor/Screens/task_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:url_launcher/url_launcher.dart';            // ✅ NEW
+import '../Services/update_check_service.dart';             // ✅ NEW
 
 import '../AppColors.dart';
 import '../ViewModels/attendance_out_view_model.dart';
@@ -78,6 +78,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _loadUserData();
     taskVM.fetchAssignedTasks();
 
+    // ✅ NEW — Check for mandatory app update after screen renders
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkForUpdate());
+
     FlutterForegroundTask.startService(
       notificationTitle: 'Shift Active',
       notificationText: 'GPS & time tracking running…',
@@ -101,6 +104,163 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _empRole = prefs.getString('designation') ?? 'Staff';
     });
   }
+
+  // ── ✅ NEW: Force Update Check ────────────────────────────────────────────
+  Future<void> _checkForUpdate() async {
+    final required = await UpdateCheckService.isUpdateRequired();
+    if (required && mounted) _showForceUpdateDialog();
+  }
+
+  void _showForceUpdateDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,   // ← cannot dismiss by tapping outside
+      builder: (ctx) => PopScope(
+        canPop: false,             // ← back button bhi kaam nahi karega
+        child: Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(24, 32, 24, 28),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A2235),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: AppColors.cyan.withOpacity(0.30),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.cyan.withOpacity(0.15),
+                  blurRadius: 30,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ── Icon ────────────────────────────────────────────
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [
+                        AppColors.cyan.withOpacity(0.20),
+                        AppColors.greenTeal.withOpacity(0.20),
+                      ],
+                    ),
+                    border: Border.all(
+                      color: AppColors.cyan.withOpacity(0.40),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.system_update_alt_rounded,
+                    color: AppColors.cyan,
+                    size: 36,
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // ── Title ────────────────────────────────────────────
+                const Text(
+                  'Update Required',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // ── Message ──────────────────────────────────────────
+                Text(
+                  'A newer version of GPS Workforce Monitor is available. '
+                      'Please update to continue using the app. This version is '
+                      'no longer supported.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.65),
+                    fontSize: 13.5,
+                    height: 1.55,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+                const SizedBox(height: 28),
+
+                // ── Update Button ─────────────────────────────────────
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [AppColors.cyan, AppColors.greenTeal],
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.cyan.withOpacity(0.35),
+                          blurRadius: 14,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: TextButton.icon(
+                      onPressed: () async {
+                        final uri = Uri.parse(UpdateCheckService.playStoreUrl);
+                        if (await canLaunchUrl(uri)) {
+                          await launchUrl(
+                            uri,
+                            mode: LaunchMode.externalApplication,
+                          );
+                        }
+                      },
+                      icon: const Icon(
+                        Icons.open_in_new_rounded,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                      label: const Text(
+                        'Update Now',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.4,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                // ── Footnote ──────────────────────────────────────────
+                Text(
+                  'You must update to continue.',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.30),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   // ══════════════════════════════════════════════════════════════════════════
   // BUILD

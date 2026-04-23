@@ -741,7 +741,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
         return;
       }
 
-      // ── Normalize: handles "17:33", "5:33 PM", "5:33pm", "17:33:00", etc. ─
+
       final List<int>? parsed = _parseTimeTo24h(endTimeStr);
       if (parsed == null) {
         debugPrint('⏰ [SHIFT END] Cannot parse end_time: "$endTimeStr"');
@@ -750,6 +750,19 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
       final int endHour   = parsed[0];
       final int endMinute = parsed[1];
+
+      // ✅ ADDED: overtime check
+      final String ot = (prefs.getString('cached_overtime') ?? 'no').toLowerCase().trim();
+      final bool overtimeAllowed = ot == 'yes' || ot == 'y' || ot == 'true';
+      if (overtimeAllowed) {
+        final DateTime now    = DateTime.now();
+        final int nowTotalMin = now.hour * 60 + now.minute;
+        final int endTotalMin = endHour * 60 + endMinute;
+        if (nowTotalMin > endTotalMin) {
+          debugPrint('⏰ [SHIFT END] Overtime user — already past shift end, skipping');
+          return;
+        }
+      }
 
       debugPrint('⏰ [SHIFT END] Parsed "$endTimeStr" → ${endHour.toString().padLeft(2, '0')}:${endMinute.toString().padLeft(2, '0')} (24h)');
 
