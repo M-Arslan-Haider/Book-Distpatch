@@ -25,7 +25,7 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
-        <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
     <!--    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />-->
@@ -49,6 +49,12 @@
 
         <service
             android:name="com.metaxperts.GPS_Workforce_Monitor.UltraLocationService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+        <!-- ✅ OvertimeMonitorService — background/foreground/killed overtime cap monitor -->
+        <service
+            android:name=".OvertimeMonitorService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="location" />

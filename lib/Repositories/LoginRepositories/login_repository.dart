@@ -20,7 +20,24 @@ class LoginRepository extends GetxService {
   static const String prefCachedShift = 'cached_shift';
   static const String prefCachedImageUrl = 'cached_image_url';
   static const String prefCachedDepId = 'cached_dep_id';
-  static const String currentAppVersion = "2.2";
+  static const String currentAppVersion = "2.3";
+
+  final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
+
+  Future<String> _getDeviceModel() async {
+    try {
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        final androidInfo = await _deviceInfo.androidInfo;
+        return androidInfo.model;
+      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+        final iosInfo = await _deviceInfo.iosInfo;
+        return iosInfo.model;
+      }
+    } catch (e) {
+      debugPrint('⚠️ Could not get device model: $e');
+    }
+    return 'unknown';
+  }
 
   final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
 
@@ -254,7 +271,7 @@ class LoginRepository extends GetxService {
       'emp_id': empId,
       'emp_name': empName,
       'company_code': companyCode,
-      'app_version': 2.2,
+      'app_version': 2.3,
       'timestamp': DateTime.now().toIso8601String(),
       'device_info': deviceModel,
       'android_version': androidVersion,

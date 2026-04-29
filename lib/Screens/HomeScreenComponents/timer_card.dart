@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
@@ -18,6 +19,8 @@ import 'package:path_provider/path_provider.dart';
 import '../../AppColors.dart';
 import '../../Database/util.dart';
 import '../../Repositories/LoginRepositories/login_repository.dart';
+import '../../Services/Overtime_Clock_Out_Service.dart';
+import '../../Services/selfie_notification_policy_service.dart';
 import '../../ViewModels/attendance_out_view_model.dart';
 import '../../ViewModels/attendance_view_model.dart';
 import '../../ViewModels/geofancing_violation.dart';
@@ -30,6 +33,7 @@ import '../geofancing_violation_widgets.dart';
 import '../location_session_screen.dart';
 
 import '../mqtt_work.dart';
+
 
 import 'package:battery_plus/battery_plus.dart'; // ✅ Battery monitoring
 
@@ -76,6 +80,12 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
   Timer? _autoSyncTimer;
   Timer? _distanceUpdateTimer;
   Timer? _employeeDataRefreshTimer; // ✅ Live employee data refresh (every 5 s)
+
+  // ── ✅ OVERTIME Auto Clock-Out Service ─────────────────────────────────────
+  // Jab overtime=yes user shift end ke baad clock-in kare to yeh service
+  // API se DAILY_OT_CAP fetch karke auto clock-out schedule karti hai.
+  // Koi doosra logic touch nahi hota — sirf overtime session ke liye kaam karta hai.
+  final OvertimeClockOutService _overtimeService = OvertimeClockOutService();
 
   // ── Battery ────────────────────────────────────────────────────────────────
   final Battery _battery     = Battery();
@@ -161,6 +171,8 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     _shiftEndClockOutTimer?.cancel();   // ✅ NEW: Shift end auto clock-out
     _permissionCheckTimer?.cancel();
     _employeeDataRefreshTimer?.cancel(); // ✅ Live employee data refresh
+    // ✅ OVERTIME: Cancel overtime auto clock-out timers
+    unawaited(_overtimeService.cancel());
     // ✅ Dispose MQTT
     _mqttTracker.dispose();
     // ✅ Stop auto location tracker
@@ -859,21 +871,39 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       final int endHour   = parsed[0];
       final int endMinute = parsed[1];
 
-      // ✅ FIX: Read fresh overtime on every tick too
-      // ✅ NOTE: Overtime employees bhi shift end pe clockout honge — overtime flag
-      // sirf clock-in/out blocking ke liye hai, auto clockout ke liye nahi.
-      // (overtime check yahan se hata diya gaya)
+      // ✅ FIX: Read fresh overtime on every tick
+      final String otStr = (p.getString('cached_overtime') ?? 'no').toLowerCase().trim();
+      final bool isOvertimeUser = otStr == 'yes' || otStr == 'y' || otStr == 'true' || otStr == '1';
 
       final DateTime now    = DateTime.now();
       final int endTotalMin = endHour * 60 + endMinute;
       final int nowTotalMin = now.hour * 60 + now.minute;
       final int diffMinutes = nowTotalMin - endTotalMin;
 
-      debugPrint('⏰ [SHIFT END] now=${now.hour}:${now.minute}  end=$endHour:$endMinute  diff=${diffMinutes}min');
+      debugPrint('⏰ [SHIFT END] now=${now.hour}:${now.minute}  end=$endHour:$endMinute  diff=${diffMinutes}min  overtime=$otStr');
+
+      // ✅ FIX: Overtime user — agar aaj ka shift-end clockout already ho chuka hai
+      // (yani pehle clock-out hua, phir dobara clock-in kiya) to dobara auto-clockout mat karo.
+      if (isOvertimeUser) {
+        final String savedDate = p.getString('shift_end_clockout_done_date') ?? '';
+        final String todayStr  = DateFormat('yyyy-MM-dd').format(now);
+        if (savedDate == todayStr) {
+          timer.cancel();
+          debugPrint('⏰ [SHIFT END] Overtime user — shift_end_clockout_done_date=today — timer cancelled (re-clock-in protected)');
+          return;
+        }
+      }
 
       if (diffMinutes >= 0 && diffMinutes < 480) {
         shiftEndFired = true;
         timer.cancel();
+
+        // ✅ FIX: Overtime user ke liye aaj ki date save karo — re-clock-in ke baad dobara
+        // shift-end auto-clockout na ho.
+        if (isOvertimeUser) {
+          await p.setString('shift_end_clockout_done_date', DateFormat('yyyy-MM-dd').format(now));
+          debugPrint('⏰ [SHIFT END] shift_end_clockout_done_date saved for overtime user');
+        }
 
         debugPrint('⏰ [SHIFT END] ✅ FIRING auto clockout — end=$endTimeStr diff=${diffMinutes}min');
 
@@ -897,6 +927,10 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
           payload: 'System Clock out - On Shift end',
         );
 
+        // ✅ NEW: Shift end pe selfie grace window activate karo
+        // (foreground aur background dono cases cover hote hain)
+        _initializeSelfieServiceAfterShiftEnd();
+
         await _handleAutoClockOut(
           reason   : 'System Clock out - On Shift end',
           context  : context,
@@ -906,6 +940,201 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     });
 
     debugPrint('⏰ [SHIFT END] Wall-clock poll started (every 5s, re-reads end_time each tick)');
+  }
+
+  // ── Selfie service: shift end ke baad grace window aur notifications activate karo ──────────
+  // Foreground (timer fire), background (app resume), aur app-killed (cold start) — teeno cases.
+  void _initializeSelfieServiceAfterShiftEnd() {
+    Future.microtask(() async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+
+        // ✅ FIX: Match EXACTLY the same key resolution home_screen._loadUserData uses.
+        // home_screen tries 'emp_id' first, then falls back to 'userId'.
+        // home_screen tries 'company_code' for companyCode.
+        String empId = (prefs.get('emp_id') ?? '').toString().trim();
+        if (empId.isEmpty) {
+          empId = (prefs.get('userId') ?? '').toString().trim();
+          debugPrint('📸 [SELFIE INIT] emp_id empty — fell back to userId="$empId"');
+        }
+
+        // ✅ FIX: Try multiple keys for companyCode (prefCompanyCode may differ from 'company_code')
+        String companyCode = (prefs.get('company_code') ?? '').toString().trim();
+        if (companyCode.isEmpty) {
+          companyCode = (prefs.get(prefCompanyCode) ?? '').toString().trim();
+          debugPrint('📸 [SELFIE INIT] company_code empty — fell back to prefCompanyCode key="$prefCompanyCode" value="$companyCode"');
+        }
+        if (companyCode.isEmpty) {
+          companyCode = (prefs.get('companyCode') ?? '').toString().trim();
+        }
+
+        debugPrint('');
+        debugPrint('══════════════════════════════════════════════════════');
+        debugPrint('📸 [SELFIE INIT] ===== START =====');
+        debugPrint('📸 [SELFIE INIT] empId="$empId"  companyCode="$companyCode"');
+
+        if (empId.isEmpty || companyCode.isEmpty) {
+          debugPrint('❌ [SELFIE INIT] empId or companyCode is EMPTY — dumping all prefs:');
+          final Set<String> allKeys = prefs.getKeys();
+          for (final k in allKeys.toList()..sort()) {
+            debugPrint('📦 [SELFIE INIT]   $k = ${prefs.get(k)}');
+          }
+          debugPrint('❌ [SELFIE INIT] Fix: use the correct key name from the dump above.');
+          debugPrint('══════════════════════════════════════════════════════');
+          return;
+        }
+
+        final bool isRegistered = Get.isRegistered<SelfieNotificationPolicyService>();
+        debugPrint('📸 [SELFIE INIT] Service already registered = $isRegistered');
+
+        if (!isRegistered) {
+          debugPrint('⚠️ [SELFIE INIT] NOT registered — registering now with Get.put...');
+          Get.put(SelfieNotificationPolicyService(), permanent: true);
+          await Future.delayed(const Duration(milliseconds: 200));
+          debugPrint('✅ [SELFIE INIT] Service registered');
+        }
+
+        debugPrint('📸 [SELFIE INIT] isButtonEnabled BEFORE = ${SelfieNotificationPolicyService.to.isButtonEnabled.value}');
+        debugPrint('📸 [SELFIE INIT] graceSecondsLeft BEFORE = ${SelfieNotificationPolicyService.to.graceSecondsLeft.value}');
+        debugPrint('📸 [SELFIE INIT] isFetching BEFORE = ${SelfieNotificationPolicyService.to.isFetching.value}');
+
+        await SelfieNotificationPolicyService.to.initialize(empId, companyCode);
+
+        debugPrint('📸 [SELFIE INIT] isButtonEnabled AFTER  = ${SelfieNotificationPolicyService.to.isButtonEnabled.value}');
+        debugPrint('📸 [SELFIE INIT] graceSecondsLeft AFTER  = ${SelfieNotificationPolicyService.to.graceSecondsLeft.value}');
+        debugPrint('✅ [SELFIE INIT] ===== DONE =====');
+        debugPrint('══════════════════════════════════════════════════════');
+        debugPrint('');
+      } catch (e, stack) {
+        debugPrint('❌ [SELFIE INIT] EXCEPTION: $e');
+        debugPrint('❌ [SELFIE INIT] Stack: $stack');
+      }
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ✅ OVERTIME HELPERS — No other logic touched
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // ── 1. Detect overtime clock-in ──────────────────────────────────────────
+  // Returns true ONLY when:
+  //   • cached_overtime == "yes" (ya equivalent)     AND
+  //   • shift_end_clockout_done_date == today
+  //     (yani aaj shift end ke baad pehle clock-out ho chuka)
+  // Doosra koi case overtime nahi maana jata.
+  Future<bool> _isOvertimeClockIn() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // Overtime flag check
+      final String otStr =
+      (prefs.getString('cached_overtime') ?? 'no').toLowerCase().trim();
+      final bool isOvertimeUser =
+          otStr == 'yes' || otStr == 'y' || otStr == 'true' || otStr == '1';
+
+      debugPrint('⏰ [OT DETECT] cached_overtime="$otStr"  isOvertimeUser=$isOvertimeUser');
+
+      if (!isOvertimeUser) {
+        debugPrint('⏰ [OT DETECT] → NOT overtime user — return false');
+        return false;
+      }
+
+      // Shift end already hua aaj?
+      final String savedDate =
+          prefs.getString('shift_end_clockout_done_date') ?? '';
+      final DateTime now = DateTime.now();
+      final String todayStr =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+
+      debugPrint('⏰ [OT DETECT] shift_end_clockout_done_date="$savedDate"  today="$todayStr"');
+
+      final bool isOvertimeSession = savedDate == todayStr;
+      debugPrint('⏰ [OT DETECT] → isOvertimeClockIn=$isOvertimeSession');
+      return isOvertimeSession;
+    } catch (e) {
+      debugPrint('❌ [OT DETECT] Error: $e — returning false');
+      return false;
+    }
+  }
+
+  // ── 2. Callback passed to OvertimeClockOutService ────────────────────────
+  // DAILY_OT_CAP expire hone par service yahan call karti hai.
+  // Existing _handleAutoClockOut() use karta hai — same logic, naya reason.
+  Future<void> _triggerOvertimeClockOut() async {
+    if (!attendanceViewModel.isClockedIn.value) {
+      debugPrint('⏰ [OT TRIGGER] Already clocked out — skip');
+      return;
+    }
+
+    debugPrint('');
+    debugPrint('══════════════════════════════════════════════════════');
+    debugPrint('⏰ [OT TRIGGER] ===== OVERTIME CAP REACHED =====');
+    debugPrint('⏰ [OT TRIGGER] Triggering auto clock-out now...');
+    debugPrint('══════════════════════════════════════════════════════');
+    debugPrint('');
+
+    final DateTime eventTime   = DateTime.now();
+    final double   currentDist = await _getCurrentDistance();
+    final double   lat         = locationViewModel.globalLatitude1.value;
+    final double   lng         = locationViewModel.globalLongitude1.value;
+
+    // Save critical event (same mechanism as shift-end clock-out)
+    await _saveCriticalEventData(
+      eventTime : eventTime,
+      reason    : 'Overtime End - Auto Clockout',
+      distance  : currentDist,
+      latitude  : lat,
+      longitude : lng,
+    );
+
+    // Alarm notification — device alarm sound + vibration
+    await _showShiftEndAlarmNotification(
+      title  : '⏰ OVERTIME ENDED',
+      body   : 'Your overtime period has ended. Auto clock-out triggered.',
+      payload: 'Overtime End - Auto Clockout',
+    );
+
+    // Existing auto clock-out handler — data post bhi isi mein hota hai
+    await _handleAutoClockOut(
+      reason   : 'Overtime End - Auto Clockout',
+      context  : context,
+      eventTime: eventTime,
+    );
+  }
+
+  // ── 3. App kill/restart ke baad restore ──────────────────────────────────
+  // Agar app kill hone se pehle overtime session tha (SharedPreferences mein
+  // overtime_session_clock_in_time saved hai) to service wapas start karo.
+  Future<void> _checkAndRestoreOvertimeService() async {
+    try {
+      final DateTime? savedTime =
+      await OvertimeClockOutService.getSavedOvertimeClockInTime();
+
+      if (savedTime == null) {
+        debugPrint('⏰ [OT RESTORE] No saved OT session — nothing to restore');
+        return;
+      }
+
+      debugPrint('');
+      debugPrint('══════════════════════════════════════════════════════');
+      debugPrint('⏰ [OT RESTORE] Saved OT session found: $savedTime');
+      debugPrint('⏰ [OT RESTORE] Restoring OvertimeClockOutService...');
+      debugPrint('══════════════════════════════════════════════════════');
+      debugPrint('');
+
+      await _overtimeService.start(
+        onOvertimeExpired   : _triggerOvertimeClockOut,
+        restoredClockInTime : savedTime,
+      );
+      try {
+        await platform.invokeMethod('startOvertimeMonitor');
+        debugPrint('✅ [OT RESTORE] OvertimeMonitorService restarted (Kotlin)');
+      } catch (e) {
+        debugPrint('⚠️ [OT RESTORE] Could not restart OvertimeMonitorService: $e');
+      }
+    } catch (e) {
+      debugPrint('❌ [OT RESTORE] Error: $e');
+    }
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -935,6 +1164,14 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       _midnightClockOutTimer?.cancel();
       _shiftEndClockOutTimer?.cancel();   // ✅ NEW: Shift end auto clock-out
       _permissionCheckTimer?.cancel();
+      // ✅ OVERTIME: Cancel overtime countdown on any clock-out (manual or auto)
+      unawaited(_overtimeService.cancel());
+      try {
+        await platform.invokeMethod('stopOvertimeMonitor');
+        debugPrint('🛑 [OT] OvertimeMonitorService stopped (Kotlin)');
+      } catch (e) {
+        debugPrint('⚠️ [OT] Could not stop OvertimeMonitorService: $e');
+      }
       // ✅ Stop auto location POST tracker
       _locationTrackerService.stop();
 
@@ -1002,6 +1239,10 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
       await attendanceViewModel.clearClockInState();
       _triggerAutoSync();
+
+      // ✅ OVERTIME: Clear any running overtime session on any clock-out path
+      // (manual clock-out se bhi overtime timer cancel hona chahiye)
+      unawaited(_overtimeService.cancel());
 
       if (mounted) {
         Get.snackbar(
@@ -1315,6 +1556,8 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       locationViewModel.isClockedIn.value   = false;
       attendanceViewModel.isClockedIn.value = false;
       if (mounted) setState(() {});
+      // ✅ NEW: App restart after kill — shift end ho chuka, selfie grace activate karo
+      _initializeSelfieServiceAfterShiftEnd();
       return;
     }
 
@@ -1331,6 +1574,8 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       _scheduleMidnightClockOut();
       _scheduleShiftEndClockOut();
       _startPermissionMonitoring();
+      // ✅ OVERTIME: Agar app kill hone se pehle overtime session tha to restore karo
+      unawaited(_checkAndRestoreOvertimeService());
       debugPrint('✅ [INIT] Full clocked-in state restored');
     } else {
       // ✅ FIX: On cold start while not clocked in, guarantee the timer display
@@ -1370,6 +1615,8 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
         _scheduleMidnightClockOut();
         _scheduleShiftEndClockOut();
         _startPermissionMonitoring();
+        // ✅ OVERTIME: App resume par overtime session restore karo agar active tha
+        unawaited(_checkAndRestoreOvertimeService());
 
         if (mounted) setState(() {});
         debugPrint('✅ [RESTORE] Everything restored');
@@ -1575,19 +1822,87 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
       debugPrint('📷 [CAMERA] Photo path: ${photo.path}');
 
-      final Uint8List bytes = await photo.readAsBytes();
-      debugPrint('📸 [CAMERA] ✅ ${bytes.length} bytes read via XFile.readAsBytes()');
+      Uint8List bytes = await photo.readAsBytes();
+      debugPrint('📸 [CAMERA] Original size: ${bytes.length} bytes (${(bytes.length / 1024 / 1024).toStringAsFixed(2)} MB)');
+
+      // Compress if larger than 1 MB
+      bytes = await _compressImageIfNeeded(bytes);
 
       if (bytes.isEmpty) {
-        debugPrint('❌ [CAMERA] readAsBytes() returned 0 bytes — path: ${photo.path}');
+        debugPrint('❌ [CAMERA] Bytes are 0');
         return null;
       }
 
       return bytes;
     } catch (e) {
-      debugPrint('❌ [CAMERA] Error capturing / reading photo bytes: $e');
+      debugPrint('❌ [CAMERA] Error capturing / compressing photo: $e');
       return null;
     }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // IMAGE COMPRESSION HELPER
+  // Agar image 60 KB se zyada ho to bar bar compress karta hai
+  // jab tak 60 KB ya us se neeche na aa jaye — guaranteed!
+  // ══════════════════════════════════════════════════════════════════════════
+
+  Future<Uint8List> _compressImageIfNeeded(Uint8List bytes) async {
+    const int maxBytes = 60 * 1024; // 60 KB
+
+    if (bytes.length <= maxBytes) {
+      debugPrint('📸 [COMPRESS] Image is within limit — no compression needed');
+      return bytes;
+    }
+
+    debugPrint('📸 [COMPRESS] Image exceeds 60 KB (${(bytes.length / 1024).toStringAsFixed(1)} KB) — compressing...');
+
+    try {
+      Uint8List current = bytes;
+      int attempt = 0;
+
+      while (current.length > maxBytes) {
+        attempt++;
+
+        final codec = await ui.instantiateImageCodec(current);
+        final frame = await codec.getNextFrame();
+        final image = frame.image;
+
+        double scale = (maxBytes / current.length);
+        scale = scale.clamp(0.1, 0.9);
+
+        final int newWidth  = (image.width  * scale).toInt().clamp(1, image.width);
+        final int newHeight = (image.height * scale).toInt().clamp(1, image.height);
+
+        final recorder = ui.PictureRecorder();
+        final canvas   = Canvas(recorder);
+        canvas.drawImageRect(
+          image,
+          Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+          Rect.fromLTWH(0, 0, newWidth.toDouble(), newHeight.toDouble()),
+          Paint(),
+        );
+        final picture  = recorder.endRecording();
+        final resized  = await picture.toImage(newWidth, newHeight);
+        final byteData = await resized.toByteData(format: ui.ImageByteFormat.png);
+
+        if (byteData == null) break;
+
+        current = byteData.buffer.asUint8List();
+        debugPrint('📸 [COMPRESS] Attempt $attempt → ${(current.length / 1024).toStringAsFixed(1)} KB (${newWidth}x$newHeight)');
+
+        if (newWidth <= 50 || newHeight <= 50) {
+          debugPrint('⚠️ [COMPRESS] Image too small to reduce further — stopping');
+          break;
+        }
+      }
+
+      debugPrint('📸 [COMPRESS] Final size: ${(current.length / 1024).toStringAsFixed(1)} KB after $attempt attempt(s)');
+      return current;
+    } catch (e) {
+      debugPrint('❌ [COMPRESS] Compression failed: $e — returning original bytes');
+    }
+
+    return bytes;
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1860,6 +2175,32 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       _scheduleShiftEndClockOut();   // ✅ NEW: must be called here at actual clock-in
       _startPermissionMonitoring();
 
+      // ── ✅ OVERTIME AUTO CLOCK-OUT ─────────────────────────────────────────
+      // Detect karo kya yeh overtime session hai:
+      //   - overtime = yes  AND
+      //   - shift_end_clockout_done_date = aaj (matlab shift pehle end ho chuki hai)
+      // Agar haan to OvertimeClockOutService start karo jo API se DAILY_OT_CAP
+      // fetch karega aur cap expire hone par auto clock-out trigger karega.
+      if (await _isOvertimeClockIn()) {
+        debugPrint('');
+        debugPrint('══════════════════════════════════════════════════════');
+        debugPrint('⏰ [CLOCK-IN] OVERTIME SESSION DETECTED');
+        debugPrint('⏰ [CLOCK-IN] Starting OvertimeClockOutService...');
+        debugPrint('══════════════════════════════════════════════════════');
+        debugPrint('');
+        unawaited(_overtimeService.start(
+          onOvertimeExpired: _triggerOvertimeClockOut,
+        ));
+        try {
+          await platform.invokeMethod('startOvertimeMonitor');
+          debugPrint('✅ [OT] OvertimeMonitorService started (Kotlin)');
+        } catch (e) {
+          debugPrint('⚠️ [OT] Could not start OvertimeMonitorService: $e');
+        }
+      } else {
+        debugPrint('⏰ [CLOCK-IN] Not an overtime session — OvertimeClockOutService not started');
+      }
+
       // ✅ Auto location POST — clock-in ke baad har 5 min mein server ko bhejta hai
       _locationTrackerService.start();
 
@@ -1948,6 +2289,14 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
         _startBackgroundServices();
         _startNativeMonitoringService();
         _updateCurrentDistance();
+
+        // ✅ FIX: Har nayi shift pe selfie_done flag reset karo —
+        // warna pichhle shift ki "done" flag aaj ka button block kar deti hai.
+        if (Get.isRegistered<SelfieNotificationPolicyService>()) {
+          await SelfieNotificationPolicyService.to.resetSelfieDoneFlag();
+          debugPrint('✅ [CLOCK-IN] selfie_done flag reset for new shift');
+        }
+
         debugPrint('✅ [CLOCK-IN] Background tasks completed');
       } catch (e) {
         debugPrint('⚠️ [CLOCK-IN] Background task error: $e');
@@ -2155,6 +2504,24 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       debugPrint('✅ [CLOCK-OUT] User confirmed early clockout — proceeding');
     }
 
+    // ── CAMERA CAPTURE FOR CLOCK-OUT ─────────────────────────────────────
+    final Uint8List? clockOutPhotoBytes = await _captureClockInPhoto();
+
+    if (clockOutPhotoBytes == null || clockOutPhotoBytes.isEmpty) {
+      Get.snackbar(
+        '📷 Photo Required',
+        'Please capture a photo to clock out',
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: Colors.orange.shade700,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 3),
+        icon: const Icon(Icons.camera_alt, color: Colors.white),
+      );
+      return;
+    }
+
+    debugPrint('📸 [TIMERCARD] ✅ clockOutPhotoBytes ready: ${clockOutPhotoBytes.length} bytes');
+
     // ── Stop all UI-side timers immediately ───────────────────────────────
     setState(() {
       _localElapsedTime = '00:00:00';
@@ -2268,10 +2635,15 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
         reason       : travelVM.isInTravelMode
             ? 'User - Clockout'
             : 'User - Clockout',
+        photoBytes   : clockOutPhotoBytes,
       ));
 
       // ── Post clock-out background tasks ───────────────────────────────────
       _runPostClockOutTasks(clockOutTime, finalDistance);
+
+      // ✅ Manual clock-out pe bhi selfie grace window activate karo
+      debugPrint('📸 [CLOCK-OUT] Triggering selfie init after manual clock-out');
+      _initializeSelfieServiceAfterShiftEnd();
     } catch (e) {
       debugPrint('❌ [CLOCK-OUT] Error: $e');
       if (Navigator.of(context).canPop()) Navigator.of(context).pop();

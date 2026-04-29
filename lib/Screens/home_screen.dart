@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:url_launcher/url_launcher.dart';            // ✅ NEW
 import '../Services/update_check_service.dart';             // ✅ NEW
+import '../Services/selfie_notification_policy_service.dart'; // ✅ Selfie grace button
 
 import '../AppColors.dart';
 import '../ViewModels/attendance_out_view_model.dart';
@@ -75,6 +76,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
     _fadeCtrl.forward();
 
+    // ✅ Register selfie grace service
+    Get.put(SelfieNotificationPolicyService());
+
     _loadUserData();
     taskVM.fetchAssignedTasks();
 
@@ -103,6 +107,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _empId   = prefs.getString('userId')     ?? '--';
       _empRole = prefs.getString('designation') ?? 'Staff';
     });
+
+    // ✅ FIX: Match same fallback logic as timer_card._initializeSelfieServiceAfterShiftEnd
+    String empId = prefs.getString('emp_id') ?? '';
+    if (empId.isEmpty) empId = _empId; // fallback to userId value
+    final String companyCode = prefs.getString('company_code') ?? '';
+
+    debugPrint('');
+    debugPrint('══════════════════════════════════════════════════════');
+    debugPrint('🏠 [HOME] _loadUserData: empId="$empId"  companyCode="$companyCode"');
+    debugPrint('🏠 [HOME] selfie service registered = ${Get.isRegistered<SelfieNotificationPolicyService>()}');
+
+    if (empId.isNotEmpty && companyCode.isNotEmpty) {
+      debugPrint('🏠 [HOME] Calling SelfieNotificationPolicyService.to.initialize...');
+      SelfieNotificationPolicyService.to.initialize(empId, companyCode);
+    } else {
+      debugPrint('❌ [HOME] empId or companyCode empty — selfie service NOT initialized');
+      debugPrint('❌ [HOME] empId="$empId"  companyCode="$companyCode"');
+    }
+    debugPrint('══════════════════════════════════════════════════════');
+    debugPrint('');
   }
 
   // ── ✅ NEW: Force Update Check ────────────────────────────────────────────
@@ -292,7 +316,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   delegate: SliverChildListDelegate([
                     SizedBox(height: context.rs(1)),
                     _buildUnifiedSessionCard(),
-                    SizedBox(height: context.rs(25)),
+                    SizedBox(height: context.rs(14)),
+                    // ✅ Selfie grace button — only visible during grace window
+                    const SelfieGraceButton(),
+                    SizedBox(height: context.rs(11)),
                     _buildQuickActions(),
                     SizedBox(height: context.rs(22)),
                     const LeaveActivityStrip(),
