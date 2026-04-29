@@ -128,6 +128,8 @@ dependencies:
   shorebird_code_push: ^2.0.5
   firebase_remote_config: ^5.5.0
   local_auth: ^3.0.1
+  timezone: ^0.10.1
+
 
 
 #  flutter_asset_manager: ^0.0.2

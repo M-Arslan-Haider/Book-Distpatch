@@ -22,7 +22,7 @@ class LocationBulkTracker {
   LocationBulkTracker._();
   static final LocationBulkTracker instance = LocationBulkTracker._();
 
-  static const String _endpoint = 'http://103.149.33.102:8001/location/bulk';
+  static const String _endpoint = 'http://119.153.102.7:8001/location/bulk';
 
   // ✅ FIX #1: Timer interval increased from 1s → 10s to reduce polyline noise
   static const Duration _captureInterval = Duration(seconds: 10);

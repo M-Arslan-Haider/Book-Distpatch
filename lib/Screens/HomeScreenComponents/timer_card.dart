@@ -17,6 +17,7 @@ import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../AppColors.dart';
 import '../../Database/util.dart';
+import '../../Repositories/LoginRepositories/login_repository.dart';
 import '../../ViewModels/attendance_out_view_model.dart';
 import '../../ViewModels/attendance_view_model.dart';
 import '../../ViewModels/geofancing_violation.dart';
@@ -74,6 +75,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
   Timer? _localBackupTimer;
   Timer? _autoSyncTimer;
   Timer? _distanceUpdateTimer;
+  Timer? _employeeDataRefreshTimer; // ✅ Live employee data refresh (every 5 s)
 
   // ── Battery ────────────────────────────────────────────────────────────────
   final Battery _battery     = Battery();
@@ -126,6 +128,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     _scheduleMidnightClockOut();
     _scheduleShiftEndClockOut();   // ✅ NEW
     _startNativeMonitoringService();
+    _startEmployeeDataRefresh();   // ✅ Live employee data refresh every 5 s
 
     // ✅ Initialize MQTT Tracker
     _mqttTracker.initialize().then((_) {
@@ -157,6 +160,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     _midnightClockOutTimer?.cancel();
     _shiftEndClockOutTimer?.cancel();   // ✅ NEW: Shift end auto clock-out
     _permissionCheckTimer?.cancel();
+    _employeeDataRefreshTimer?.cancel(); // ✅ Live employee data refresh
     // ✅ Dispose MQTT
     _mqttTracker.dispose();
     // ✅ Stop auto location tracker
@@ -254,6 +258,25 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
         .resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(urgentChannel);
+
+    // ✅ NEW: Dedicated Shift End alarm channel — device alarm sound + 1-min vibration
+    const AndroidNotificationChannel shiftEndAlarmChannel = AndroidNotificationChannel(
+      'shift_end_alarm_channel',
+      'Shift End Alarm',
+      description: 'Full device alarm sound and vibration for shift end auto clockout',
+      importance: Importance.max,
+      enableVibration: true,
+      playSound: true,
+      enableLights: true,
+      ledColor: Colors.red,
+      // Uses the device default alarm sound URI — same as Android RingtoneManager.TYPE_ALARM
+      sound: UriAndroidNotificationSound('content://settings/system/alarm_alert'),
+    );
+
+    await flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(shiftEndAlarmChannel);
   }
 
   Future<void> _showUrgentNotification({
@@ -307,6 +330,70 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
         colorText: Colors.white,
         duration: const Duration(seconds: 5),
         icon: const Icon(Icons.warning, color: Colors.white),
+      );
+    }
+  }
+
+  // ✅ NEW: Shift End specific notification — device alarm sound + 1-min max vibration
+  Future<void> _showShiftEndAlarmNotification({
+    required String title,
+    required String body,
+    String? payload,
+  }) async {
+    _notificationId++;
+
+    // Vibration pattern: wait 0ms, then vibrate 60,000ms (1 full minute)
+    final vibPattern = Int64List.fromList([0, 60000]);
+
+    final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'shift_end_alarm_channel',
+      'Shift End Alarm',
+      channelDescription: 'Full device alarm for shift end auto clockout',
+      importance: Importance.max,
+      priority: Priority.high,
+      enableVibration: true,
+      vibrationPattern: vibPattern,                                     // ✅ 1-minute vibration
+      sound: const UriAndroidNotificationSound(                         // ✅ Device alarm sound
+          'content://settings/system/alarm_alert'),
+      playSound: true,
+      category: AndroidNotificationCategory.alarm,
+      visibility: NotificationVisibility.public,
+      color: Colors.red,
+      fullScreenIntent: true,
+      autoCancel: true,
+    );
+
+    const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+      interruptionLevel: InterruptionLevel.critical,
+    );
+
+    final NotificationDetails notificationDetails = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    await flutterLocalNotificationsPlugin.show(
+      _notificationId,
+      title,
+      body,
+      notificationDetails,
+      payload: payload,
+    );
+
+    debugPrint('⏰ [SHIFT END ALARM] Sent with device alarm sound + 60s vibration: $title');
+
+    if (mounted) {
+      Get.snackbar(
+        title,
+        body,
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: Colors.red.shade700,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 5),
+        icon: const Icon(Icons.alarm, color: Colors.white),
       );
     }
   }
@@ -731,106 +818,94 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
   }
 
   void _scheduleShiftEndClockOut() {
-    SharedPreferences.getInstance().then((prefs) {
-      bool isFrozen = prefs.getBool(KEY_IS_TIMER_FROZEN) ?? false;
-      if (isFrozen || !attendanceViewModel.isClockedIn.value) return;
+    _shiftEndClockOutTimer?.cancel();
 
-      final String? endTimeStr = prefs.getString('cached_end_time');
-      if (endTimeStr == null || endTimeStr.isEmpty) {
-        debugPrint('⏰ [SHIFT END] No cached_end_time — skipping');
+    if (!attendanceViewModel.isClockedIn.value) return;
+
+    bool shiftEndFired = false;
+
+    // ✅ FIX: Timer re-reads cached_end_time from SharedPreferences on EVERY tick.
+    // This means if the backend admin changes end_time while the user is clocked in,
+    // refreshEmployeeDataIfOnline() writes the new value to SharedPreferences and
+    // the NEXT tick of this timer picks it up automatically — no timer restart needed.
+    // Previous bug: endHour/endMinute were captured in the outer closure once and
+    // never updated, so backend end_time changes were completely ignored by Flutter.
+    _shiftEndClockOutTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
+      if (shiftEndFired) { timer.cancel(); return; }
+
+      final p      = await SharedPreferences.getInstance();
+      final frozen = p.getBool(KEY_IS_TIMER_FROZEN) ?? false;
+
+      if (frozen) {
+        shiftEndFired = true;
+        timer.cancel();
+        debugPrint('⏰ [SHIFT END] Native service already handled — processing in Flutter');
+        if (mounted) _checkAndProcessCriticalEvent();
         return;
       }
 
+      if (!attendanceViewModel.isClockedIn.value) {
+        timer.cancel();
+        return;
+      }
+
+      // ✅ FIX: Read fresh end_time on every tick (not captured in closure)
+      final String? endTimeStr = p.getString('cached_end_time');
+      if (endTimeStr == null || endTimeStr.isEmpty) return;
 
       final List<int>? parsed = _parseTimeTo24h(endTimeStr);
-      if (parsed == null) {
-        debugPrint('⏰ [SHIFT END] Cannot parse end_time: "$endTimeStr"');
-        return;
-      }
+      if (parsed == null) return;
 
       final int endHour   = parsed[0];
       final int endMinute = parsed[1];
 
-      // ✅ ADDED: overtime check
-      final String ot = (prefs.getString('cached_overtime') ?? 'no').toLowerCase().trim();
-      final bool overtimeAllowed = ot == 'yes' || ot == 'y' || ot == 'true';
-      if (overtimeAllowed) {
-        final DateTime now    = DateTime.now();
-        final int nowTotalMin = now.hour * 60 + now.minute;
-        final int endTotalMin = endHour * 60 + endMinute;
-        if (nowTotalMin > endTotalMin) {
-          debugPrint('⏰ [SHIFT END] Overtime user — already past shift end, skipping');
-          return;
-        }
+      // ✅ FIX: Read fresh overtime on every tick too
+      // ✅ NOTE: Overtime employees bhi shift end pe clockout honge — overtime flag
+      // sirf clock-in/out blocking ke liye hai, auto clockout ke liye nahi.
+      // (overtime check yahan se hata diya gaya)
+
+      final DateTime now    = DateTime.now();
+      final int endTotalMin = endHour * 60 + endMinute;
+      final int nowTotalMin = now.hour * 60 + now.minute;
+      final int diffMinutes = nowTotalMin - endTotalMin;
+
+      debugPrint('⏰ [SHIFT END] now=${now.hour}:${now.minute}  end=$endHour:$endMinute  diff=${diffMinutes}min');
+
+      if (diffMinutes >= 0 && diffMinutes < 480) {
+        shiftEndFired = true;
+        timer.cancel();
+
+        debugPrint('⏰ [SHIFT END] ✅ FIRING auto clockout — end=$endTimeStr diff=${diffMinutes}min');
+
+        final DateTime eventTime = DateTime.now();
+        final double currentDist = await _getCurrentDistance();
+        final double lat         = locationViewModel.globalLatitude1.value;
+        final double lng         = locationViewModel.globalLongitude1.value;
+
+        await _saveCriticalEventData(
+          eventTime : eventTime,
+          reason    : 'System Shift End - Clockout',
+          distance  : currentDist,
+          latitude  : lat,
+          longitude : lng,
+        );
+
+        // ✅ NEW: Use alarm notification with device alarm sound + 1-min max vibration
+        await _showShiftEndAlarmNotification(
+          title  : '⏰ SHIFT END AUTO CLOCKOUT',
+          body   : 'You have been automatically clocked out at shift end ($endTimeStr)',
+          payload: 'System Clock out - On Shift end',
+        );
+
+        await _handleAutoClockOut(
+          reason   : 'System Clock out - On Shift end',
+          context  : context,
+          eventTime: eventTime,
+        );
       }
-
-      debugPrint('⏰ [SHIFT END] Parsed "$endTimeStr" → ${endHour.toString().padLeft(2, '0')}:${endMinute.toString().padLeft(2, '0')} (24h)');
-
-      _shiftEndClockOutTimer?.cancel();
-
-      bool shiftEndFired = false;
-
-      _shiftEndClockOutTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
-        if (shiftEndFired) { timer.cancel(); return; }
-
-        final p      = await SharedPreferences.getInstance();
-        final frozen = p.getBool(KEY_IS_TIMER_FROZEN) ?? false;
-
-        if (frozen) {
-          shiftEndFired = true;
-          timer.cancel();
-          debugPrint('⏰ [SHIFT END] Native service already handled — processing in Flutter');
-          if (mounted) _checkAndProcessCriticalEvent();
-          return;
-        }
-
-        if (!attendanceViewModel.isClockedIn.value) {
-          timer.cancel();
-          return;
-        }
-
-        final DateTime now          = DateTime.now();
-        final int endTotalMin       = endHour * 60 + endMinute;
-        final int nowTotalMin       = now.hour * 60 + now.minute;
-        final int diffMinutes       = nowTotalMin - endTotalMin;
-
-        debugPrint('⏰ [SHIFT END] now=${now.hour}:${now.minute}  end=$endHour:$endMinute  diff=${diffMinutes}min');
-
-        if (diffMinutes >= 0 && diffMinutes < 480) {
-          shiftEndFired = true;
-          timer.cancel();
-
-          debugPrint('⏰ [SHIFT END] ✅ FIRING auto clockout — end=$endTimeStr diff=${diffMinutes}min');
-
-          final DateTime eventTime = DateTime.now();
-          final double currentDist = await _getCurrentDistance();
-          final double lat         = locationViewModel.globalLatitude1.value;
-          final double lng         = locationViewModel.globalLongitude1.value;
-
-          await _saveCriticalEventData(
-            eventTime : eventTime,
-            reason    : 'System Shift End - Clockout',
-            distance  : currentDist,
-            latitude  : lat,
-            longitude : lng,
-          );
-
-          await _showUrgentNotification(
-            title  : '⏰ SHIFT END AUTO CLOCKOUT',
-            body   : 'You have been automatically clocked out at shift end ($endTimeStr)',
-            payload: 'System Clock out - On Shift end',
-          );
-
-          await _handleAutoClockOut(
-            reason   : 'System Clock out - On Shift end',
-            context  : context,
-            eventTime: eventTime,
-          );
-        }
-      });
-
-      debugPrint('⏰ [SHIFT END] Wall-clock poll started for $endTimeStr (every 5s)');
     });
+
+    debugPrint('⏰ [SHIFT END] Wall-clock poll started (every 5s, re-reads end_time each tick)');
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1003,6 +1078,8 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       if (_isOnline && !wasOnline && !_isSyncing) {
         debugPrint('🔄 [AUTO-SYNC] Internet connected - syncing...');
         _triggerAutoSync();
+        _refreshOvertimeFromApi();       // ← Live overtime refresh on reconnect
+        _refreshEmployeeDataFromApi();   // ← Full employee data refresh on reconnect
       }
     });
 
@@ -1026,6 +1103,93 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       }
     } catch (e) {
       debugPrint('❌ [CONNECTIVITY] Error: $e');
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // OVERTIME LIVE REFRESH
+  // Called whenever device comes online. Hits the live API for this employee
+  // and updates cached_overtime in SharedPreferences.
+  // No other fields are changed — purely overtime-only, side-effect-free.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  Future<void> _refreshOvertimeFromApi() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userId = _safePrefsString(prefs, 'emp_id');
+      final companyCode = prefs.getString(prefCompanyCode) ?? '';
+
+      if (userId.isEmpty || companyCode.isEmpty) {
+        debugPrint('⚠️ [OVERTIME REFRESH] emp_id or companyCode missing — skip');
+        return;
+      }
+
+      final loginRepo = Get.find<LoginRepository>();
+      final newOvertime = await loginRepo.refreshOvertimeIfOnline(userId, companyCode);
+
+      if (newOvertime != null) {
+        debugPrint('✅ [OVERTIME REFRESH] Timer card updated overtime: $newOvertime');
+      }
+    } catch (e) {
+      debugPrint('⚠️ [OVERTIME REFRESH] Timer card error: $e');
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // EMPLOYEE DATA LIVE REFRESH  (every 5 s)
+  // Keeps end_time, overtime, shift, image_url, dep_id up to date from the
+  // live API. If device is offline the API call fails silently and the last
+  // cached values remain in SharedPreferences. When connectivity restores,
+  // _startAutoSyncMonitoring also fires an immediate call via
+  // _refreshEmployeeDataFromApi().
+  // ══════════════════════════════════════════════════════════════════════════
+
+  void _startEmployeeDataRefresh() {
+    _employeeDataRefreshTimer?.cancel();
+    _employeeDataRefreshTimer =
+        Timer.periodic(const Duration(seconds: 5), (_) {
+          _refreshEmployeeDataFromApi();
+        });
+    debugPrint('✅ [EMP REFRESH] 5-second refresh timer started');
+  }
+
+  Future<void> _refreshEmployeeDataFromApi() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // ✅ FIX: Snapshot old end_time BEFORE the API call so we can detect changes.
+      // refreshEmployeeDataIfOnline() writes the new value into the same SharedPreferences
+      // singleton, so comparing before/after gives us an exact change detection.
+      final String oldEndTime = prefs.getString('cached_end_time') ?? '';
+
+      final userId      = _safePrefsString(prefs, 'emp_id');
+      final companyCode = prefs.getString(prefCompanyCode) ?? '';
+
+      if (userId.isEmpty || companyCode.isEmpty) {
+        debugPrint('⚠️ [EMP REFRESH] emp_id or companyCode missing — skip');
+        return;
+      }
+
+      final loginRepo = Get.find<LoginRepository>();
+      await loginRepo.refreshEmployeeDataIfOnline(userId, companyCode);
+      await loginRepo.checkServerLogout(userId, companyCode);
+
+      // ✅ FIX: If backend changed end_time while user is clocked in, we must:
+      //   1. Restart _scheduleShiftEndClockOut() so the Flutter timer uses the new time
+      //      (the old timer had the old time captured; Fix 1 makes it re-read each tick,
+      //       but cancelling + restarting ensures shiftEndFired=false for the new time)
+      //   2. Call _startNativeMonitoringService() which triggers scheduleShiftEndAlarm()
+      //      in Kotlin with the fresh cached_end_time → updates the AlarmManager wakeup
+      final String newEndTime = prefs.getString('cached_end_time') ?? '';
+      if (newEndTime.isNotEmpty &&
+          newEndTime != oldEndTime &&
+          attendanceViewModel.isClockedIn.value) {
+        debugPrint('⏰ [END TIME CHANGED] "$oldEndTime" → "$newEndTime" — rescheduling shift-end timer + native alarm');
+        _scheduleShiftEndClockOut();     // cancel old timer, start new one for new end_time
+        _startNativeMonitoringService(); // triggers scheduleShiftEndAlarm() with new end_time
+      }
+    } catch (e) {
+      debugPrint('⚠️ [EMP REFRESH] Timer card error: $e');
     }
   }
 
@@ -1168,6 +1332,14 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       _scheduleShiftEndClockOut();
       _startPermissionMonitoring();
       debugPrint('✅ [INIT] Full clocked-in state restored');
+    } else {
+      // ✅ FIX: On cold start while not clocked in, guarantee the timer display
+      // and all related local fields are zeroed — prevents stale state from a
+      // previous session that did not clean up SharedPreferences correctly.
+      _localElapsedTime = '00:00:00';
+      _localClockInTime = null;
+      attendanceViewModel.elapsedTime.value = '00:00:00';
+      debugPrint('✅ [INIT] Clean state — not clocked in');
     }
 
     if (mounted) setState(() {});
@@ -1201,6 +1373,18 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
         if (mounted) setState(() {});
         debugPrint('✅ [RESTORE] Everything restored');
+      } else {
+        // ✅ FIX: Explicitly wipe any lingering timer/UI state when the app
+        // resumes and the user is NOT clocked in (e.g. after clock-out + reopen).
+        _localBackupTimer?.cancel();
+        _localBackupTimer = null;
+        _localClockInTime = null;
+        _localElapsedTime = '00:00:00';
+        attendanceViewModel.elapsedTime.value = '00:00:00';
+        attendanceViewModel.isClockedIn.value = false;
+        locationViewModel.isClockedIn.value   = false;
+        if (mounted) setState(() {});
+        debugPrint('✅ [RESTORE] Clean state confirmed — not clocked in');
       }
     });
   }
@@ -1428,8 +1612,9 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       // ── Read overtime flag ────────────────────────────────────────────────
       final String overtime =
       (prefs.getString('cached_overtime') ?? 'no').toLowerCase().trim();
+      // ✅ FIX: Handle all possible backend values ("1", "YES", "Yes", "y", "true")
       final bool overtimeAllowed =
-          overtime == 'yes' || overtime == 'y' || overtime == 'true';
+          overtime == 'yes' || overtime == 'y' || overtime == 'true' || overtime == '1';
 
       if (overtimeAllowed) {
         debugPrint('✅ [SHIFT BLOCK] Overtime allowed — clocking permitted');
@@ -1852,14 +2037,14 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
   }
 
   /// Converts "HH:mm:ss" (or "HH:mm") string to a DateTime for today.
+  /// Converts time string to a DateTime for today.
+  /// ✅ FIX: Uses _parseTimeTo24h so both 12-hour (e.g. "10:16 PM") and
+  /// 24-hour (e.g. "22:16") formats from backend are handled correctly.
   DateTime? _endTimeStringToDateTime(String timeStr) {
-    final parts = timeStr.split(':');
-    if (parts.length < 2) return null;
-    final now    = DateTime.now();
-    final hour   = int.tryParse(parts[0]) ?? 0;
-    final minute = int.tryParse(parts[1]) ?? 0;
-    final second = parts.length > 2 ? (int.tryParse(parts[2]) ?? 0) : 0;
-    return DateTime(now.year, now.month, now.day, hour, minute, second);
+    final parsed = _parseTimeTo24h(timeStr);
+    if (parsed == null) return null;
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day, parsed[0], parsed[1], 0);
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1989,11 +2174,14 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     unawaited(_violationVM.stopMonitoring());
     _stopLocationMonitoring();
     _localBackupTimer?.cancel();
+    _localBackupTimer = null;                          // ✅ FIX: nullify so next clock-in starts fresh
     _midnightClockOutTimer?.cancel();
+    _shiftEndClockOutTimer?.cancel();                  // ✅ FIX: was missing — prevents ghost auto-clockout in next session
     _permissionCheckTimer?.cancel();
     _localClockInTime = null;
 
     attendanceViewModel.stopElapsedTimer();
+    attendanceViewModel.elapsedTime.value = '00:00:00'; // ✅ FIX: reset ViewModel elapsed so UI shows 00:00:00
     attendanceViewModel.isClockedIn.value = false;
     locationViewModel.isClockedIn.value   = false;
 
@@ -2050,6 +2238,10 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
         prefs.setBool('clockOutPending', true),
         prefs.setBool('hasFastClockOutData', true),
       ]);
+
+      // ✅ FIX: Clear clock-in keyed state (prefClockInTime, etc.) so the next
+      // app launch cannot accidentally restore this session's clock-in time.
+      await attendanceViewModel.clearClockInState();
 
       // ── MQTT CLOCK OUT ─────────────────────────────────────────────────────
       await _mqttTracker.clockOutMqtt();
@@ -2204,8 +2396,13 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
         return 'Auto clocked out because Break time started';
       case 'System Clock out - On Shift end':
         return 'System Clock Out – On Shift End';
-      case 'System Clock out - Location Off':                          // ← YEH ADD KARO
+      case 'System Clock out - Location Off':
         return 'Auto clockout because location permission was revoked';
+    // ✅ Break reasons — sab variants handle kiye
+      case 'break_clockout':
+      case 'Lunch Break: User Clock Out':
+      case 'System Break  - Clockout':
+        return '⏸️ Break time shuru — Auto Clock-Out ho gaya';
       default:
         return 'Auto clockout completed successfully';
     }

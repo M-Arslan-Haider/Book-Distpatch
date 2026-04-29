@@ -70,8 +70,12 @@ class LoginModels {
   // Helper methods
   bool get isOvertimeAllowed {
     final overtime = over_time?.toLowerCase().trim();
-    debugPrint('🔍 [LOGIN MODELS] Checking overtime: $overtime -> ${overtime == 'yes' || overtime == 'y' || overtime == 'true'}');
-    return overtime == 'yes' || overtime == 'y' || overtime == 'true';
+    // Empty string or null is treated the same as 'no'
+    final allowed = overtime != null &&
+        overtime.isNotEmpty &&
+        (overtime == 'yes' || overtime == 'y' || overtime == 'true');
+    debugPrint('🔍 [LOGIN MODELS] Checking overtime: "$overtime" -> $allowed');
+    return allowed;
   }
 
   String get effectiveShift {

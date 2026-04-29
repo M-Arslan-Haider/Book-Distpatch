@@ -1,3 +1,4 @@
+import 'package:GPS_Workforce_Monitor/Screens/code_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -87,7 +88,6 @@ class _AppDrawerState extends State<AppDrawer>
   IconData get _biometricIcon {
     switch (_modality) {
       case BiometricModality.face:
-        return Icons.face_unlock_rounded;
       case BiometricModality.fingerprint:
       case BiometricModality.none:
         return Icons.fingerprint_rounded;
@@ -98,7 +98,6 @@ class _AppDrawerState extends State<AppDrawer>
   String get _biometricTileTitle {
     switch (_modality) {
       case BiometricModality.face:
-        return 'Face ID Login';
       case BiometricModality.fingerprint:
       case BiometricModality.none:
         return 'Fingerprint Login';
@@ -593,9 +592,7 @@ class _AppDrawerState extends State<AppDrawer>
   /// Shows a bottom sheet that lets the user pick Face Scan or Fingerprint.
   /// Returns the chosen [BiometricModality], or null if dismissed.
   Future<BiometricModality?> _showBiometricChoiceSheet() async {
-    // Always show both options — Android rarely reports BiometricType.face
-    // even on face-capable devices. Let the OS prompt handle enforcement.
-    const hasFace        = true;
+    // Always show fingerprint option only
     const hasFingerprint = true;
 
     return await showModalBottomSheet<BiometricModality>(
@@ -639,18 +636,6 @@ class _AppDrawerState extends State<AppDrawer>
               ),
             ),
             const SizedBox(height: 24),
-
-            // Face Scan option
-            if (hasFace)
-              _buildChoiceOption(
-                icon:     Icons.face_unlock_rounded,
-                title:    'Face Scan',
-                subtitle: 'Use Face ID to sign in instantly',
-                onTap:    () => Navigator.of(context).pop(BiometricModality.face),
-              ),
-
-            if (hasFace && hasFingerprint)
-              const SizedBox(height: 12),
 
             // Fingerprint option
             if (hasFingerprint)
@@ -891,7 +876,7 @@ class _AppDrawerState extends State<AppDrawer>
           await prefs.setString(prefBiometricPassword, biometricPassword);
         }
 
-        Get.offAll(() => const LoginScreen());
+        Get.offAll(() => const CodeScreen());
       },
     );
   }
