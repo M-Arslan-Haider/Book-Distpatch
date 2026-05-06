@@ -39,22 +39,7 @@ class LoginRepository extends GetxService {
     return 'unknown';
   }
 
-  final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
 
-  Future<String> _getDeviceModel() async {
-    try {
-      if (defaultTargetPlatform == TargetPlatform.android) {
-        final androidInfo = await _deviceInfo.androidInfo;
-        return androidInfo.model;
-      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
-        final iosInfo = await _deviceInfo.iosInfo;
-        return iosInfo.model;
-      }
-    } catch (e) {
-      debugPrint('⚠️ Could not get device model: $e');
-    }
-    return 'unknown';
-  }
 
   Future<VersionCheckResult> isCompanyVersionValid(String companyCode) async {
     try {
