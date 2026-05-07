@@ -285,20 +285,28 @@ class OvertimeMonitorService : Service() {
             "flutter.$KEY_OT_END_TIME"
         ).firstNotNullOfOrNull { prefStr(prefs, it).takeIf { v -> v.isNotEmpty() } } ?: ""
 
-        if (savedEndStr.isNotEmpty()) {
-            val savedEnd = parseDate(savedEndStr)
-            if (savedEnd != null) {
-                val remainMs = savedEnd.time - System.currentTimeMillis()
-                Log.d(TAG, "💾 [OT] Saved OT end time: $savedEndStr  remaining: ${remainMs/1000}s")
-                if (remainMs <= 0) {
-                    Log.d(TAG, "🔴 [OT] Saved OT end time ALREADY PASSED → immediate clockout")
-                    handler.postDelayed({ triggerOvertimeClockout() }, 500)
-                    return START_STICKY
-                }
-                // Pre-schedule alarm so we survive kill before first fetch completes
-                scheduleOtAlarm(savedEnd.time)
+        // ✅ FIX: savedEnd ko tabhi valid maano jab wo current clock-in ke BAAD ho.
+        // Agar savedEnd <= overtimeClockInTime, matlab yeh PURANI session ka leftover hai.
+        // Purani value se "overtime ended" notification nahin chahiye — ignore karo.
+        val clockInMs  = overtimeClockInTime?.time ?: 0L
+        val savedEnd   = if (savedEndStr.isNotEmpty()) parseDate(savedEndStr) else null
+        val isCurrentSession = savedEnd != null && savedEnd.time > clockInMs
+
+        if (isCurrentSession) {
+            val remainMs = savedEnd!!.time - System.currentTimeMillis()
+            Log.d(TAG, "💾 [OT] Saved OT end time: $savedEndStr  remaining: ${remainMs/1000}s")
+            if (remainMs <= 0) {
+                Log.d(TAG, "🔴 [OT] Saved OT end time ALREADY PASSED → immediate clockout")
+                handler.postDelayed({ triggerOvertimeClockout() }, 500)
+                return START_STICKY
             }
+            // Pre-schedule alarm so we survive kill before first fetch completes
+            scheduleOtAlarm(savedEnd.time)
         } else {
+            if (savedEndStr.isNotEmpty()) {
+                Log.d(TAG, "⚠️ [OT] Saved OT end time ($savedEndStr) belongs to a previous session — ignoring")
+            }
+            // Fall through: use cached cap to pre-schedule alarm for this new session
             // ✅ FIX: savedEndStr nahi mila — fresh clock-in ka case.
             // Cached cap se endTime estimate karo aur pre-schedule karo.
             // Agar cap bhi nahi mila to 4h fallback use karo — fetch loop sahi value set karega.
@@ -611,7 +619,7 @@ class OvertimeMonitorService : Service() {
         // Cancel the AlarmManager alarm (we are handling it right now)
         cancelOtAlarm()
 
-        val reason    = "System Clockout - Overtime Expired"
+        val reason    = "System Clockout - On Overtime End"
         val timestamp = sdfFull.format(Date())
         val clockInTime = prefStr(prefs, "flutter.clockInTime")
 

@@ -40,6 +40,8 @@ class GeofenceViolationViewModel extends GetxController {
   double? _watch_lat;
   double? _watch_lng;
   double? _watch_radius;
+  String? _watch_shape_coords;   // NEW – raw JSON string from shape_coords
+  String? _watch_shape_type;     // NEW – "polygon" or null
   String  _location_name = '';
   String  _emp_id        = '';
   String  _emp_name      = '';
@@ -77,6 +79,8 @@ class GeofenceViolationViewModel extends GetxController {
     required double lng,
     required double radiusMeters,
     required String locationName,
+    String? shapeCoords,   // NEW
+    String? shapeType,     // NEW
   }) async {
     debugPrint('🚀 [GeofenceVM] ========== START MONITORING CALLED ==========');
     debugPrint('🚀 [GeofenceVM]   - lat: $lat');
@@ -89,10 +93,12 @@ class GeofenceViolationViewModel extends GetxController {
       return;
     }
 
-    _watch_lat     = lat;
-    _watch_lng     = lng;
-    _watch_radius  = radiusMeters;
-    _location_name = locationName;
+    _watch_lat          = lat;
+    _watch_lng          = lng;
+    _watch_radius       = radiusMeters;
+    _watch_shape_coords = shapeCoords;   // NEW
+    _watch_shape_type   = shapeType;     // NEW
+    _location_name      = locationName;
     _isMonitoring  = true;
 
     final prefs = await SharedPreferences.getInstance();
@@ -203,15 +209,32 @@ class GeofenceViolationViewModel extends GetxController {
         _watch_lat!,  _watch_lng!,
       );
 
-      final within_radius = distance_meters <= _watch_radius!;
+      // ── NEW: shape-aware inside check ────────────────────────────────────
+      final bool within_fence;
+      if (_watch_shape_type == 'polygon' &&
+          _watch_shape_coords != null &&
+          _watch_shape_coords!.isNotEmpty) {
+        final polygon = _parsePolygonCoords(_watch_shape_coords);
+        if (polygon != null && polygon.isNotEmpty) {
+          within_fence = _isPointInPolygon(pos.latitude, pos.longitude, polygon);
+          debugPrint('🔷 [GeofenceVM] Polygon check: inside=$within_fence | '
+              'distance=${distance_meters.toStringAsFixed(1)}m');
+        } else {
+          // Malformed polygon → fall back to radius
+          within_fence = distance_meters <= (_watch_radius ?? 0);
+          debugPrint('📏 [GeofenceVM] Radius fallback: ${distance_meters.toStringAsFixed(1)}m '
+              '<= ${_watch_radius?.toStringAsFixed(1)}m | within=$within_fence');
+        }
+      } else {
+        within_fence = distance_meters <= (_watch_radius ?? 0);
+        debugPrint('📏 [GeofenceVM] Distance: ${distance_meters.toStringAsFixed(1)}m '
+            '| Radius: ${_watch_radius?.toStringAsFixed(1)}m | Within: $within_fence');
+      }
 
-      debugPrint('📏 [GeofenceVM] Distance: ${distance_meters.toStringAsFixed(1)}m '
-          '| Radius: ${_watch_radius!.toStringAsFixed(1)}m | Within: $within_radius');
-
-      if (!within_radius && !isOutside.value) {
+      if (!within_fence && !isOutside.value) {
         debugPrint('🚨 [GeofenceVM] TRIGGER: User EXITED geofence!');
         _onUserExited(DateTime.now(), distance_meters);
-      } else if (within_radius && isOutside.value) {
+      } else if (within_fence && isOutside.value) {
         debugPrint('✅ [GeofenceVM] TRIGGER: User RETURNED to geofence!');
         _onUserReturned(DateTime.now());
       }
@@ -595,6 +618,48 @@ class GeofenceViolationViewModel extends GetxController {
       if (v.isNotEmpty) return v;
     }
     return '';
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // PRIVATE – SHAPE HELPERS (NEW)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Parses a shape_coords JSON string into a list of lat/lng maps.
+  List<Map<String, double>>? _parsePolygonCoords(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final json   = jsonDecode(raw) as Map<String, dynamic>;
+      final coords = (json['coordinates'] as List<dynamic>)
+          .map((c) => {
+        'lat': double.parse(c['lat'].toString()),
+        'lng': double.parse(c['lng'].toString()),
+      })
+          .toList();
+      return coords;
+    } catch (e) {
+      debugPrint('⚠️ [GeofenceVM] _parsePolygonCoords error: $e');
+      return null;
+    }
+  }
+
+  /// Ray-casting point-in-polygon check (works for any convex/concave polygon).
+  bool _isPointInPolygon(
+      double lat, double lng, List<Map<String, double>> polygon) {
+    int  n      = polygon.length;
+    bool inside = false;
+    int  j      = n - 1;
+    for (int i = 0; i < n; i++) {
+      final double xi = polygon[i]['lat']!;
+      final double yi = polygon[i]['lng']!;
+      final double xj = polygon[j]['lat']!;
+      final double yj = polygon[j]['lng']!;
+      if (((yi > lng) != (yj > lng)) &&
+          (lat < (xj - xi) * (lng - yi) / (yj - yi) + xi)) {
+        inside = !inside;
+      }
+      j = i;
+    }
+    return inside;
   }
 
   String get currentOutsideDuration {

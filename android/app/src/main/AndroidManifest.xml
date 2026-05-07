@@ -12,6 +12,7 @@
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <!-- Storage Permissions -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
@@ -52,6 +53,7 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="location" />
+
         <!-- ✅ OvertimeMonitorService — background/foreground/killed overtime cap monitor -->
         <service
             android:name=".OvertimeMonitorService"
@@ -67,6 +69,32 @@
             android:foregroundServiceType="location"
             android:stopWithTask="false" />
 
+        <!-- ✅ GEOFENCE VIOLATION NOTIFICATION SERVICE
+             Monitors SharedPreferences for geofence violations and shows
+             heads-up notifications. Works in foreground, background, and
+             when app is killed (AlarmManager restart + BOOT_COMPLETED). -->
+        <service
+            android:name=".GeofenceViolationNotificationService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
+            android:stopWithTask="false" />
+
+        <!-- ✅ GEOFENCE VIOLATION RECEIVER
+             Restarts GeofenceViolationNotificationService after:
+               • Device reboot (BOOT_COMPLETED)
+               • App update (MY_PACKAGE_REPLACED)
+               • AlarmManager wakeup when app is killed (GEOFENCE_RESTART) -->
+        <receiver
+            android:name=".GeofenceViolationNotificationService$BootAndAlarmReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="com.metaxperts.GPS_Workforce_Monitor.GEOFENCE_RESTART" />
+            </intent-filter>
+        </receiver>
 
         <!-- Boot Receiver to restart service after reboot -->
         <receiver
@@ -83,7 +111,6 @@
             android:name="com.google.android.geo.API_KEY"
             android:value="AIzaSyB75e8drxN6oXb4U2V2c56yccRrEjmDmHo" />
         <!--            android:value="AIzaSyA8uucF_ZuwxXOkYhoQgDCD3FEURkTcxSY" />-->
-
 
         <!-- Google Play Services Version -->
         <meta-data
@@ -113,15 +140,6 @@
         <service
             android:name="id.flutter.flutter_background_service.BackgroundService"
             android:foregroundServiceType="location" />
-        <!-- WorkManager Configuration -->
-
-
-        <!-- Background Locator Service -->
-        <!--        <service-->
-        <!--            android:name="yukams.app.background_locator_2.IsolateHolderService"-->
-        <!--            android:permission="android.permission.FOREGROUND_SERVICE"-->
-        <!--            android:exported="true"-->
-        <!--            android:foregroundServiceType="location" />-->
 
         <!-- Flutter Embedding -->
         <meta-data

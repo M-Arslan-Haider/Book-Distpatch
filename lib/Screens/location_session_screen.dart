@@ -676,12 +676,14 @@ import '../../Services/remote_config_service.dart';
 // ══════════════════════════════════════════════════════════════════════════════
 
 class LocationItem {
-  final int    locationId;
-  final String locationName;
-  final double lat;
-  final double lng;
-  final double radius;
-  final String locationAddress;
+  final int     locationId;
+  final String  locationName;
+  final double  lat;
+  final double  lng;
+  final double  radius;
+  final String  locationAddress;
+  final String? shapeCoords;   // NEW – raw JSON string from shape_coords
+  final String? shapeType;     // NEW – e.g. "polygon" or null
 
   const LocationItem({
     required this.locationId,
@@ -690,6 +692,8 @@ class LocationItem {
     required this.lng,
     required this.radius,
     required this.locationAddress,
+    this.shapeCoords,
+    this.shapeType,
   });
 
   factory LocationItem.fromJson(Map<String, dynamic> json) {
@@ -700,6 +704,8 @@ class LocationItem {
       lng             : double.parse(json['lng_in'].toString()),
       radius          : double.parse(json['radius'].toString()),
       locationAddress : (json['location_address'] ?? '').toString().trim(),
+      shapeCoords     : json['shape_coords']?.toString(),        // NEW
+      shapeType       : json['shape_type']?.toString(),          // NEW
     );
   }
 }
@@ -874,6 +880,17 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen>
     await prefs.setDouble('selected_lng', item.lng);
     await prefs.setDouble('selected_radius', item.radius);
     await prefs.setString('selected_location_address', item.locationAddress);
+    // NEW – persist shape data
+    if (item.shapeCoords != null) {
+      await prefs.setString('selected_shape_coords', item.shapeCoords!);
+    } else {
+      await prefs.remove('selected_shape_coords');
+    }
+    if (item.shapeType != null) {
+      await prefs.setString('selected_shape_type', item.shapeType!);
+    } else {
+      await prefs.remove('selected_shape_type');
+    }
 
     debugPrint('💾 [LOCATION SELECT] Saved: "${item.locationName}" (id=${item.locationId})');
 
@@ -884,6 +901,8 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen>
       'lng'          : item.lng,
       'radius'       : item.radius,
       'address'      : item.locationAddress,
+      'shape_coords' : item.shapeCoords,   // NEW
+      'shape_type'   : item.shapeType,     // NEW
     });
   }
 
@@ -1198,6 +1217,15 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen>
                         label: '${item.radius.toStringAsFixed(0)} m radius',
                         color: AppColors.greenTeal,
                       ),
+                      // NEW – show shape type if available
+                      if (item.shapeType != null && item.shapeType!.isNotEmpty)
+                        _InfoPill(
+                          icon:  item.shapeType == 'polygon'
+                              ? Icons.hexagon_outlined
+                              : Icons.radio_button_unchecked_rounded,
+                          label: item.shapeType!,
+                          color: AppColors.skyBlueDk,
+                        ),
                     ],
                   ),
                 ],

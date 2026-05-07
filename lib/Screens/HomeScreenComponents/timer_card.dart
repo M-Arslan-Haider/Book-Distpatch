@@ -1777,6 +1777,8 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     required double allowedLat,
     required double allowedLng,
     required double radiusMeters,
+    String? shapeCoords,   // NEW
+    String? shapeType,     // NEW
   }) async {
     try {
       final Position currentPosition = await Geolocator.getCurrentPosition(
@@ -1792,14 +1794,66 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
       debugPrint('📏 [GEOFENCE] User: ${currentPosition.latitude}, ${currentPosition.longitude}');
       debugPrint('   [GEOFENCE] Distance from location: ${distanceInMeters.toStringAsFixed(1)} m');
+
+      // ── NEW: polygon check takes priority over radius ───────────────────
+      if (shapeType == 'polygon' &&
+          shapeCoords != null &&
+          shapeCoords.isNotEmpty) {
+        final polygon = _parsePolygonCoords(shapeCoords);
+        if (polygon != null && polygon.isNotEmpty) {
+          final inside = _isPointInPolygon(
+              currentPosition.latitude, currentPosition.longitude, polygon);
+          debugPrint('🔷 [GEOFENCE] Polygon check: inside=$inside');
+          return inside;
+        }
+      }
+
+      // Fallback: radius check
       debugPrint('📏 [GEOFENCE] Allowed radius: $radiusMeters m');
       debugPrint('📏 [GEOFENCE] Within geofence: ${distanceInMeters <= radiusMeters}');
-
       return distanceInMeters <= radiusMeters;
     } catch (e) {
       debugPrint('❌ [GEOFENCE] Distance check error: $e');
       return false;
     }
+  }
+
+  // ── NEW: Polygon helpers ────────────────────────────────────────────────────
+
+  List<Map<String, double>>? _parsePolygonCoords(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final j      = jsonDecode(raw) as Map<String, dynamic>;
+      final coords = (j['coordinates'] as List<dynamic>)
+          .map((c) => {
+        'lat': double.parse(c['lat'].toString()),
+        'lng': double.parse(c['lng'].toString()),
+      })
+          .toList();
+      return coords;
+    } catch (e) {
+      debugPrint('⚠️ [GEOFENCE] _parsePolygonCoords error: $e');
+      return null;
+    }
+  }
+
+  bool _isPointInPolygon(
+      double lat, double lng, List<Map<String, double>> polygon) {
+    int  n      = polygon.length;
+    bool inside = false;
+    int  j      = n - 1;
+    for (int i = 0; i < n; i++) {
+      final double xi = polygon[i]['lat']!;
+      final double yi = polygon[i]['lng']!;
+      final double xj = polygon[j]['lat']!;
+      final double yj = polygon[j]['lng']!;
+      if (((yi > lng) != (yj > lng)) &&
+          (lat < (xj - xi) * (lng - yi) / (yj - yi) + xi)) {
+        inside = !inside;
+      }
+      j = i;
+    }
+    return inside;
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -2070,10 +2124,12 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       debugPrint('🔍 [GEOFENCE] geo_fencing flag = "$geoFencingFlag" '
           '| enforced = $isGeoFencingRequired');
 
-      final double? savedLat    = prefs.getDouble('selected_lat');
-      final double? savedLng    = prefs.getDouble('selected_lng');
-      final double? savedRadius = prefs.getDouble('selected_radius');
-      final String  savedName   = prefs.getString('selected_location_name') ?? '';
+      final double? savedLat        = prefs.getDouble('selected_lat');
+      final double? savedLng        = prefs.getDouble('selected_lng');
+      final double? savedRadius     = prefs.getDouble('selected_radius');
+      final String  savedName       = prefs.getString('selected_location_name') ?? '';
+      final String? savedShapeCoords = prefs.getString('selected_shape_coords'); // NEW
+      final String? savedShapeType   = prefs.getString('selected_shape_type');   // NEW
 
       if (isGeoFencingRequired) {
         // ── 4a. No location selected ────────────────────────────────────────
@@ -2092,13 +2148,16 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
           return;
         }
 
-        // ── 4b. GPS distance check ──────────────────────────────────────────
-        debugPrint('🔍 [GEOFENCE] Checking GPS distance from "$savedName"...');
+        // ── 4b. GPS distance / polygon check ────────────────────────────────
+        debugPrint('🔍 [GEOFENCE] Checking GPS distance from "$savedName" '
+            '| shape_type=$savedShapeType');
 
         final bool withinGeofence = await _isWithinGeofence(
           allowedLat   : savedLat,
           allowedLng   : savedLng,
           radiusMeters : savedRadius,
+          shapeCoords  : savedShapeCoords,   // NEW
+          shapeType    : savedShapeType,     // NEW
         );
 
         if (!withinGeofence) {
@@ -2237,6 +2296,8 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
           lng          : monLng,
           radiusMeters : monRadius,
           locationName : monName,
+          shapeCoords  : savedShapeCoords,   // NEW
+          shapeType    : savedShapeType,     // NEW
         ));
       } else {
         debugPrint('ℹ️ [GEOFENCE] Violation monitoring skipped — geo_fencing is NO');
@@ -2995,6 +3056,19 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
                             'selected_lng', (result['lng'] ?? 0.0).toDouble());
                         await prefs.setDouble(
                             'selected_radius', (result['radius'] ?? 100).toDouble());
+                        // NEW – save shape data from location selection
+                        final shapeC = result['shape_coords']?.toString();
+                        final shapeT = result['shape_type']?.toString();
+                        if (shapeC != null) {
+                          await prefs.setString('selected_shape_coords', shapeC);
+                        } else {
+                          await prefs.remove('selected_shape_coords');
+                        }
+                        if (shapeT != null) {
+                          await prefs.setString('selected_shape_type', shapeT);
+                        } else {
+                          await prefs.remove('selected_shape_type');
+                        }
                         if (mounted) setState(() {});
                       }
                     },

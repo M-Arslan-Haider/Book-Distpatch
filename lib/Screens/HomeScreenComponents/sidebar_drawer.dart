@@ -833,7 +833,7 @@ class _AppDrawerState extends State<AppDrawer>
 
         Padding(
           padding: const EdgeInsets.only(bottom: 20, top: 8),
-          child: Text('GPS Workforce Monitor  •  v2.2',
+          child: Text('GPS Workforce Monitor  •  v2.3',
               style: TextStyle(
                   fontSize:      10.5,
                   color:         AppColors.textSecondary.withOpacity(0.5),
