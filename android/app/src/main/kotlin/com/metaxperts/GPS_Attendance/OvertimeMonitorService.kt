@@ -857,6 +857,8 @@ class OvertimeMonitorService : Service() {
             (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
                 .notify(CLOCKOUT_NOTIF_ID, notif)
             Log.d(TAG, "🔔 [OT NOTIF] Clockout notification shown — $reason @ $timestamp")
+            // ── POST notification log to API (offline-safe) ───────────────
+            NotificationApiLogger.log(this, "⏰ Overtime Ended — Auto Clock Out")
         } catch (e: Exception) {
             Log.e(TAG, "❌ [OT NOTIF] showClockoutNotification error: ${e.message}")
         }

@@ -344,6 +344,10 @@ class GeofenceViolationNotificationService : Service() {
 
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             nm.notify(notifId, notification)
+
+            // ── POST notification log to API (offline-safe) ───────────────
+            NotificationApiLogger.log(this, title)
+
         } catch (e: Exception) {
             android.util.Log.e("GeoViolNotif", "showViolationNotification error: ${e.message}")
         }

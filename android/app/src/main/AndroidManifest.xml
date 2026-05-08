@@ -105,7 +105,10 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
-
+        <!-- Interval Selfie Alarm Receiver -->
+        <receiver
+            android:name=".IntervalSelfieAlarmReceiver"
+            android:exported="false" />
         <!-- Google Maps API Key -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"

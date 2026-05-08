@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:url_launcher/url_launcher.dart';            // ✅ NEW
+import '../Services/interval_selfie_service.dart';
 import '../Services/update_check_service.dart';             // ✅ NEW
 import '../Services/selfie_notification_policy_service.dart'; // ✅ Selfie grace button
 
@@ -78,6 +79,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     // ✅ Register selfie grace service
     Get.put(SelfieNotificationPolicyService());
+    Get.put(IntervalSelfieService());
 
     _loadUserData();
     taskVM.fetchAssignedTasks();
@@ -121,6 +123,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (empId.isNotEmpty && companyCode.isNotEmpty) {
       debugPrint('🏠 [HOME] Calling SelfieNotificationPolicyService.to.initialize...');
       SelfieNotificationPolicyService.to.initialize(empId, companyCode);
+      IntervalSelfieService.to.initialize(empId, companyCode);
     } else {
       debugPrint('❌ [HOME] empId or companyCode empty — selfie service NOT initialized');
       debugPrint('❌ [HOME] empId="$empId"  companyCode="$companyCode"');
@@ -319,6 +322,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     SizedBox(height: context.rs(14)),
                     // ✅ Selfie grace button — only visible during grace window
                     const SelfieGraceButton(),
+                    const IntervalSelfieButton(),
                     SizedBox(height: context.rs(11)),
                     _buildQuickActions(),
                     SizedBox(height: context.rs(22)),

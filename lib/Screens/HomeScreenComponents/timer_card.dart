@@ -21,6 +21,7 @@ import '../../Database/util.dart';
 import '../../Repositories/LoginRepositories/login_repository.dart';
 import '../../Services/Overtime_Clock_Out_Service.dart';
 import '../../Services/selfie_notification_policy_service.dart';
+import '../../Services/interval_selfie_service.dart';
 import '../../ViewModels/attendance_out_view_model.dart';
 import '../../ViewModels/attendance_view_model.dart';
 import '../../ViewModels/geofancing_violation.dart';
@@ -1002,6 +1003,20 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
         debugPrint('📸 [SELFIE INIT] isButtonEnabled AFTER  = ${SelfieNotificationPolicyService.to.isButtonEnabled.value}');
         debugPrint('📸 [SELFIE INIT] graceSecondsLeft AFTER  = ${SelfieNotificationPolicyService.to.graceSecondsLeft.value}');
+
+        // ── IntervalSelfieService — register & initialize ──────────────────
+        debugPrint('');
+        debugPrint('📸 [INTERVAL SELFIE INIT] Registering IntervalSelfieService...');
+        if (!Get.isRegistered<IntervalSelfieService>()) {
+          Get.put(IntervalSelfieService(), permanent: true);
+          debugPrint('📸 [INTERVAL SELFIE INIT] ✅ Get.put done');
+        } else {
+          debugPrint('📸 [INTERVAL SELFIE INIT] Already registered — reusing');
+        }
+        await IntervalSelfieService.to.initialize(empId, companyCode);
+        await IntervalSelfieService.to.checkPendingOnResume();
+        debugPrint('📸 [INTERVAL SELFIE INIT] ✅ initialize() done');
+
         debugPrint('✅ [SELFIE INIT] ===== DONE =====');
         debugPrint('══════════════════════════════════════════════════════');
         debugPrint('');
@@ -3173,6 +3188,11 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
             ),
 
             const SizedBox(height: 10),
+
+            // ── Interval Selfie Button ─────────────────────────────────────
+            // Visible only when IntervalSelfieService has a pending notification.
+            // Auto-hides after NOTIF_TIME minutes grace period expires.
+            const IntervalSelfieButton(),
 
             // ── Clock In / Clock Out Buttons ───────────────────────────────
             Obx(() {

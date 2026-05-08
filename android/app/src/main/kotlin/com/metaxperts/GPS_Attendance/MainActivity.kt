@@ -87,6 +87,15 @@ class MainActivity : FlutterFragmentActivity(), ProviderInstaller.ProviderInstal
                     OvertimeMonitorService.stop(this)
                     result.success(true)
                 }
+                // ✅ INTERVAL SELFIE ALARMS
+                "scheduleIntervalSelfieAlarms" -> {
+                    IntervalSelfieAlarmReceiver.scheduleAll(applicationContext)
+                    result.success(true)
+                }
+                "cancelIntervalSelfieAlarms" -> {
+                    IntervalSelfieAlarmReceiver.cancelAll(applicationContext)
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }
