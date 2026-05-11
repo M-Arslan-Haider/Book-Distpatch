@@ -6,48 +6,24 @@ import 'package:new_version_plus/new_version_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class UpdateCheckService {
-  static Future<void> check(BuildContext context) async {
-    if (!Platform.isAndroid) return;
 
-    final newVersion = NewVersionPlus(
-      androidId: "com.metaxperts.GPS_Workforce_Monitor",
-    );
+  static const String _packageName = 'com.metaxperts.GPS_Workforce_Monitor';
+
+  // ✅ Home screen yeh use karta hai
+  static String get playStoreUrl =>
+      'https://play.google.com/store/apps/details?id=$_packageName';
+
+  // ✅ Home screen yeh call karta hai
+  static Future<bool> isUpdateRequired() async {
+    if (!Platform.isAndroid) return false;
 
     try {
+      final newVersion = NewVersionPlus(androidId: _packageName);
       final status = await newVersion.getVersionStatus();
-
-      if (status != null && status.canUpdate) {
-        _showDialog(context, status.appStoreLink);
-      }
+      return status != null && status.canUpdate;
     } catch (e) {
       debugPrint("Version check failed: $e");
+      return false;
     }
-  }
-
-  static void _showDialog(BuildContext context, String url) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => WillPopScope(
-        onWillPop: () async => false,
-        child: AlertDialog(
-          title: const Text("Update Required"),
-          content: const Text(
-            "A new version is available. You must update to continue using this app.",
-          ),
-          actions: [
-            ElevatedButton(
-              onPressed: () async {
-                await launchUrl(
-                  Uri.parse(url),
-                  mode: LaunchMode.externalApplication,
-                );
-              },
-              child: const Text("UPDATE"),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
