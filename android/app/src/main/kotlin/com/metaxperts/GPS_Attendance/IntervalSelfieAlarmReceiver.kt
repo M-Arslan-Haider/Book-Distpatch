@@ -541,7 +541,6 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
-import java.util.Random
 
 // ─── SharedPreferences constants ─────────────────────────────────────────────
 private const val PREFS_NAME          = "FlutterSharedPreferences"
@@ -554,6 +553,7 @@ private const val KEY_GRACE_EXPIRY    = "flutter.interval_selfie_grace_expiry"
 private const val KEY_NOTIFS_FIRED    = "flutter.interval_selfie_notifs_fired"
 private const val KEY_SELFIE_DONE     = "flutter.interval_selfie_done_flag"
 private const val KEY_FROZEN          = "flutter.is_timer_frozen"
+private const val KEY_CACHED_END_TIME = "flutter.cached_end_time"   // ✅ shift end wall-clock (e.g. "05:00 PM")
 
 // ─── Notification channel ─────────────────────────────────────────────────────
 private const val CHANNEL_ID   = "interval_selfie_channel"
@@ -620,6 +620,40 @@ class IntervalSelfieAlarmReceiver : BroadcastReceiver() {
 
         // If selfie was done, we still allow the next interval notification
         // (selfieDone is per-notification, cleared on next clock-in)
+
+        // ✅ NEW: Guard — skip notification if shift has already ended
+        val nowMs        = System.currentTimeMillis()
+        val nowTimeStr   = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(nowMs))
+        val endTimeRaw   = prefs.getString(KEY_CACHED_END_TIME, "") ?: ""
+
+        android.util.Log.d("IntervalSelfie",
+            "⏰ [SHIFT GUARD] currentTime=$nowTimeStr  cached_end_time=\"$endTimeRaw\"")
+
+        if (endTimeRaw.isNotEmpty()) {
+            val shiftEndMs = parseShiftEndToMs(endTimeRaw)
+            if (shiftEndMs != null) {
+                val shiftEndStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(shiftEndMs))
+                android.util.Log.d("IntervalSelfie",
+                    "⏰ [SHIFT GUARD] shiftEndTime=$shiftEndStr  nowMs=$nowMs  shiftEndMs=$shiftEndMs")
+
+                if (nowMs >= shiftEndMs) {
+                    android.util.Log.d("IntervalSelfie",
+                        "🚫 [SHIFT GUARD] ❌ Shift ENDED — notification SKIPPED (now=$nowTimeStr >= shiftEnd=$shiftEndStr)")
+                    android.util.Log.d("IntervalSelfie",
+                        "🚫 [SHIFT GUARD]   interval timer stopped — no button will show")
+                    return
+                } else {
+                    android.util.Log.d("IntervalSelfie",
+                        "✅ [SHIFT GUARD] Shift still active — notification will fire (now=$nowTimeStr  shiftEnd=$shiftEndStr)")
+                }
+            } else {
+                android.util.Log.w("IntervalSelfie",
+                    "⚠️ [SHIFT GUARD] Cannot parse end_time \"$endTimeRaw\" — proceeding without shift-end check")
+            }
+        } else {
+            android.util.Log.w("IntervalSelfie",
+                "⚠️ [SHIFT GUARD] cached_end_time is empty — proceeding without shift-end check")
+        }
 
         // Write pending flag + grace expiry to SharedPrefs
         val now         = System.currentTimeMillis()
@@ -779,34 +813,32 @@ class IntervalSelfieAlarmReceiver : BroadcastReceiver() {
                 val clockInStr   = prefs.getString(KEY_CLOCK_IN_TIME, "") ?: ""
                 val notifCount   = (prefs.all[KEY_NOTIF_COUNT]   as? Long)?.toInt() ?: prefs.getInt(KEY_NOTIF_COUNT,   0)
                 val notifTimeMin = (prefs.all[KEY_NOTIF_TIME_MIN] as? Long)?.toInt() ?: prefs.getInt(KEY_NOTIF_TIME_MIN, 0)
+                val endTimeRaw   = prefs.getString(KEY_CACHED_END_TIME, "") ?: ""
 
                 android.util.Log.d("IntervalSelfie", "")
                 android.util.Log.d("IntervalSelfie",
                     "═══════════════════════════════════════════════════════")
                 android.util.Log.d("IntervalSelfie",
-                    "📸 [INTERVAL SELFIE] scheduleAll (RANDOM MODE)")
+                    "📸 [INTERVAL SELFIE] scheduleAll (SHIFT-AWARE EVEN MODE)")
                 android.util.Log.d("IntervalSelfie",
-                    "📸 [INTERVAL SELFIE]   clockInStr   = \"$clockInStr\"")
+                    "📸 [INTERVAL SELFIE]   clockInStr     = \"$clockInStr\"")
                 android.util.Log.d("IntervalSelfie",
-                    "📸 [INTERVAL SELFIE]   notifCount   = $notifCount")
+                    "📸 [INTERVAL SELFIE]   notifCount     = $notifCount")
                 android.util.Log.d("IntervalSelfie",
-                    "📸 [INTERVAL SELFIE]   notifTimeMin = $notifTimeMin")
+                    "📸 [INTERVAL SELFIE]   notifTimeMin   = $notifTimeMin")
+                android.util.Log.d("IntervalSelfie",
+                    "📸 [INTERVAL SELFIE]   cached_end_time= \"$endTimeRaw\"")
 
                 // ── DEBUG: dump all interval-selfie SharedPrefs keys ──────────
                 android.util.Log.d("IntervalSelfie",
                     "📸 [INTERVAL SELFIE]   [DEBUG] All relevant SharedPrefs keys:")
                 for ((k, v) in prefs.all) {
-                    if (k.contains("interval_selfie") || k == "flutter.isClockedIn") {
+                    if (k.contains("interval_selfie") || k == "flutter.isClockedIn" || k == "flutter.cached_end_time") {
                         android.util.Log.d("IntervalSelfie",
                             "📸 [INTERVAL SELFIE]     $k = $v")
                     }
                 }
                 // ─────────────────────────────────────────────────────────────
-
-                android.util.Log.d("IntervalSelfie",
-                    "📸 [INTERVAL SELFIE]   Strategy     = random within each 2h slot")
-                android.util.Log.d("IntervalSelfie",
-                    "───────────────────────────────────────────────────────")
 
                 if (notifCount <= 0) {
                     android.util.Log.w("IntervalSelfie",
@@ -814,6 +846,7 @@ class IntervalSelfieAlarmReceiver : BroadcastReceiver() {
                     return
                 }
 
+                // ── Parse clock-in time ────────────────────────────────────────
                 val clockInMs: Long
                 if (clockInStr.isEmpty()) {
                     android.util.Log.w("IntervalSelfie",
@@ -830,32 +863,88 @@ class IntervalSelfieAlarmReceiver : BroadcastReceiver() {
                     }
                 }
 
+                // ── Parse shift end time ───────────────────────────────────────
+                val shiftEndMs: Long? = if (endTimeRaw.isNotEmpty()) parseShiftEndToMs(endTimeRaw) else null
+
+                val clockInStr2  = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(clockInMs))
+                val shiftEndStr2 = if (shiftEndMs != null)
+                    SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(shiftEndMs))
+                else "N/A (no end_time)"
+
+                android.util.Log.d("IntervalSelfie",
+                    "⏰ [SHIFT-AWARE]   shiftStart    = $clockInStr2")
+                android.util.Log.d("IntervalSelfie",
+                    "⏰ [SHIFT-AWARE]   shiftEnd      = $shiftEndStr2")
+                android.util.Log.d("IntervalSelfie",
+                    "⏰ [SHIFT-AWARE]   notifCount    = $notifCount")
+
+                // ── Calculate effective window ────────────────────────────────
+                // Use shift end if available; otherwise fall back to 2h-per-slot behaviour
+                val windowEndMs: Long = if (shiftEndMs != null && shiftEndMs > clockInMs) {
+                    shiftEndMs
+                } else {
+                    // Fallback: use notifCount * 120 min window
+                    clockInMs + (notifCount * 120 * 60 * 1000L)
+                }
+
+                val shiftDurationMs  = windowEndMs - clockInMs
+                val shiftDurationMin = shiftDurationMs / 60_000L
+
+                // Even-interval formula: divide shift into (notifCount+1) equal parts
+                // Notif i fires at: clockIn + i * (shiftDuration / (notifCount+1))
+                val intervalMin = shiftDurationMin / (notifCount + 1)
+
+                android.util.Log.d("IntervalSelfie",
+                    "⏰ [SHIFT-AWARE]   shiftDuration = ${shiftDurationMin}min")
+                android.util.Log.d("IntervalSelfie",
+                    "⏰ [SHIFT-AWARE]   intervalMin   = ${intervalMin}min  (= shiftDuration / (notifCount+1))")
+                android.util.Log.d("IntervalSelfie",
+                    "───────────────────────────────────────────────────────")
+
+                // ── Log all calculated notification times before scheduling ───
+                android.util.Log.d("IntervalSelfie",
+                    "📅 [SHIFT-AWARE] Calculated notification times:")
+                for (i in 1..notifCount) {
+                    val offsetMs    = i * intervalMin * 60_000L
+                    val fireAt      = clockInMs + offsetMs
+                    val fireTimeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(fireAt))
+                    android.util.Log.d("IntervalSelfie",
+                        "📅 [SHIFT-AWARE]   Notif #$i → $fireTimeStr  (${i * intervalMin}min after shift start)")
+                }
+                android.util.Log.d("IntervalSelfie",
+                    "───────────────────────────────────────────────────────")
+
                 val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
                 val nowMs        = System.currentTimeMillis()
-                val rng          = Random()
+                val nowTimeStr   = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(nowMs))
                 var scheduled    = 0
 
-                for (i in 1..notifCount) {
-                    val slotStartMin = (i - 1) * 120
-                    val slotEndMin   = i * 120
-                    val randomOffsetMin = slotStartMin + rng.nextInt(slotEndMin - slotStartMin)
+                android.util.Log.d("IntervalSelfie",
+                    "🕐 [SHIFT-AWARE]   currentTime   = $nowTimeStr")
 
-                    val fireAtMs = clockInMs + (randomOffsetMin * 60 * 1000L)
+                for (i in 1..notifCount) {
+                    val offsetMs = i * intervalMin * 60_000L
+                    val fireAtMs = clockInMs + offsetMs
                     val diffMin  = ((fireAtMs - nowMs) / 60_000).toInt()
                     val fireTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(fireAtMs))
 
                     android.util.Log.d("IntervalSelfie",
                         "📸 [INTERVAL SELFIE]   Alarm #$i:")
                     android.util.Log.d("IntervalSelfie",
-                        "📸 [INTERVAL SELFIE]     slot         = ${slotStartMin}min – ${slotEndMin}min after clock-in")
-                    android.util.Log.d("IntervalSelfie",
-                        "📸 [INTERVAL SELFIE]     randomOffset = ${randomOffsetMin}min after clock-in")
-                    android.util.Log.d("IntervalSelfie",
                         "📸 [INTERVAL SELFIE]     fireAt       = $fireTime  (in ${diffMin}min from now)")
 
+                    // Skip if already past
                     if (fireAtMs <= nowMs) {
                         android.util.Log.d("IntervalSelfie",
                             "📸 [INTERVAL SELFIE]     ↳ ⚠️ already past — skipped")
+                        continue
+                    }
+
+                    // Skip if at or after shift end
+                    if (shiftEndMs != null && fireAtMs >= shiftEndMs) {
+                        val shiftEndFmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(shiftEndMs))
+                        android.util.Log.d("IntervalSelfie",
+                            "📸 [INTERVAL SELFIE]     ↳ 🚫 fireAt=$fireTime >= shiftEnd=$shiftEndFmt — SKIPPED (outside shift)")
                         continue
                     }
 
@@ -894,7 +983,7 @@ class IntervalSelfieAlarmReceiver : BroadcastReceiver() {
                 android.util.Log.d("IntervalSelfie",
                     "───────────────────────────────────────────────────────")
                 android.util.Log.d("IntervalSelfie",
-                    "📸 [INTERVAL SELFIE] Scheduled $scheduled / $notifCount alarm(s)")
+                    "📸 [INTERVAL SELFIE] Scheduled $scheduled / $notifCount alarm(s) (within shift window)")
                 android.util.Log.d("IntervalSelfie",
                     "═══════════════════════════════════════════════════════")
                 android.util.Log.d("IntervalSelfie", "")
@@ -949,6 +1038,40 @@ class IntervalSelfieAlarmReceiver : BroadcastReceiver() {
             } catch (e: Exception) {
                 android.util.Log.e("IntervalSelfie",
                     "❌ [INTERVAL SELFIE] cancelAll error: ${e.message}")
+            }
+        }
+
+        /**
+         * ✅ NEW: Parse "cached_end_time" (e.g. "12:00 PM" / "17:00" / "5:00 PM")
+         * and build a Long epoch-ms for TODAY at that wall-clock hour:minute.
+         * Returns null if parsing fails.
+         */
+        private fun parseShiftEndToMs(raw: String): Long? {
+            return try {
+                val upper   = raw.trim().uppercase()
+                val isPM    = upper.contains("PM")
+                val isAM    = upper.contains("AM")
+                val cleaned = upper.replace("PM", "").replace("AM", "").trim()
+                val parts   = cleaned.split(":")
+                if (parts.size < 2) return null
+
+                var hour   = parts[0].trim().toIntOrNull() ?: return null
+                val minute = parts[1].trim().split(Regex("\\s+"))[0].toIntOrNull() ?: return null
+
+                if (isPM && hour != 12) hour += 12
+                if (isAM && hour == 12) hour  = 0
+
+                val cal = Calendar.getInstance().apply {
+                    set(Calendar.HOUR_OF_DAY, hour)
+                    set(Calendar.MINUTE,      minute)
+                    set(Calendar.SECOND,      0)
+                    set(Calendar.MILLISECOND, 0)
+                }
+                cal.timeInMillis
+            } catch (e: Exception) {
+                android.util.Log.e("IntervalSelfie",
+                    "❌ [SHIFT GUARD] parseShiftEndToMs error: ${e.message}  raw=\"$raw\"")
+                null
             }
         }
 

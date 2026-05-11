@@ -699,13 +699,13 @@ class LocationItem {
   factory LocationItem.fromJson(Map<String, dynamic> json) {
     return LocationItem(
       locationId      : int.tryParse(json['location_id']?.toString() ?? '0') ?? 0,
-      locationName    : (json['location_name'] ?? '').toString().trim(),
+      locationName    : (json['building_office'] ?? '').toString().trim(), // MAPPED: building_office → locationName
       lat             : double.parse(json['lat_in'].toString()),
       lng             : double.parse(json['lng_in'].toString()),
       radius          : double.parse(json['radius'].toString()),
       locationAddress : (json['location_address'] ?? '').toString().trim(),
-      shapeCoords     : json['shape_coords']?.toString(),        // NEW
-      shapeType       : json['shape_type']?.toString(),          // NEW
+      shapeCoords     : json['shape_coords']?.toString(),
+      shapeType       : json['shape_type']?.toString(),
     );
   }
 }

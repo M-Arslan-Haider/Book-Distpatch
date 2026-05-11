@@ -1939,7 +1939,7 @@ class LocationMonitorService : Service() {
     private val CHECK_INTERVAL    = 2000L
     private val GPS_PUBLISH_MS    = 5000L
 
-    private val HTTP_POST_MS  = 2 * 60 * 1000L
+    private val HTTP_POST_MS  = 3 * 60 * 1000L
     private val HTTP_POST_URL = "http://oracle.metaxperts.net/ords/gps_workforce/emplocation/post/"
 
     // ✅ FIX #1: Increased capture interval from 1s → 10s to reduce polyline noise

@@ -455,7 +455,7 @@ class LocationTrackerService {
     debugPrint('📍 [TRACKER] Firing immediate first POST on clock-in...');
     _postLocation();
 
-    _timer = Timer.periodic(const Duration(minutes: 2), (timer) {
+    _timer = Timer.periodic(const Duration(minutes: 3), (timer) {
       debugPrint('⏰ [TRACKER] Timer tick #${timer.tick} fired — starting POST #${_postCount + 1}');
       _postLocation();
     });
