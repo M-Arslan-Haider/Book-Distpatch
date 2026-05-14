@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:GPS_Workforce_Monitor/ViewModels/travel_session_view_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
@@ -185,6 +186,11 @@ class GeofenceViolationViewModel extends GetxController {
 
   Future<void> _checkGeofence() async {
     if (_watch_lat == null || _watch_lng == null || _watch_radius == null) return;
+    final travelVM = Get.find<TravelViewModel>();
+    if (travelVM.isTravelMode.value) {
+      debugPrint('🚗 [GeofenceVM] Travel mode active — skipping violation check');
+      return;
+    }
 
     try {
       debugPrint('📍 [GeofenceVM] Geofence check...');

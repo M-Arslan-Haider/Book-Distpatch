@@ -105,10 +105,29 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
         <!-- Interval Selfie Alarm Receiver -->
         <receiver
             android:name=".IntervalSelfieAlarmReceiver"
             android:exported="false" />
+
+        <!-- ✅ DATE/TIME CHANGE RECEIVER
+             Detects when user manually changes device date or time from Settings.
+             Works in foreground, background, AND when app is fully killed.
+             TIME_SET     = user manually sets time from Settings
+             TIME_CHANGED = system time changed
+             DATE_CHANGED = date changed (midnight or manual) -->
+        <receiver
+            android:name=".DateTimeChangeReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIME_CHANGED" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
         <!-- Google Maps API Key -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
@@ -148,6 +167,7 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
     </application>
 
     <!-- Queries Section -->
