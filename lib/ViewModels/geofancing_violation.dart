@@ -231,6 +231,20 @@ class GeofenceViolationViewModel extends GetxController {
           debugPrint('📏 [GeofenceVM] Radius fallback: ${distance_meters.toStringAsFixed(1)}m '
               '<= ${_watch_radius?.toStringAsFixed(1)}m | within=$within_fence');
         }
+      } else if (_watch_shape_type == 'rectangle' &&
+          _watch_shape_coords != null &&
+          _watch_shape_coords!.isNotEmpty) {
+        final rect = _parseRectangleCoords(_watch_shape_coords);
+        if (rect != null) {
+          within_fence = _isPointInRectangle(pos.latitude, pos.longitude, rect);
+          debugPrint('🟦 [GeofenceVM] Rectangle check: inside=$within_fence | '
+              'distance=${distance_meters.toStringAsFixed(1)}m');
+        } else {
+          // Malformed rectangle → fall back to radius
+          within_fence = distance_meters <= (_watch_radius ?? 0);
+          debugPrint('📏 [GeofenceVM] Radius fallback: ${distance_meters.toStringAsFixed(1)}m '
+              '<= ${_watch_radius?.toStringAsFixed(1)}m | within=$within_fence');
+        }
       } else {
         within_fence = distance_meters <= (_watch_radius ?? 0);
         debugPrint('📏 [GeofenceVM] Distance: ${distance_meters.toStringAsFixed(1)}m '
@@ -666,6 +680,39 @@ class GeofenceViolationViewModel extends GetxController {
       j = i;
     }
     return inside;
+  }
+
+  /// Parses a rectangle shape_coords JSON into NE and SW corners.
+  Map<String, Map<String, double>>? _parseRectangleCoords(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final json = jsonDecode(raw) as Map<String, dynamic>;
+      final ne   = json['ne'] as Map<String, dynamic>;
+      final sw   = json['sw'] as Map<String, dynamic>;
+      return {
+        'ne': {
+          'lat': double.parse(ne['lat'].toString()),
+          'lng': double.parse(ne['lng'].toString()),
+        },
+        'sw': {
+          'lat': double.parse(sw['lat'].toString()),
+          'lng': double.parse(sw['lng'].toString()),
+        },
+      };
+    } catch (e) {
+      debugPrint('⚠️ [GeofenceVM] _parseRectangleCoords error: $e');
+      return null;
+    }
+  }
+
+  /// Checks if a point is inside a rectangle defined by NE and SW corners.
+  bool _isPointInRectangle(
+      double lat, double lng, Map<String, Map<String, double>> rect) {
+    final neLat = rect['ne']!['lat']!;
+    final neLng = rect['ne']!['lng']!;
+    final swLat = rect['sw']!['lat']!;
+    final swLng = rect['sw']!['lng']!;
+    return lat >= swLat && lat <= neLat && lng >= swLng && lng <= neLng;
   }
 
   String get currentOutsideDuration {

@@ -1823,6 +1823,19 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
         }
       }
 
+      // ── Rectangle check ─────────────────────────────────────────────────
+      if (shapeType == 'rectangle' &&
+          shapeCoords != null &&
+          shapeCoords.isNotEmpty) {
+        final rect = _parseRectangleCoords(shapeCoords);
+        if (rect != null) {
+          final inside = _isPointInRectangle(
+              currentPosition.latitude, currentPosition.longitude, rect);
+          debugPrint('🟦 [GEOFENCE] Rectangle check: inside=$inside');
+          return inside;
+        }
+      }
+
       // Fallback: radius check
       debugPrint('📏 [GEOFENCE] Allowed radius: $radiusMeters m');
       debugPrint('📏 [GEOFENCE] Within geofence: ${distanceInMeters <= radiusMeters}');
@@ -1870,6 +1883,40 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     }
     return inside;
   }
+
+  /// Parses a rectangle shape_coords JSON into NE and SW corners.
+  Map<String, Map<String, double>>? _parseRectangleCoords(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final j  = jsonDecode(raw) as Map<String, dynamic>;
+      final ne = j['ne'] as Map<String, dynamic>;
+      final sw = j['sw'] as Map<String, dynamic>;
+      return {
+        'ne': {
+          'lat': double.parse(ne['lat'].toString()),
+          'lng': double.parse(ne['lng'].toString()),
+        },
+        'sw': {
+          'lat': double.parse(sw['lat'].toString()),
+          'lng': double.parse(sw['lng'].toString()),
+        },
+      };
+    } catch (e) {
+      debugPrint('⚠️ [GEOFENCE] _parseRectangleCoords error: $e');
+      return null;
+    }
+  }
+
+  /// Checks if a point is inside a rectangle defined by NE and SW corners.
+  bool _isPointInRectangle(
+      double lat, double lng, Map<String, Map<String, double>> rect) {
+    final neLat = rect['ne']!['lat']!;
+    final neLng = rect['ne']!['lng']!;
+    final swLat = rect['sw']!['lat']!;
+    final swLng = rect['sw']!['lng']!;
+    return lat >= swLat && lat <= neLat && lng >= swLng && lng <= neLng;
+  }
+
 
   // ══════════════════════════════════════════════════════════════════════════
   // CAMERA CAPTURE FOR CLOCK IN
