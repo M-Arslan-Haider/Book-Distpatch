@@ -35,6 +35,9 @@ class MainActivity : FlutterFragmentActivity(), ProviderInstaller.ProviderInstal
         // ✅ GEOFENCE VIOLATION NOTIFICATIONS — start background watcher
         // This is the ONLY addition. No other logic is changed.
         GeofenceViolationNotificationService.startService(this)
+
+        // ✅ TASK NOTIFICATION CHANNEL — register notification channel
+        TaskNotificationService.createChannel(this)
     }
 
     private fun installProvider() {
@@ -194,6 +197,22 @@ class MainActivity : FlutterFragmentActivity(), ProviderInstaller.ProviderInstal
                 result.notImplemented()
             }
         }
+
+        // ✅ TASK NOTIFICATION CHANNEL
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "task_notifications")
+            .setMethodCallHandler { call, result ->
+                if (call.method == "showTaskNotification") {
+                    TaskNotificationService.showNewTaskNotification(
+                        context    = this,
+                        taskTitle  = call.argument<String>("taskTitle")  ?: "",
+                        taskDesc   = call.argument<String>("taskDesc")   ?: "",
+                        assignedBy = call.argument<String>("assignedBy") ?: ""
+                    )
+                    result.success(null)
+                } else {
+                    result.notImplemented()
+                }
+            }
     }
 
     private fun hasLocationPermission(): Boolean {

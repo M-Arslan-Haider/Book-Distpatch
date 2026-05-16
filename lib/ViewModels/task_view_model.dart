@@ -1,5 +1,7 @@
+import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';          // ← MethodChannel
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -12,6 +14,9 @@ class TaskViewModel extends GetxController {
   final TaskRepository _repository;
   TaskViewModel({TaskRepository? repository})
       : _repository = repository ?? TaskRepository();
+
+  // ── MethodChannel — talks to TaskNotificationService.kt ──────────────────
+  static const _notifChannel = MethodChannel('task_notifications');
 
   // ── Observable lists ──────────────────────────────────────────────────────
   final RxList<TaskModel> assignedTasks = <TaskModel>[].obs;
@@ -31,6 +36,10 @@ class TaskViewModel extends GetxController {
   final RxString     assignedFilter = 'All'.obs;
   final RxString     createdFilter  = 'All'.obs;
   final List<String> filterOptions  = ['All', 'Pending', 'In Progress', 'Completed'];
+
+  // ── Polling ───────────────────────────────────────────────────────────────
+  Timer?    _pollingTimer;
+  Set<int>? _knownAssignedIds;   // null = first fetch not done yet
 
   // ── Computed filtered lists ───────────────────────────────────────────────
   List<TaskModel> get filteredAssigned {
@@ -56,6 +65,79 @@ class TaskViewModel extends GetxController {
   int get doneCreated      => createdTasks.where((t) => t.status == 'Completed').length;
 
   // ──────────────────────────────────────────────────────────────────────────
+  //  Lifecycle
+  // ──────────────────────────────────────────────────────────────────────────
+  @override
+  void onInit() {
+    super.onInit();
+    _startPolling();
+  }
+
+  @override
+  void onClose() {
+    _stopPolling();
+    super.onClose();
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  //  Polling — every 5 seconds silently check for new assigned tasks
+  // ──────────────────────────────────────────────────────────────────────────
+  void _startPolling() {
+    _pollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      _pollAssignedTasks();
+    });
+  }
+
+  void _stopPolling() {
+    _pollingTimer?.cancel();
+    _pollingTimer = null;
+  }
+
+  /// Silent fetch — does NOT touch loading flags or error/success messages.
+  Future<void> _pollAssignedTasks() async {
+    final result = await _repository.getAssignedTasks();
+    if (!result.isSuccess || result.data == null) return;
+
+    final freshTasks = result.data!;
+
+    // ── First-time snapshot: just record what exists, no notification ────
+    if (_knownAssignedIds == null) {
+      _knownAssignedIds = freshTasks.map((t) => t.id).toSet();
+      if (assignedTasks.isEmpty) assignedTasks.value = freshTasks;
+      return;
+    }
+
+    // ── Detect brand-new tasks ────────────────────────────────────────────
+    final newTasks = freshTasks
+        .where((t) => !_knownAssignedIds!.contains(t.id))
+        .toList();
+
+    if (newTasks.isNotEmpty) {
+      assignedTasks.value  = freshTasks;
+      _knownAssignedIds    = freshTasks.map((t) => t.id).toSet();
+
+      // Fire a proper Android notification for each new task
+      for (final task in newTasks) {
+        await _showNativeNotification(task);
+      }
+    }
+  }
+
+  /// Calls TaskNotificationService.kt via MethodChannel.
+  Future<void> _showNativeNotification(TaskModel task) async {
+    try {
+      await _notifChannel.invokeMethod('showTaskNotification', {
+        'taskTitle':  task.taskTitle,
+        'taskDesc':   task.taskDescription ?? '',
+        'assignedBy': task.assignedBy      ?? '',
+      });
+      debugPrint('🔔 [ViewModel] Native notification sent for: ${task.taskTitle}');
+    } catch (e) {
+      debugPrint('❌ [ViewModel] MethodChannel error: $e');
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
   //  Fetch both lists in parallel (for Activity screen)
   // ──────────────────────────────────────────────────────────────────────────
   Future<void> fetchAllTasks() async {
@@ -73,6 +155,8 @@ class TaskViewModel extends GetxController {
 
     if (result.isSuccess) {
       assignedTasks.value = result.data ?? [];
+      // Keep known-IDs in sync with manual fetches too
+      _knownAssignedIds = assignedTasks.map((t) => t.id).toSet();
     } else {
       errorMessage.value = result.errorMessage;
     }
