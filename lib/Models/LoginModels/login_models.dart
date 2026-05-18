@@ -18,6 +18,12 @@ class LoginModels {
   // Profile image URL (null if no image uploaded)
   String? image_url;
 
+  // Whether the employee is allowed to check in before their shift starts
+  String? allow_check_in_before_shift;
+
+  // Shift entry/start time
+  String? entry_time;
+
   LoginModels({
     this.emp_id,
     this.portal_password,
@@ -30,11 +36,15 @@ class LoginModels {
     this.over_time,
     this.shift,
     this.image_url,
+    this.allow_check_in_before_shift,
+    this.entry_time,
   });
 
   factory LoginModels.fromJson(Map<String, dynamic> json) {
     debugPrint('📝 [LOGIN MODELS] Parsing JSON: ${json.keys}');
     debugPrint('📝 [LOGIN MODELS] dep_id from JSON: ${json['dep_id'] ?? json['DEP_ID']}');
+    debugPrint('📝 [LOGIN MODELS] allow_check_in_before_shift from JSON: ${json['ALLOW_CHECK_IN_BEFORE_SHIFT'] ?? json['allow_check_in_before_shift']}');
+    debugPrint('📝 [LOGIN MODELS] entry_time from JSON: ${json['ENTRY_TIME'] ?? json['entry_time']}');
 
     return LoginModels(
       emp_id: json['emp_id'],
@@ -48,6 +58,8 @@ class LoginModels {
       over_time: json['OVER_TIME']?.toString() ?? json['over_time']?.toString(),
       shift: json['SHIFT']?.toString() ?? json['shift']?.toString(),
       image_url: json['image_url']?.toString(),
+      allow_check_in_before_shift: json['ALLOW_CHECK_IN_BEFORE_SHIFT']?.toString() ?? json['allow_check_in_before_shift']?.toString(),
+      entry_time: json['ENTRY_TIME']?.toString() ?? json['entry_time']?.toString(),
     );
   }
 
@@ -64,6 +76,8 @@ class LoginModels {
       'OVER_TIME': over_time,
       'SHIFT': shift,
       'image_url': image_url,
+      'ALLOW_CHECK_IN_BEFORE_SHIFT': allow_check_in_before_shift,
+      'ENTRY_TIME': entry_time,
     };
   }
 

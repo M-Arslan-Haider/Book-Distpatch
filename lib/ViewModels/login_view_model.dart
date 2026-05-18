@@ -101,9 +101,13 @@ class LoginViewModel extends GetxController {
         await prefs.setString('cached_end_time', employee.end_time ?? '');
         await prefs.setString('cached_overtime', employee.over_time ?? '');
         await prefs.setString('cached_shift', employee.shift ?? '');
+        await prefs.setString('cached_allow_check_in_before_shift', employee.allow_check_in_before_shift ?? 'no');
+        await prefs.setString('cached_entry_time', employee.entry_time ?? '');
 
         debugPrint('✅ Login success: ${employee.emp_name} (${employee.job})');
         debugPrint('📦 Cached end_time: ${employee.end_time}, over_time: ${employee.over_time}, shift: ${employee.shift}');
+        debugPrint('📦 Cached allow_check_in_before_shift: ${employee.allow_check_in_before_shift}');
+        debugPrint('📦 Cached entry_time: ${employee.entry_time}');
 
         // Cache credentials in memory for biometric setup
         _cachedEmpId    = employeeId;

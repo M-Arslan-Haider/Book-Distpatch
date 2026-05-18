@@ -2022,6 +2022,94 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
+  // ✅ BEFORE-SHIFT CLOCK-IN CHECK
+  //
+  // allow_check_in_before_shift (e.g. "60MIN") → user can clock in at most
+  // 60 minutes BEFORE shift start.
+  //   • > 60 MIN before start  → BLOCK with message
+  //   • ≤ 60 MIN before start  → ALLOW
+  //   • After shift start      → ALLOW (shift-end block handles the other end)
+  //   • Field missing / 'no'   → ALLOW (fail-open)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // ── Helper: parse "60MIN" → 60  (returns 0 on failure = no restriction) ──
+  int _parseAllowCheckInMinutes(String? raw) {
+    if (raw == null || raw.isEmpty) return 0;
+    final match = RegExp(r'(\d+)').firstMatch(raw.toUpperCase());
+    if (match == null) return 0;
+    return int.tryParse(match.group(1) ?? '0') ?? 0;
+  }
+
+  Future<bool> _isBeforeShiftBlocked() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // ── Read allow_check_in_before_shift ──────────────────────────────────
+      final String? allowRaw = prefs.getString('cached_allow_check_in_before_shift');
+      if (allowRaw == null || allowRaw.isEmpty || allowRaw.toLowerCase() == 'no') {
+        debugPrint('⏰ [BEFORE SHIFT] No restriction set — clocking permitted');
+        return false;
+      }
+
+      final int allowedMinutes = _parseAllowCheckInMinutes(allowRaw);
+      if (allowedMinutes <= 0) {
+        debugPrint('⏰ [BEFORE SHIFT] allowedMinutes=0 — clocking permitted');
+        return false;
+      }
+
+      // ── Read shift start time ─────────────────────────────────────────────
+      final String? startTimeStr = prefs.getString('cached_entry_time');
+      if (startTimeStr == null || startTimeStr.isEmpty) {
+        debugPrint('⏰ [BEFORE SHIFT] No cached_entry_time — clocking permitted');
+        return false;
+      }
+
+      final List<int>? parsed = _parseTimeTo24h(startTimeStr);
+      if (parsed == null) {
+        debugPrint('⚠️ [BEFORE SHIFT] Cannot parse start_time "$startTimeStr" — clocking permitted');
+        return false;
+      }
+
+      final DateTime now = DateTime.now();
+      final int startTotalMin   = parsed[0] * 60 + parsed[1];
+      final int nowTotalMin     = now.hour * 60 + now.minute;
+      final int minutesBefore   = startTotalMin - nowTotalMin; // positive = before shift
+
+      debugPrint('⏰ [BEFORE SHIFT] now=${now.hour}:${now.minute}  '
+          'start=${parsed[0]}:${parsed[1]}  '
+          'minutesBefore=$minutesBefore  allowedBefore=$allowedMinutes');
+
+      // After shift start (minutesBefore ≤ 0) → always allow
+      if (minutesBefore <= 0) return false;
+
+      // Too early → block
+      if (minutesBefore > allowedMinutes) {
+        if (mounted) {
+          Get.snackbar(
+            '🚫 Too Early to Clock In',
+            'You can only clock in $allowedMinutes minutes before your shift starts. '
+                'Please wait ${minutesBefore - allowedMinutes} more minute(s).',
+            snackPosition: SnackPosition.TOP,
+            backgroundColor: Colors.orange.shade700,
+            colorText: Colors.white,
+            duration: const Duration(seconds: 4),
+            icon: const Icon(Icons.access_time_filled_rounded, color: Colors.white),
+          );
+        }
+        debugPrint('🚫 [BEFORE SHIFT] Clocking BLOCKED — $minutesBefore min before start, '
+            'only $allowedMinutes min allowed');
+        return true;
+      }
+
+      // Within the allowed window → allow
+      return false;
+    } catch (e) {
+      debugPrint('⚠️ [BEFORE SHIFT] Exception: $e — clocking permitted (fail-open)');
+      return false;
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
   // ✅ SHIFT END BLOCK CHECK
   //
   // Returns true  → clocking is BLOCKED (current time is past END_TIME and
@@ -2109,6 +2197,9 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
     // ── 0. SHIFT END BLOCK CHECK ───────────────────────────────────────────
     if (await _isShiftEndBlocked()) return;
+
+    // ── 0b. BEFORE SHIFT BLOCK CHECK ──────────────────────────────────────
+    if (await _isBeforeShiftBlocked()) return;
 
     // ── 1. CAMERA CAPTURE ──────────────────────────────────────────────────
     final Uint8List? clockInPhotoBytes = await _captureClockInPhoto();
