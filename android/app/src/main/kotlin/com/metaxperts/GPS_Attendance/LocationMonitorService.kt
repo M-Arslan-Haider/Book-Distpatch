@@ -1,4 +1,3 @@
-
 package com.metaxperts.GPS_Workforce_Monitor
 
 import android.app.AppOpsManager
@@ -774,12 +773,21 @@ class LocationMonitorService : Service() {
         val minute = calendar.get(java.util.Calendar.MINUTE)
 
         if (hour == 23 && minute == 58) {
-            val currentTime = System.currentTimeMillis()
-            if (currentTime - lastEventTime > 60000) {
-                lastEventTime   = currentTime
-                lastEventReason = "System Clockout - Midnight Time"
-                handleCriticalEvent("System Clockout - Midnight Time")
-                return
+            // 🌙 NIGHT SHIFT FIX: Night shift workers ke liye midnight clockout skip karo.
+            // flutter.cached_shift_type login pe save hoti hai (login_repository.dart → _detectShiftType).
+            val shiftType   = prefString(prefs, "flutter.cached_shift_type")
+            val isNightShift = shiftType.equals("Night Shift", ignoreCase = true)
+            if (isNightShift) {
+                android.util.Log.d("LocationMonitor",
+                    "🌙 [MIDNIGHT] Night shift user — midnight clockout skipped (shift_type=$shiftType)")
+            } else {
+                val currentTime = System.currentTimeMillis()
+                if (currentTime - lastEventTime > 60000) {
+                    lastEventTime   = currentTime
+                    lastEventReason = "System Clockout - Midnight Time"
+                    handleCriticalEvent("System Clockout - Midnight Time")
+                    return
+                }
             }
         }
 
@@ -790,27 +798,39 @@ class LocationMonitorService : Service() {
                 if (parsed != null) {
                     val endTotalMin = parsed.first * 60 + parsed.second
                     val nowTotalMin = hour * 60 + minute
-                    val diffMin     = nowTotalMin - endTotalMin
-                    if (diffMin in 0..480) {
-                        // ✅ FIX: Overtime user — agar aaj ka shift-end clockout already ho chuka hai
-                        // (re-clock-in ke baad wala case) to dobara auto-clockout mat karo.
-                        val overtime = prefString(prefs, "flutter.cached_overtime").lowercase()
-                        val isOvertimeUser = overtime == "yes" || overtime == "y" || overtime == "true" || overtime == "1"
-                        if (isOvertimeUser) {
-                            val savedDate = prefString(prefs, "flutter.shift_end_clockout_done_date")
-                            val todayDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-                            if (savedDate == todayDate) {
-                                android.util.Log.d("LocationMonitor",
-                                    "⏰ [SHIFT END] Overtime user — clockout already done today — skipping (re-clock-in protected)")
+
+                    // 🌙 NIGHT SHIFT FIX: Night shift pe evening side (hour >= 12) mein
+                    // shift-end check kabhi fire mat karo. End time (e.g. 02:00) sirf
+                    // midnight ke baad (hour < 12) check honi chahiye.
+                    val shiftTypeKt  = prefString(prefs, "flutter.cached_shift_type")
+                    val isNightShiftKt = shiftTypeKt.equals("Night Shift", ignoreCase = true)
+                    if (isNightShiftKt && hour >= 12) {
+                        android.util.Log.d("LocationMonitor",
+                            "🌙 [SHIFT END] Night shift — evening side (hour=$hour) — shift-end check skipped")
+                        // Continue to other checks, do not fire shift-end clockout
+                    } else {
+                        val diffMin     = nowTotalMin - endTotalMin
+                        if (diffMin in 0..480) {
+                            // ✅ FIX: Overtime user — agar aaj ka shift-end clockout already ho chuka hai
+                            // (re-clock-in ke baad wala case) to dobara auto-clockout mat karo.
+                            val overtime = prefString(prefs, "flutter.cached_overtime").lowercase()
+                            val isOvertimeUser = overtime == "yes" || overtime == "y" || overtime == "true" || overtime == "1"
+                            if (isOvertimeUser) {
+                                val savedDate = prefString(prefs, "flutter.shift_end_clockout_done_date")
+                                val todayDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                                if (savedDate == todayDate) {
+                                    android.util.Log.d("LocationMonitor",
+                                        "⏰ [SHIFT END] Overtime user — clockout already done today — skipping (re-clock-in protected)")
+                                    return
+                                }
+                            }
+                            val currentTime = System.currentTimeMillis()
+                            if (currentTime - lastEventTime > 60000 && lastEventReason != "System Clockout - Shift End") {
+                                lastEventTime   = currentTime
+                                lastEventReason = "System Clockout - Shift End"
+                                handleCriticalEvent("System Clockout - Shift End")
                                 return
                             }
-                        }
-                        val currentTime = System.currentTimeMillis()
-                        if (currentTime - lastEventTime > 60000 && lastEventReason != "System Clockout - Shift End") {
-                            lastEventTime   = currentTime
-                            lastEventReason = "System Clockout - Shift End"
-                            handleCriticalEvent("System Clockout - Shift End")
-                            return
                         }
                     }
                 }
@@ -1731,6 +1751,21 @@ class LocationMonitorService : Service() {
                 set(java.util.Calendar.MINUTE,      parsed.second)
                 set(java.util.Calendar.SECOND,      0)
                 set(java.util.Calendar.MILLISECOND, 0)
+            }
+
+            // 🌙 NIGHT SHIFT FIX: Night shift ke liye alarm next day set karo.
+            // e.g. end=02:00, abhi shaam 20:00 hai → "aaj ka 02:00" pehle guzar chuka →
+            // triggerMs <= nowMs check fail hota aur alarm skip ho jata.
+            // Fix: evening side (nowHour >= 12) aur end hour < 12 ho to +1 din add karo.
+            val shiftTypeAlarm  = prefString(prefs, "flutter.cached_shift_type")
+            val isNightShiftAlm = shiftTypeAlarm.equals("Night Shift", ignoreCase = true)
+            if (isNightShiftAlm) {
+                val nowHour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+                if (nowHour >= 12 && parsed.first < 12) {
+                    cal.add(java.util.Calendar.DATE, 1)
+                    android.util.Log.d("LocationMonitor",
+                        "🌙 [SHIFT ALARM] Night shift — alarm scheduled for TOMORROW ${parsed.first}:${parsed.second}")
+                }
             }
             val triggerMs = cal.timeInMillis
             val nowMs     = System.currentTimeMillis()

@@ -722,6 +722,15 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       bool isFrozen = prefs.getBool(KEY_IS_TIMER_FROZEN) ?? false;
       if (isFrozen || !attendanceViewModel.isClockedIn.value) return;
 
+      // 🌙 NIGHT SHIFT FIX: Night shift workers ke liye midnight clockout skip karo.
+      // cached_shift_type login pe detect hoti hai (login_repository.dart → _detectShiftType).
+      // Night shift = end_time < entry_time (crosses midnight), e.g. 18:00–02:00.
+      final String shiftType = prefs.getString('cached_shift_type') ?? 'Day Shift';
+      if (shiftType == 'Night Shift') {
+        debugPrint('🌙 [MIDNIGHT] Night shift user — midnight clockout timer skipped');
+        return;
+      }
+
       _midnightClockOutTimer?.cancel();
 
       final now           = DateTime.now();
@@ -876,12 +885,25 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       final String otStr = (p.getString('cached_overtime') ?? 'no').toLowerCase().trim();
       final bool isOvertimeUser = otStr == 'yes' || otStr == 'y' || otStr == 'true' || otStr == '1';
 
+      // 🌙 NIGHT SHIFT FIX: cached_shift_type padho har tick pe
+      final String shiftType  = p.getString('cached_shift_type') ?? 'Day Shift';
+      final bool isNightShift = shiftType == 'Night Shift';
+
       final DateTime now    = DateTime.now();
       final int endTotalMin = endHour * 60 + endMinute;
       final int nowTotalMin = now.hour * 60 + now.minute;
       final int diffMinutes = nowTotalMin - endTotalMin;
 
-      debugPrint('⏰ [SHIFT END] now=${now.hour}:${now.minute}  end=$endHour:$endMinute  diff=${diffMinutes}min  overtime=$otStr');
+      debugPrint('⏰ [SHIFT END] now=${now.hour}:${now.minute}  end=$endHour:$endMinute  diff=${diffMinutes}min  overtime=$otStr  shiftType=$shiftType');
+
+      // 🌙 NIGHT SHIFT FIX: Evening side (hour >= 12) pe shift end kabhi fire mat karo.
+      // Night shift end time (e.g. 02:00) sirf midnight ke BAAD check hona chahiye.
+      // Agar abhi shaam hai (18:00–23:59) aur end time 02:00 hai to diff = 1200–120 = 1080,
+      // jo 0..480 mein nahi hai — lekin extra safety ke liye yeh explicit guard zaruri hai.
+      if (isNightShift && now.hour >= 12) {
+        debugPrint('🌙 [SHIFT END] Night shift — evening side (hour=${now.hour}) — check skipped');
+        return;
+      }
 
       // ✅ FIX: Overtime user — agar aaj ka shift-end clockout already ho chuka hai
       // (yani pehle clock-out hua, phir dobara clock-in kiya) to dobara auto-clockout mat karo.
@@ -2160,9 +2182,16 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       final int endTotalMin = endHour * 60 + endMinute;
       final int nowTotalMin = now.hour * 60 + now.minute;
 
-      debugPrint('⏰ [SHIFT BLOCK] now=${now.hour}:${now.minute}  '
-          'end=$endHour:$endMinute  overtime=$overtime  '
-          'blocked=${nowTotalMin > endTotalMin}');
+      // 🌙 NIGHT SHIFT FIX: Night shift workers ko evening side pe clock-in block mat karo.
+      // e.g. shift 18:00–02:00: user 20:00 pe clock-in karna chahta hai.
+      // nowTotalMin=1200 > endTotalMin=120 = true → galat block.
+      // Fix: Night shift pe evening side (hour >= 12) mein shift-end block apply nahi hogi.
+      final String shiftType  = prefs.getString('cached_shift_type') ?? 'Day Shift';
+      final bool isNightShift = shiftType == 'Night Shift';
+      if (isNightShift && now.hour >= 12) {
+        debugPrint('🌙 [SHIFT BLOCK] Night shift — evening side — clock-in allowed');
+        return false;
+      }
 
       if (nowTotalMin > endTotalMin) {
         if (mounted) {
