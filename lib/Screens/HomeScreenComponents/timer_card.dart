@@ -20,6 +20,7 @@ import '../../AppColors.dart';
 import '../../Database/util.dart';
 import '../../Repositories/LoginRepositories/login_repository.dart';
 import '../../Services/Overtime_Clock_Out_Service.dart';
+import '../../Services/auto_time_log_service.dart';
 import '../../Services/selfie_notification_policy_service.dart';
 import '../../Services/interval_selfie_service.dart';
 import '../../ViewModels/attendance_out_view_model.dart';
@@ -2220,11 +2221,506 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
   // ✅ CLOCK IN — with camera + geofencing + MQTT + GPS tracking
   // ══════════════════════════════════════════════════════════════════════════
 
+  // Future<void> _handleClockIn(BuildContext context) async {
+  //   debugPrint('🎯 [TIMERCARD] ===== CLOCK-IN STARTED =====');
+  //   final clockInStart = DateTime.now();
+  //
+  //   // ── 0. SHIFT END BLOCK CHECK ───────────────────────────────────────────
+  //   if (await _isShiftEndBlocked()) return;
+  //
+  //   // ── 0b. BEFORE SHIFT BLOCK CHECK ──────────────────────────────────────
+  //   if (await _isBeforeShiftBlocked()) return;
+  //
+  //   // ── 1. CAMERA CAPTURE ──────────────────────────────────────────────────
+  //   final Uint8List? clockInPhotoBytes = await _captureClockInPhoto();
+  //
+  //   if (clockInPhotoBytes == null || clockInPhotoBytes.isEmpty) {
+  //     Get.snackbar(
+  //       '📷 Photo Required',
+  //       'Please capture a photo to clock in',
+  //       snackPosition: SnackPosition.TOP,
+  //       backgroundColor: Colors.orange.shade700,
+  //       colorText: Colors.white,
+  //       duration: const Duration(seconds: 3),
+  //       icon: const Icon(Icons.camera_alt, color: Colors.white),
+  //     );
+  //     return;
+  //   }
+  //
+  //   debugPrint('📸 [TIMERCARD] ✅ clockInPhotoBytes ready: ${clockInPhotoBytes.length} bytes');
+  //
+  //   // ── 2. LOADING DIALOG ──────────────────────────────────────────────────
+  //   showDialog(
+  //     context: context,
+  //     barrierDismissible: false,
+  //     builder: (_) => const Center(
+  //       child: SizedBox(
+  //         width: 80,
+  //         height: 80,
+  //         child: CircularProgressIndicator(
+  //           strokeWidth: 3,
+  //           valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+  //         ),
+  //       ),
+  //     ),
+  //   );
+  //
+  //   try {
+  //     // ── 3. PARALLEL CHECKS (prefs + permission + location service) ────────
+  //     final results = await Future.wait([
+  //       SharedPreferences.getInstance(),
+  //       _checkLocationPermission(context),
+  //       attendanceViewModel.isLocationAvailable(),
+  //     ]);
+  //
+  //     final prefs             = results[0] as SharedPreferences;
+  //     final hasPermission     = results[1] as bool;
+  //     final locationAvailable = results[2] as bool;
+  //
+  //     if (!hasPermission || !locationAvailable) {
+  //       if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+  //       Get.snackbar(
+  //         'Location Required',
+  //         'Please enable Location Services and Permissions',
+  //         snackPosition: SnackPosition.TOP,
+  //         backgroundColor: Colors.red.shade700,
+  //         colorText: Colors.white,
+  //       );
+  //       return;
+  //     }
+  //
+  //     // ── Reset travel state BEFORE clocking in ─────────────────────────────
+  //     final travelVM = Get.find<TravelViewModel>();
+  //     if (travelVM.isTravelMode.value || travelVM.hasPendingLocation) {
+  //       debugPrint('🔄 [TIMERCARD] Resetting stale travel state before clock-in');
+  //       await travelVM.cancelTravel();
+  //     }
+  //
+  //     // ── 4. GEOFENCING CHECK ───────────────────────────────────────────────
+  //     // Read geo_fencing flag saved at login time.
+  //     // 'yes' → enforce location selection + GPS boundary check (default behaviour).
+  //     // 'no'  → skip location selection & boundary check; employee clocks in freely.
+  //     final String geoFencingFlag =
+  //     (prefs.getString('geoFencing') ?? 'yes').toLowerCase().trim();
+  //     final bool isGeoFencingRequired = geoFencingFlag != 'no';
+  //
+  //     debugPrint('🔍 [GEOFENCE] geo_fencing flag = "$geoFencingFlag" '
+  //         '| enforced = $isGeoFencingRequired');
+  //
+  //     final double? savedLat        = prefs.getDouble('selected_lat');
+  //     final double? savedLng        = prefs.getDouble('selected_lng');
+  //     final double? savedRadius     = prefs.getDouble('selected_radius');
+  //     final String  savedName       = prefs.getString('selected_location_name') ?? '';
+  //     final String? savedShapeCoords = prefs.getString('selected_shape_coords'); // NEW
+  //     final String? savedShapeType   = prefs.getString('selected_shape_type');   // NEW
+  //
+  //     if (isGeoFencingRequired) {
+  //       // ── 4a. No location selected ────────────────────────────────────────
+  //       if (savedLat == null || savedLng == null || savedRadius == null || savedName.isEmpty) {
+  //         if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+  //         Get.snackbar(
+  //           '📍 Location Required',
+  //           'Please select a customer location first before clocking in.',
+  //           snackPosition: SnackPosition.TOP,
+  //           backgroundColor: Colors.orange.shade700,
+  //           colorText: Colors.white,
+  //           duration: const Duration(seconds: 4),
+  //           icon: const Icon(Icons.location_off, color: Colors.white),
+  //         );
+  //         debugPrint('❌ [GEOFENCE] Clock-in BLOCKED — no location selected');
+  //         return;
+  //       }
+  //
+  //       // ── 4b. GPS distance / polygon check ────────────────────────────────
+  //       debugPrint('🔍 [GEOFENCE] Checking GPS distance from "$savedName" '
+  //           '| shape_type=$savedShapeType');
+  //
+  //       final bool withinGeofence = await _isWithinGeofence(
+  //         allowedLat   : savedLat,
+  //         allowedLng   : savedLng,
+  //         radiusMeters : savedRadius,
+  //         shapeCoords  : savedShapeCoords,   // NEW
+  //         shapeType    : savedShapeType,     // NEW
+  //       );
+  //
+  //       if (!withinGeofence) {
+  //         if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+  //         Get.snackbar(
+  //           '📍 Outside Location',
+  //           'You are not near "$savedName".\nPlease reach the designated location to clock in.',
+  //           snackPosition: SnackPosition.TOP,
+  //           backgroundColor: Colors.red.shade700,
+  //           colorText: Colors.white,
+  //           duration: const Duration(seconds: 4),
+  //           icon: const Icon(Icons.location_off, color: Colors.white),
+  //         );
+  //         debugPrint('❌ [GEOFENCE] Clock-in BLOCKED — user is outside "$savedName"');
+  //         return;
+  //       }
+  //
+  //       debugPrint('✅ [GEOFENCE] GPS check passed — user is within "$savedName"');
+  //     } else {
+  //       // geo_fencing = 'no' — skip all location selection & boundary checks.
+  //       debugPrint('✅ [GEOFENCE] Skipped — geo_fencing is NO for this employee');
+  //     }
+  //
+  //     // ── 5. CLEAR FROZEN STATE ─────────────────────────────────────────────
+  //     await prefs.remove(KEY_IS_TIMER_FROZEN);
+  //     await prefs.remove(KEY_FROZEN_DISPLAY_TIME);
+  //
+  //     // ── 6. READ EMPLOYEE DATA ─────────────────────────────────────────────
+  //     final String empId   = _safePrefsString(prefs, 'emp_id');
+  //     final String empName = _safePrefsStringFallback(prefs, [
+  //       'emp_name', 'empName', 'employee_name', 'name', 'userName', 'user_name',
+  //     ]);
+  //     final String job  = _safePrefsStringFallback(prefs, [
+  //       'job', 'designation', 'role', 'emp_job', 'position', 'jobTitle',
+  //     ]);
+  //     final String city = _safePrefsStringFallback(prefs, [
+  //       'city', 'emp_city', 'location',
+  //     ]);
+  //
+  //     debugPrint('👤 [CLOCK-IN] empId=$empId | empName=$empName | job=$job | city=$city');
+  //
+  //     // ── 7. GPX PATH ────────────────────────────────────────────────────────
+  //     final date              = DateFormat('dd-MM-yyyy').format(DateTime.now());
+  //     final downloadDirectory = await getDownloadsDirectory();
+  //     final filePath          = '${downloadDirectory!.path}/track_${empId}_$date.gpx';
+  //     await prefs.setString(KEY_GPX_FILE_PATH, filePath);
+  //
+  //     // ── 8. ATTENDANCE CLOCK-IN ─────────────────────────────────────────────
+  //     await attendanceViewModel.clockIn(
+  //       empId     : empId,
+  //       empName   : empName,
+  //       job       : job,
+  //       city      : city,
+  //       photoBytes: clockInPhotoBytes,
+  //     );
+  //
+  //     // ── 9. ✅ FIX: START GPS TRACKING via LocationViewModel ────────────────
+  //     // This initialises the GPX file, starts the position stream and the
+  //     // Kalman-filtered distance accumulator. Without this call, totalDistance
+  //     // stays 0 and no location table record is ever written on clock-out.
+  //     await locationViewModel.onClockIn();
+  //     debugPrint('✅ [CLOCK-IN] GPS tracking started via locationViewModel.onClockIn()');
+  //
+  //     // ── 10. UI UPDATE ──────────────────────────────────────────────────────
+  //     setState(() {
+  //       _localElapsedTime = '00:00:00';
+  //       locationViewModel.isClockedIn.value   = true;
+  //       attendanceViewModel.isClockedIn.value = true;
+  //     });
+  //
+  //     // ── 11. START TIMERS ───────────────────────────────────────────────────
+  //     _startLocalBackupTimer();
+  //     _scheduleMidnightClockOut();
+  //     _scheduleShiftEndClockOut();   // ✅ NEW: must be called here at actual clock-in
+  //     _startPermissionMonitoring();
+  //
+  //     // ── ✅ OVERTIME AUTO CLOCK-OUT ─────────────────────────────────────────
+  //     // Detect karo kya yeh overtime session hai:
+  //     //   - overtime = yes  AND
+  //     //   - shift_end_clockout_done_date = aaj (matlab shift pehle end ho chuki hai)
+  //     // Agar haan to OvertimeClockOutService start karo jo API se DAILY_OT_CAP
+  //     // fetch karega aur cap expire hone par auto clock-out trigger karega.
+  //     if (await _isOvertimeClockIn()) {
+  //       debugPrint('');
+  //       debugPrint('══════════════════════════════════════════════════════');
+  //       debugPrint('⏰ [CLOCK-IN] OVERTIME SESSION DETECTED');
+  //       debugPrint('⏰ [CLOCK-IN] Starting OvertimeClockOutService...');
+  //       debugPrint('══════════════════════════════════════════════════════');
+  //       debugPrint('');
+  //       unawaited(_overtimeService.start(
+  //         onOvertimeExpired: _triggerOvertimeClockOut,
+  //       ));
+  //       try {
+  //         await platform.invokeMethod('startOvertimeMonitor');
+  //         debugPrint('✅ [OT] OvertimeMonitorService started (Kotlin)');
+  //       } catch (e) {
+  //         debugPrint('⚠️ [OT] Could not start OvertimeMonitorService: $e');
+  //       }
+  //     } else {
+  //       debugPrint('⏰ [CLOCK-IN] Not an overtime session — OvertimeClockOutService not started');
+  //     }
+  //
+  //     // ✅ Auto location POST — clock-in ke baad har 5 min mein server ko bhejta hai
+  //     _locationTrackerService.start();
+  //
+  //     // ✅ Bulk GPS tracker — start only after actual clock-in
+  //     LocationBulkTracker.instance.start();
+  //
+  //     // ✅ Battery monitoring — clock-in ke baad har 10 sec snackbar
+  //     _startBatteryMonitoring();
+  //
+  //     // ── 12. CLOSE DIALOG ───────────────────────────────────────────────────
+  //     if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+  //
+  //     Get.snackbar(
+  //       '✅ Clocked In',
+  //       isGeoFencingRequired
+  //           ? 'GPS tracking started at "$savedName"'
+  //           : 'GPS tracking started',
+  //       snackPosition: SnackPosition.TOP,
+  //       backgroundColor: const Color(0xFF1A2B6D),
+  //       colorText: Colors.white,
+  //       duration: const Duration(seconds: 2),
+  //     );
+  //
+  //     // ── VIOLATION MONITORING START ─────────────────────────────────────────
+  //     // Only monitor geofence violations for employees with geo_fencing = 'yes'.
+  //     await _violationVM.clearViolations();
+  //     if (isGeoFencingRequired && savedLat != null && savedLng != null && savedRadius != null) {
+  //       final double monLat    = savedLat;
+  //       final double monLng    = savedLng;
+  //       final double monRadius = savedRadius;
+  //       final String monName   = savedName;
+  //       unawaited(_violationVM.startMonitoring(
+  //         lat          : monLat,
+  //         lng          : monLng,
+  //         radiusMeters : monRadius,
+  //         locationName : monName,
+  //         shapeCoords  : savedShapeCoords,   // NEW
+  //         shapeType    : savedShapeType,     // NEW
+  //       ));
+  //     } else {
+  //       debugPrint('ℹ️ [GEOFENCE] Violation monitoring skipped — geo_fencing is NO');
+  //     }
+  //
+  //     // ── MQTT CLOCK IN ──────────────────────────────────────────────────────
+  //     final mqttOk = await _mqttTracker.clockInMqtt(
+  //       deviceId    : empId,
+  //       companyCode : prefs.getString(prefCompanyCode) ?? '',  // ← use the same constant
+  //       empName     : empName,
+  //       empImage    : prefs.getString('cached_image_url') ?? '',// ← already in scope
+  //       depId       : prefs.getString('cached_dep_id') ?? '',
+  //     );
+  //     if (!mqttOk) {
+  //       debugPrint('⚠️ MQTT unavailable — will queue locations offline');
+  //       Get.snackbar(
+  //         '📶 Offline Mode',
+  //         'GPS data will sync when connected',
+  //         snackPosition: SnackPosition.TOP,
+  //         backgroundColor: Colors.orange.shade700,
+  //         colorText: Colors.white,
+  //         duration: const Duration(seconds: 3),
+  //       );
+  //     } else {
+  //       debugPrint('✅ MQTT Connected — publishing locations');
+  //     }
+  //
+  //     debugPrint('✅ [CLOCK-IN] UI completed in '
+  //         '${DateTime.now().difference(clockInStart).inMilliseconds}ms');
+  //
+  //     // ── 13. BACKGROUND TASKS ───────────────────────────────────────────────
+  //     _runPostClockInTasks(filePath);
+  //   } catch (e) {
+  //     debugPrint('❌ [CLOCK-IN] Error: $e');
+  //     if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+  //
+  //     Get.snackbar(
+  //       'Error',
+  //       'Failed to clock in: ${e.toString()}',
+  //       backgroundColor: Colors.red,
+  //       colorText: Colors.white,
+  //     );
+  //   }
+  // }
+
+// ══════════════════════════════════════════════════════════════════════════
+// INSTRUCTIONS:
+// 1. timer_card.dart mein line 24 ke baad yeh import add karo:
+//    import '../../Services/auto_time_check_service.dart';
+//
+// 2. Poora _handleClockIn method (line 2223 se 2526 tak) delete karke
+//    neeche wala complete method paste karo.
+// ══════════════════════════════════════════════════════════════════════════
+
   Future<void> _handleClockIn(BuildContext context) async {
     debugPrint('🎯 [TIMERCARD] ===== CLOCK-IN STARTED =====');
     final clockInStart = DateTime.now();
 
-    // ── 0. SHIFT END BLOCK CHECK ───────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════
+    // ✅ AUTO TIME CHECK — Sabse pehla gate (baaki sab checks se pehle)
+    // Android "Automatic Date & Time" disabled ho to Clock In BLOCK karo
+    // Saath hi EMP_AUTO_TIME_LOG table mein log bhi post hoga
+    // ══════════════════════════════════════════════════════════════════════
+    final autoTimeResult = await AutoTimeCheckService.checkAndPost();
+
+    if (!autoTimeResult.isAutoTimeEnabled) {
+      // ── Auto Time OFF — Warning dialog dikhao, Clock In rok lo ──────────
+      if (mounted) {
+        await showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => Dialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            elevation: 0,
+            backgroundColor: Colors.transparent,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A2235),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: Colors.orange.withOpacity(0.40),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.orange.withOpacity(0.20),
+                    blurRadius: 30,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // ── Icon ──────────────────────────────────────────────────
+                  Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.orange.withOpacity(0.12),
+                      border: Border.all(
+                        color: Colors.orange.withOpacity(0.50),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.access_time_filled_rounded,
+                      color: Colors.orange,
+                      size: 36,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // ── Title ─────────────────────────────────────────────────
+                  const Text(
+                    'Automatic Time Disabled',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // ── Message ───────────────────────────────────────────────
+                  Text(
+                    'Please enable Automatic Date & Time to mark attendance.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.70),
+                      fontSize: 13.5,
+                      height: 1.6,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Settings → Date & Time → Automatic Date & Time',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.orange.withOpacity(0.85),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+
+                  // ── Buttons ───────────────────────────────────────────────
+                  Row(
+                    children: [
+                      // Close button
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => Navigator.of(ctx).pop(),
+                          child: Container(
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.15),
+                              ),
+                            ),
+                            child: const Center(
+                              child: Text(
+                                'Close',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      // Open Settings button
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () {
+                            Navigator.of(ctx).pop();
+                            const MethodChannel(
+                              'com.metaxperts.GPS_Workforce_Monitor/auto_time_check',
+                            ).invokeMethod('openDateTimeSettings').catchError((_) {});
+                          },
+                          child: Container(
+                            height: 44,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.orange.shade600,
+                                  Colors.orange.shade400,
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.orange.withOpacity(0.35),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: const Center(
+                              child: Text(
+                                'Open Settings',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }
+      debugPrint('❌ [AUTOTIME] Clock-in BLOCKED — Automatic Date & Time is OFF');
+      return;
+    }
+
+    debugPrint('✅ [AUTOTIME] Automatic Date & Time ON — proceeding with Clock In');
+
+    // ══════════════════════════════════════════════════════════════════════
+    // ── 0. SHIFT END BLOCK CHECK ──────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════
     if (await _isShiftEndBlocked()) return;
 
     // ── 0b. BEFORE SHIFT BLOCK CHECK ──────────────────────────────────────
@@ -2296,9 +2792,6 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       }
 
       // ── 4. GEOFENCING CHECK ───────────────────────────────────────────────
-      // Read geo_fencing flag saved at login time.
-      // 'yes' → enforce location selection + GPS boundary check (default behaviour).
-      // 'no'  → skip location selection & boundary check; employee clocks in freely.
       final String geoFencingFlag =
       (prefs.getString('geoFencing') ?? 'yes').toLowerCase().trim();
       final bool isGeoFencingRequired = geoFencingFlag != 'no';
@@ -2306,15 +2799,15 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       debugPrint('🔍 [GEOFENCE] geo_fencing flag = "$geoFencingFlag" '
           '| enforced = $isGeoFencingRequired');
 
-      final double? savedLat        = prefs.getDouble('selected_lat');
-      final double? savedLng        = prefs.getDouble('selected_lng');
-      final double? savedRadius     = prefs.getDouble('selected_radius');
-      final String  savedName       = prefs.getString('selected_location_name') ?? '';
-      final String? savedShapeCoords = prefs.getString('selected_shape_coords'); // NEW
-      final String? savedShapeType   = prefs.getString('selected_shape_type');   // NEW
+      final double? savedLat         = prefs.getDouble('selected_lat');
+      final double? savedLng         = prefs.getDouble('selected_lng');
+      final double? savedRadius      = prefs.getDouble('selected_radius');
+      final String  savedName        = prefs.getString('selected_location_name') ?? '';
+      final String? savedShapeCoords = prefs.getString('selected_shape_coords');
+      final String? savedShapeType   = prefs.getString('selected_shape_type');
 
       if (isGeoFencingRequired) {
-        // ── 4a. No location selected ────────────────────────────────────────
+        // ── 4a. No location selected ─────────────────────────────────────────
         if (savedLat == null || savedLng == null || savedRadius == null || savedName.isEmpty) {
           if (Navigator.of(context).canPop()) Navigator.of(context).pop();
           Get.snackbar(
@@ -2338,8 +2831,8 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
           allowedLat   : savedLat,
           allowedLng   : savedLng,
           radiusMeters : savedRadius,
-          shapeCoords  : savedShapeCoords,   // NEW
-          shapeType    : savedShapeType,     // NEW
+          shapeCoords  : savedShapeCoords,
+          shapeType    : savedShapeType,
         );
 
         if (!withinGeofence) {
@@ -2359,7 +2852,6 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
         debugPrint('✅ [GEOFENCE] GPS check passed — user is within "$savedName"');
       } else {
-        // geo_fencing = 'no' — skip all location selection & boundary checks.
         debugPrint('✅ [GEOFENCE] Skipped — geo_fencing is NO for this employee');
       }
 
@@ -2396,10 +2888,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
         photoBytes: clockInPhotoBytes,
       );
 
-      // ── 9. ✅ FIX: START GPS TRACKING via LocationViewModel ────────────────
-      // This initialises the GPX file, starts the position stream and the
-      // Kalman-filtered distance accumulator. Without this call, totalDistance
-      // stays 0 and no location table record is ever written on clock-out.
+      // ── 9. START GPS TRACKING ──────────────────────────────────────────────
       await locationViewModel.onClockIn();
       debugPrint('✅ [CLOCK-IN] GPS tracking started via locationViewModel.onClockIn()');
 
@@ -2413,15 +2902,10 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       // ── 11. START TIMERS ───────────────────────────────────────────────────
       _startLocalBackupTimer();
       _scheduleMidnightClockOut();
-      _scheduleShiftEndClockOut();   // ✅ NEW: must be called here at actual clock-in
+      _scheduleShiftEndClockOut();
       _startPermissionMonitoring();
 
-      // ── ✅ OVERTIME AUTO CLOCK-OUT ─────────────────────────────────────────
-      // Detect karo kya yeh overtime session hai:
-      //   - overtime = yes  AND
-      //   - shift_end_clockout_done_date = aaj (matlab shift pehle end ho chuki hai)
-      // Agar haan to OvertimeClockOutService start karo jo API se DAILY_OT_CAP
-      // fetch karega aur cap expire hone par auto clock-out trigger karega.
+      // ── OVERTIME AUTO CLOCK-OUT ────────────────────────────────────────────
       if (await _isOvertimeClockIn()) {
         debugPrint('');
         debugPrint('══════════════════════════════════════════════════════');
@@ -2442,16 +2926,16 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
         debugPrint('⏰ [CLOCK-IN] Not an overtime session — OvertimeClockOutService not started');
       }
 
-      // ✅ Auto location POST — clock-in ke baad har 5 min mein server ko bhejta hai
+      // ── Auto location POST — clock-in ke baad har 5 min mein ──────────────
       _locationTrackerService.start();
 
-      // ✅ Bulk GPS tracker — start only after actual clock-in
+      // ── Bulk GPS tracker ───────────────────────────────────────────────────
       LocationBulkTracker.instance.start();
 
-      // ✅ Battery monitoring — clock-in ke baad har 10 sec snackbar
+      // ── Battery monitoring ─────────────────────────────────────────────────
       _startBatteryMonitoring();
 
-      // ── 12. CLOSE DIALOG ───────────────────────────────────────────────────
+      // ── 12. CLOSE LOADING DIALOG ───────────────────────────────────────────
       if (Navigator.of(context).canPop()) Navigator.of(context).pop();
 
       Get.snackbar(
@@ -2466,7 +2950,6 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       );
 
       // ── VIOLATION MONITORING START ─────────────────────────────────────────
-      // Only monitor geofence violations for employees with geo_fencing = 'yes'.
       await _violationVM.clearViolations();
       if (isGeoFencingRequired && savedLat != null && savedLng != null && savedRadius != null) {
         final double monLat    = savedLat;
@@ -2478,8 +2961,8 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
           lng          : monLng,
           radiusMeters : monRadius,
           locationName : monName,
-          shapeCoords  : savedShapeCoords,   // NEW
-          shapeType    : savedShapeType,     // NEW
+          shapeCoords  : savedShapeCoords,
+          shapeType    : savedShapeType,
         ));
       } else {
         debugPrint('ℹ️ [GEOFENCE] Violation monitoring skipped — geo_fencing is NO');
@@ -2488,9 +2971,9 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       // ── MQTT CLOCK IN ──────────────────────────────────────────────────────
       final mqttOk = await _mqttTracker.clockInMqtt(
         deviceId    : empId,
-        companyCode : prefs.getString(prefCompanyCode) ?? '',  // ← use the same constant
+        companyCode : prefs.getString(prefCompanyCode) ?? '',
         empName     : empName,
-        empImage    : prefs.getString('cached_image_url') ?? '',// ← already in scope
+        empImage    : prefs.getString('cached_image_url') ?? '',
         depId       : prefs.getString('cached_dep_id') ?? '',
       );
       if (!mqttOk) {
@@ -2524,6 +3007,8 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       );
     }
   }
+
+
 
   void _runPostClockInTasks(String filePath) {
     Future.microtask(() async {
@@ -3165,48 +3650,6 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
             }),
 
             const SizedBox(height: 4),
-
-            // // ── Battery Indicator — sirf clock-in ke baad dikhao ──────────
-            // Obx(() {
-            //   if (!attendanceViewModel.isClockedIn.value) {
-            //     return const SizedBox.shrink();
-            //   }
-            //   return Row(
-            //     mainAxisAlignment: MainAxisAlignment.center,
-            //     children: [
-            //       Icon(
-            //         _isCharging
-            //             ? Icons.battery_charging_full_rounded
-            //             : _batteryLevel >= 80
-            //             ? Icons.battery_full_rounded
-            //             : _batteryLevel >= 50
-            //             ? Icons.battery_5_bar_rounded
-            //             : _batteryLevel >= 20
-            //             ? Icons.battery_3_bar_rounded
-            //             : Icons.battery_alert_rounded,
-            //         size: 14,
-            //         color: _batteryLevel <= 20
-            //             ? Colors.red
-            //             : _isCharging
-            //             ? Colors.green
-            //             : Colors.grey.shade600,
-            //       ),
-            //       const SizedBox(width: 4),
-            //       Text(
-            //         '$_batteryLevel%${_isCharging ? " ⚡" : ""}',
-            //         style: TextStyle(
-            //           fontSize: 11,
-            //           fontWeight: FontWeight.w600,
-            //           color: _batteryLevel <= 20
-            //               ? Colors.red
-            //               : Colors.grey.shade600,
-            //         ),
-            //       ),
-            //     ],
-            //   );
-            // }),
-            //
-            // const SizedBox(height: 8),
 
             // ── Location Selector ──────────────────────────────────────────
             FutureBuilder<SharedPreferences>(
