@@ -13,6 +13,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.location.GnssStatus
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -54,6 +55,7 @@ import java.util.Locale as JavaLocale
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import io.flutter.plugin.common.MethodChannel
 
 class LocationMonitorService : Service() {
     private val CHANNEL_ID           = "location_monitor_channel"
@@ -152,13 +154,20 @@ class LocationMonitorService : Service() {
     private var lastFakeGpsReportTime: Long = 0
     private val FAKE_GPS_COOLDOWN_MS = 30_000L
 
+    // ── GPS Fraud Detection — Satellite Count (CHECK 1) ───────────────────
+    // Updated by GnssStatus.Callback on every GNSS fix.
+    // Read by the Flutter MethodChannel 'getSatelliteCount' handler.
+     // -1 = not yet received
+    private var gnssStatusCallback: GnssStatus.Callback? = null
+
     companion object {
         const val EXTRA_DEVICE_ID          = "deviceId"
         const val EXTRA_COMPANY_CODE       = "companyCode"
         const val EXTRA_EMP_NAME           = "empName"
         // ✅ BACKGROUND ALARM FIX: intent extra for AlarmManager-triggered shift-end clockout
         const val EXTRA_SHIFT_END_TRIGGER  = "shift_end_trigger"
-        private const val SHIFT_END_ALARM_REQ = 77   // AlarmManager request code
+        private const val SHIFT_END_ALARM_REQ = 77
+        @Volatile var lastSatelliteCount: Int = -1// AlarmManager request code
 
         fun start(context: Context) {
             try {
@@ -306,6 +315,11 @@ class LocationMonitorService : Service() {
         registerReceivers()
         registerNetworkCallback()
         registerAppOpsListener()
+
+        // ── GPS Fraud Detection MethodChannel ─────────────────────────────
+        // Flutter calls 'getSatelliteCount' to read the latest GNSS fix count.
+        // The channel name must match GpsFraudDetectionService._channel in Dart.
+
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -1164,12 +1178,65 @@ class LocationMonitorService : Service() {
                     }
                 } catch (_: Exception) {}
             }
+
+            // ── GPS Fraud Detection: register GnssStatus.Callback (API 24+) ──
+            // Counts satellites used in the latest fix and stores in lastSatelliteCount.
+            // Flutter reads this via the 'getSatelliteCount' MethodChannel call.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                try {
+                    gnssStatusCallback = object : GnssStatus.Callback() {
+                        override fun onSatelliteStatusChanged(status: GnssStatus) {
+                            var usedCount = 0
+                            for (i in 0 until status.satelliteCount) {
+                                if (status.usedInFix(i)) usedCount++
+                            }
+                            // ✅ FIX: Only overwrite when at least one satellite contributed
+                            // to the fix. GnssStatus fires continuously — between fix cycles
+                            // every satellite temporarily shows usedInFix=false even when 44
+                            // are visible, which would reset lastSatelliteCount to 0 and
+                            // incorrectly trigger the SUSPICIOUS fraud rule on next clock-in.
+                            if (usedCount > 0) {
+                                lastSatelliteCount = usedCount
+                                android.util.Log.d("LocationMonitor",
+                                    "🛰️ [GPS FRAUD] GnssStatus update: " +
+                                            "total=${status.satelliteCount} usedInFix=$usedCount")
+                            }
+                        }
+                    }
+                    locationManager?.registerGnssStatusCallback(
+                        gnssStatusCallback!!, Handler(Looper.getMainLooper())
+                    )
+                    android.util.Log.d("LocationMonitor",
+                        "✅ [GPS FRAUD] GnssStatus.Callback registered")
+                } catch (e: Exception) {
+                    android.util.Log.e("LocationMonitor",
+                        "❌ [GPS FRAUD] GnssStatus.Callback registration error: ${e.message}")
+                }
+            } else {
+                android.util.Log.d("LocationMonitor",
+                    "ℹ️ [GPS FRAUD] GnssStatus requires API 24+ — skipped on this device (API ${Build.VERSION.SDK_INT})")
+            }
         } catch (_: Exception) {}
     }
 
     private fun stopLocationUpdates() {
         try { locationListener?.let { locationManager?.removeUpdates(it) } } catch (_: Exception) {}
         locationListener = null
+
+        // ── GPS Fraud Detection: unregister GnssStatus.Callback ──────────
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            try {
+                gnssStatusCallback?.let {
+                    locationManager?.unregisterGnssStatusCallback(it)
+                    android.util.Log.d("LocationMonitor",
+                        "🛰️ [GPS FRAUD] GnssStatus.Callback unregistered")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("LocationMonitor",
+                    "❌ [GPS FRAUD] GnssStatus.Callback unregister error: ${e.message}")
+            }
+        }
+        gnssStatusCallback = null
     }
 
     // ══════════════════════════════════════════════════════════════════════════

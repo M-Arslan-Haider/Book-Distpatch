@@ -4,7 +4,9 @@ import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../AppColors.dart';
 import '../../Services/biometric_service.dart';
+import '../../Services/logout_api_service.dart';
 import '../../ViewModels/login_view_model.dart';
+import '../../ViewModels/attendance_view_model.dart';
 import '../SalarySlipScreen.dart';
 import '../home_screen.dart';
 import '../login_screen.dart';
@@ -845,6 +847,30 @@ class _AppDrawerState extends State<AppDrawer>
 
   // ── Logout dialog ─────────────────────────────────────────────────────────
   void _confirmLogout() {
+    // Get the AttendanceViewModel to check if user is clocked in
+    final attendanceViewModel = Get.find<AttendanceViewModel>();
+
+    // Check if user is currently clocked in
+    if (attendanceViewModel.isClockedIn.value) {
+      // Show error message if user is clocked in
+      Get.snackbar(
+        'Cannot Logout',
+        'Please clock out before logging out',
+        backgroundColor: AppColors.error,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.TOP,
+        duration: const Duration(seconds: 4),
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        borderRadius: 12,
+        icon: const Icon(
+          Icons.error_outline_rounded,
+          color: Colors.white,
+          size: 24,
+        ),
+      );
+      return;
+    }
+
     Get.defaultDialog(
       title: 'Logout',
       titleStyle: const TextStyle(
@@ -860,11 +886,18 @@ class _AppDrawerState extends State<AppDrawer>
       onConfirm: () async {
         final prefs = await SharedPreferences.getInstance();
 
+        // ✅ Post logout data to API BEFORE clearing prefs
+        // (data clear hone ke baad available nahi rahega)
+        await LogoutApiService.postLogout(prefs);
+
         // Preserve biometric keys so the biometric button survives logout
         // and shows on the next login screen
         final biometricEnabled  = prefs.getBool(prefBiometricEnabled);
         final biometricUserId   = prefs.getString(prefBiometricUserId);
         final biometricPassword = prefs.getString(prefBiometricPassword);
+
+        // ✅ Offline queue bachao — prefs.clear() se pehle save karo
+        final pendingQueue = prefs.getString(LogoutApiService.pendingLogoutsKey);
 
         await prefs.clear();
 
@@ -874,6 +907,11 @@ class _AppDrawerState extends State<AppDrawer>
           await prefs.setBool(prefBiometricEnabled, true);
           await prefs.setString(prefBiometricUserId,   biometricUserId);
           await prefs.setString(prefBiometricPassword, biometricPassword);
+        }
+
+        // ✅ Queue wapas restore karo clear ke baad
+        if (pendingQueue != null && pendingQueue.isNotEmpty) {
+          await prefs.setString(LogoutApiService.pendingLogoutsKey, pendingQueue);
         }
 
         Get.offAll(() => const CodeScreen());

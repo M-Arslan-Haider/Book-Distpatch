@@ -736,7 +736,7 @@ class _SalarySlipDetailScreenState extends State<SalarySlipDetailScreen> {
                               tableRow('Monthly Salary', fmtD(slip.monthlySalary), 0, boldValue: true),
                               tableRow('Gross Days', slip.grossDays.toStringAsFixed(0), 1),
                               tableRow('Gross Salary', fmtD(slip.grossSalary), 2, boldValue: true),
-                              tableRow('OT Hours', slip.otHours.toStringAsFixed(0), 3),
+                              tableRow('OT Hours', slip.otHours, 3),
                               tableRow('Allowance', fmtD(slip.allowance), 4, boldValue: true),
                               tableRow('Total Increment', fmtD(slip.totalIncrement), 5, boldValue: true),
                               tableRow('Arrear Amount', fmtD(slip.arearAmount), 6, boldValue: true),
@@ -765,7 +765,7 @@ class _SalarySlipDetailScreenState extends State<SalarySlipDetailScreen> {
                           pw.Table(
                             children: [
 
-                              tableRow('Late/Short Hrs', fmtD(slip.lateShortHrs), 1, boldValue: true),
+                              tableRow('Late/Early Hrs', slip.lateShortHrs, 1, boldValue: true),
                               tableRow('EOBI', fmtD(slip.eobi), 2, boldValue: true),
                               tableRow('Monthly Tax', fmtD(slip.monthlyTax), 3, boldValue: true),
                               tableRow('Deduction Amt', fmtD(slip.deductionAmount), 4, boldValue: true),
@@ -1379,7 +1379,7 @@ class _EarningsDeductionsTable extends StatelessWidget {
                 _TR('Monthly Salary:', _fmtV(slip.monthlySalary), bold: true),
                 _TR('Gross Days:', slip.grossDays.toStringAsFixed(0)),
                 _TR('Gross Salary:', _fmtV(slip.grossSalary), bold: true),
-                _TR('OT Hours:', slip.otHours.toStringAsFixed(0)),
+                _TR('OT Hours:', slip.otHours),
                 _TR('Allowance:', _fmtV(slip.allowance), bold: true),
                 _TR('Total Increment:', _fmtV(slip.totalIncrement), bold: true),
                 _TR('Arrear Amount:', _fmtV(slip.arearAmount), bold: true),
@@ -1393,7 +1393,7 @@ class _EarningsDeductionsTable extends StatelessWidget {
               title: 'DEDUCTIONS',
               rows: [
 
-                _TR('Late/Short Hrs:', _fmtV(slip.lateShortHrs), bold: true),
+                _TR('Late/Short Hrs:', slip.lateShortHrs, bold: true),
                 _TR('EOBI:', _fmtV(slip.eobi), bold: true),
                 _TR('Monthly Tax:', _fmtV(slip.monthlyTax), bold: true),
                 _TR('Deduction Amt:', _fmtV(slip.deductionAmount), bold: true),

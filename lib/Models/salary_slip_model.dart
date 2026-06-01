@@ -1,5 +1,3 @@
-
-
 class SalarySlip {
   final String employeeCode;
   final String employeeName;
@@ -7,10 +5,10 @@ class SalarySlip {
   final String depName;
   final double monthlySalary;
   final double absentDaysAmt;
-  final double lateShortHrs;
+  final String lateShortHrs;  // time string e.g. "22:08"
   final double grossDays;
   final double grossSalary;
-  final double otHours;
+  final String otHours;        // time string e.g. "000:00"
   final double netSalary;
   final double allowance;
   final double totalIncrement;
@@ -82,10 +80,10 @@ class SalarySlip {
       depName:          j['DEP_NAME']?.toString()       ?? '',
       monthlySalary:    _d(j['MONTHLY_SALARY']),
       absentDaysAmt:    _d(j['ABSENT_DAYS_AMT']),
-      lateShortHrs:     _d(j['LATE_SHORT_HRS']),
+      lateShortHrs:     j['LATE_SHORT_HRS']?.toString() ?? '00:00',
       grossDays:        _d(j['GROSS_DAYS']),
       grossSalary:      _d(j['GROSS_SALARY']),
-      otHours:          _d(j['OT_HOURS']),
+      otHours:          j['OT_HOURS']?.toString() ?? '000:00',
       netSalary:        _d(j['NET_SALARY']),
       allowance:        _d(j['ALLOWANCE']),
       totalIncrement:   _d(j['TOTAL_INCREMENT']),
