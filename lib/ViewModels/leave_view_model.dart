@@ -1,4 +1,3 @@
-
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
@@ -12,6 +11,7 @@ import 'package:uuid/uuid.dart';
 import '../Models/leave_model.dart';
 import '../Repositories/leave_repository.dart';
 import '../Database/db_helper.dart';
+import '../Screens/home_screen.dart';
 
 class LeaveViewModel extends GetxController {
   final LeaveRepository _repo = LeaveRepository();
@@ -22,7 +22,6 @@ class LeaveViewModel extends GetxController {
   final RxString empId   = ''.obs;
   final RxString jobRole = ''.obs;
 
-  // FIX 1: track whether employee data has loaded so canSubmit is accurate
   final RxBool isEmployeeLoaded = false.obs;
 
   // ─── Form State ───────────────────────────────────────────────────────────
@@ -33,6 +32,10 @@ class LeaveViewModel extends GetxController {
   final RxBool isHalfDay            = false.obs;
   final RxString halfDayDisplay     = 'No'.obs;
   final RxString reason             = ''.obs;
+
+  // ─── NEW: Half Day Times ──────────────────────────────────────────────────
+  final Rx<TimeOfDay?> halfDayStartTime = Rx<TimeOfDay?>(null);
+  final Rx<TimeOfDay?> halfDayEndTime   = Rx<TimeOfDay?>(null);
 
   // ─── Attachment ───────────────────────────────────────────────────────────
   final Rx<Uint8List?> attachmentBytes    = Rx<Uint8List?>(null);
@@ -80,8 +83,6 @@ class LeaveViewModel extends GetxController {
 
   // ─── PRIVATE – LEAVE ID BUILDER ────────────────────────────────────────────
 
-  // Replace the existing _buildLeaveId method with this updated version:
-
   String _buildLeaveId({required String empId}) {
     final now    = DateTime.now();
     final day    = DateFormat('dd').format(now);
@@ -89,10 +90,8 @@ class LeaveViewModel extends GetxController {
     final serial = _serialCounter.toString().padLeft(3, '0');
     final empPart = empId.padLeft(2, '0');
 
-    // Get company code from DBHelper
     final String companyCode = DBHelper.getCompanyCode() ?? '';
 
-    // Build ID with company code prefix
     String id;
     if (companyCode.isNotEmpty) {
       id = '$companyCode-LV-EMP-$empPart-$day-$month-$serial';
@@ -108,13 +107,11 @@ class LeaveViewModel extends GetxController {
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
 
-    // DEBUG: Print ALL keys to find correct job role key
     debugPrint('🔑 [LeaveVM] ALL SharedPrefs keys:');
     for (final key in prefs.getKeys()) {
       debugPrint('   $key = ${prefs.get(key)}');
     }
 
-    // FIX 3: expanded key fallbacks for all common naming conventions
     empName.value = prefs.getString('userName')      ??
         prefs.getString('user_name')     ??
         prefs.getString('name')          ??
@@ -138,7 +135,6 @@ class LeaveViewModel extends GetxController {
     debugPrint('👤 [LeaveVM] empId    : "${empId.value}"');
     debugPrint('👤 [LeaveVM] jobRole  : "${jobRole.value}"');
 
-    // FIX 4: mark loaded so canSubmit unlocks only after data is ready
     isEmployeeLoaded.value = empId.value.isNotEmpty && empName.value.isNotEmpty;
 
     if (!isEmployeeLoaded.value) {
@@ -146,7 +142,6 @@ class LeaveViewModel extends GetxController {
     }
   }
 
-  // FIX 5: canSubmit now guards against empty empId / empName
   bool get canSubmit =>
       isEmployeeLoaded.value &&
           empId.value.isNotEmpty &&
@@ -184,11 +179,24 @@ class LeaveViewModel extends GetxController {
       endDate.value   = startDate.value;
       totalDays.value = 1;
     } else {
+      // ── NEW: clear times when half day is turned off ──
+      halfDayStartTime.value = null;
+      halfDayEndTime.value   = null;
       _recalcDays();
     }
   }
 
-  // Quality 30 + max 512px → ~20–40 KB → base64 ~28–55 KB
+  // ─── NEW: Half Day Time Setters ───────────────────────────────────────────
+
+  void setHalfDayStartTime(TimeOfDay t) => halfDayStartTime.value = t;
+  void setHalfDayEndTime(TimeOfDay t)   => halfDayEndTime.value   = t;
+
+  /// Formats TimeOfDay as "HH:mm" (24-hr) for API / local DB storage
+  String _formatTimeForApi(TimeOfDay t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+  // ─── Attachment ───────────────────────────────────────────────────────────
+
   Future<void> pickImage(ImageSource source) async {
     try {
       final XFile? file = await _picker.pickImage(
@@ -226,7 +234,6 @@ class LeaveViewModel extends GetxController {
   // ─── Submit ───────────────────────────────────────────────────────────────
   Future<void> submitLeave() async {
     if (!canSubmit) {
-      // FIX 6: surface a clear message when employee info is missing
       if (empId.value.isEmpty || empName.value.isEmpty) {
         Get.snackbar(
           '⚠️ Employee Info Missing',
@@ -242,7 +249,6 @@ class LeaveViewModel extends GetxController {
 
     isLoading.value = true;
     try {
-      // Generate leave ID
       await _initSerialCounter();
       String leaveId = _buildLeaveId(empId: empId.value);
 
@@ -260,7 +266,6 @@ class LeaveViewModel extends GetxController {
         isHalfDay:       isHalfDay.value ? 1 : 0,
         reason:          reason.value.trim(),
         attachmentData:  attachmentBytes.value,
-        // FIX 7: store null explicitly when no attachment (not empty string)
         attachmentImage: attachmentBase64.value.isNotEmpty
             ? attachmentBase64.value
             : null,
@@ -270,18 +275,27 @@ class LeaveViewModel extends GetxController {
         posted:          0,
         hasAttachment:   attachmentBytes.value != null ? 1 : 0,
         company_code:    DBHelper.getCompanyCode(),
+        // ── NEW: only set when half day is active ─────────────────────────
+        halfDayStartTime: isHalfDay.value && halfDayStartTime.value != null
+            ? _formatTimeForApi(halfDayStartTime.value!)
+            : null,
+        halfDayEndTime: isHalfDay.value && halfDayEndTime.value != null
+            ? _formatTimeForApi(halfDayEndTime.value!)
+            : null,
       );
 
       debugPrint('📋 [LeaveVM] Submitting leave:');
-      debugPrint('   leaveId  : ${leave.leaveId}');
-      debugPrint('   empId    : "${leave.empId}"');
-      debugPrint('   empName  : "${leave.empName}"');
-      debugPrint('   leaveType: "${leave.leaveType}"');
-      debugPrint('   startDate: "${leave.startDate}"');
-      debugPrint('   endDate  : "${leave.endDate}"');
-      debugPrint('   totalDays: ${leave.totalDays}');
-      debugPrint('   reason   : "${leave.reason}"');
-      debugPrint('   hasAttach: ${leave.hasAttachment}');
+      debugPrint('   leaveId          : ${leave.leaveId}');
+      debugPrint('   empId            : "${leave.empId}"');
+      debugPrint('   empName          : "${leave.empName}"');
+      debugPrint('   leaveType        : "${leave.leaveType}"');
+      debugPrint('   startDate        : "${leave.startDate}"');
+      debugPrint('   endDate          : "${leave.endDate}"');
+      debugPrint('   totalDays        : ${leave.totalDays}');
+      debugPrint('   reason           : "${leave.reason}"');
+      debugPrint('   hasAttach        : ${leave.hasAttachment}');
+      debugPrint('   halfDayStartTime : "${leave.halfDayStartTime}"');
+      debugPrint('   halfDayEndTime   : "${leave.halfDayEndTime}"');
 
       final result = await _repo.submitLeave(leave);
 
@@ -303,12 +317,11 @@ class LeaveViewModel extends GetxController {
             duration: const Duration(seconds: 4));
       }
 
-      // Increment serial for next leave
       _serialCounter++;
       await _saveSerialCounter();
 
-      await Future.delayed(const Duration(milliseconds: 600));
-      Get.back();
+      await Future.delayed(const Duration(milliseconds: 800));
+      Get.offAll(() => HomeScreen());
     } catch (e) {
       debugPrint('❌ [LeaveVM] Submit error: $e');
       Get.snackbar('Error', 'Something went wrong. Please try again.',

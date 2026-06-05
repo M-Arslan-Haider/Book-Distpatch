@@ -40,7 +40,8 @@ import '../mqtt_work.dart';
 
 import 'package:battery_plus/battery_plus.dart'; // ✅ Battery monitoring
 import '../../Services/time_sync_service.dart';  // ✅ Server Time Sync
-import '../../Services/gps_fraud_detection_service.dart'; // ✅ GPS Fraud Detection
+import '../../Services/gps_fraud_detection_service.dart';
+import '../sync_status_card_screen.dart'; // ✅ GPS Fraud Detection
 
 
 class TimerCard extends StatefulWidget {
@@ -138,6 +139,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
     _initializeUrgentNotifications();
     _initializeFromPersistentState();
+    SyncController.init();
     _startAutoSyncMonitoring();
     _startDistanceUpdater();
     _scheduleMidnightClockOut();
@@ -1354,6 +1356,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       bool wasOnline = _isOnline;
       _isOnline = results.isNotEmpty &&
           results.any((r) => r != ConnectivityResult.none);
+      SyncController.maybeSetOnline(_isOnline);
 
       debugPrint('🌐 [CONNECTIVITY] ${_isOnline ? 'ONLINE' : 'OFFLINE'}');
 
@@ -1381,6 +1384,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       bool wasOnline = _isOnline;
       _isOnline = results.isNotEmpty &&
           results.any((r) => r != ConnectivityResult.none);
+      SyncController.maybeSetOnline(_isOnline);
 
       if (_isOnline && !wasOnline && !_isSyncing) {
         _triggerAutoSync();
@@ -1578,6 +1582,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     } finally {
       _isSyncing = false;
       debugPrint('🔓 [AUTO-SYNC] Unlocked');
+      SyncController.maybeComplete();
     }
   }
 
@@ -3833,3 +3838,5 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     );
   }
 }
+
+

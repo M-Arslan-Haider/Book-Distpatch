@@ -103,10 +103,39 @@ class LeaveScreen extends StatelessWidget {
 
                   const SizedBox(height: 24),
 
-                  // Half Day
+                  // ── Half Day ─────────────────────────────────────────────
                   _sectionHeader('Half Day Option', Icons.timelapse_rounded, AppColors.greenTeal),
                   const SizedBox(height: 10),
-                  _card([_buildHalfDayDropdown()]),
+                  // Wrap the whole card in Obx so it rebuilds when isHalfDay changes
+                  Obx(() {
+                    final children = <Widget>[_buildHalfDayDropdown()];
+
+                    // ── NEW: show time pickers only when half day = Yes ────
+                    if (vm.isHalfDay.value) {
+                      children.addAll([
+                        _cardDivider(),
+                        _buildTimeField(
+                          context: context,
+                          label: 'START TIME',
+                          icon: Icons.access_time_rounded,
+                          iconColor: AppColors.greenTeal,
+                          timeObs: vm.halfDayStartTime,
+                          onTap: () => _selectTime(context, isStart: true),
+                        ),
+                        _cardDivider(),
+                        _buildTimeField(
+                          context: context,
+                          label: 'END TIME',
+                          icon: Icons.timelapse_rounded,
+                          iconColor: AppColors.greenTeal,
+                          timeObs: vm.halfDayEndTime,
+                          onTap: () => _selectTime(context, isStart: false),
+                        ),
+                      ]);
+                    }
+
+                    return _card(children);
+                  }),
 
                   const SizedBox(height: 24),
 
@@ -334,6 +363,95 @@ class LeaveScreen extends StatelessWidget {
                       fontSize: 14.5,
                       fontWeight: FontWeight.w600,
                       color: date != null ? AppColors.textPrimary : AppColors.textSecondary,
+                    ),
+                  ),
+                  const Spacer(),
+                  const Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+    });
+  }
+
+  // ── NEW: Time Picker ────────────────────────────────────────────────────────
+
+  /// Shows a native time picker; result is passed to the ViewModel.
+  Future<void> _selectTime(BuildContext context, {required bool isStart}) async {
+    final initial = isStart
+        ? (vm.halfDayStartTime.value ?? TimeOfDay.now())
+        : (vm.halfDayEndTime.value   ?? TimeOfDay.now());
+
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: initial,
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: ColorScheme.light(
+            primary: AppColors.primary,
+            onPrimary: Colors.white,
+            surface: Colors.white,
+            onSurface: AppColors.textPrimary,
+          ),
+        ),
+        child: child!,
+      ),
+    );
+
+    if (picked != null) {
+      if (isStart) vm.setHalfDayStartTime(picked);
+      else         vm.setHalfDayEndTime(picked);
+    }
+  }
+
+  /// Formats TimeOfDay for display: "9:00 AM"
+  String _formatTimeDisplay(TimeOfDay t) {
+    final h = t.hourOfPeriod == 0 ? 12 : t.hourOfPeriod;
+    final m = t.minute.toString().padLeft(2, '0');
+    final p = t.period == DayPeriod.am ? 'AM' : 'PM';
+    return '$h:$m $p';
+  }
+
+  /// Time field widget — same look & feel as _buildDateField.
+  Widget _buildTimeField({
+    required BuildContext context,
+    required String label,
+    required IconData icon,
+    required Color iconColor,
+    required Rx<TimeOfDay?> timeObs,
+    required VoidCallback onTap,
+  }) {
+    return Obx(() {
+      final time = timeObs.value;
+      return InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                  letterSpacing: 0.8,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Icon(icon, size: 16, color: time != null ? iconColor : AppColors.textSecondary),
+                  const SizedBox(width: 8),
+                  Text(
+                    time != null ? _formatTimeDisplay(time) : 'Select time',
+                    style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w600,
+                      color: time != null ? AppColors.textPrimary : AppColors.textSecondary,
                     ),
                   ),
                   const Spacer(),

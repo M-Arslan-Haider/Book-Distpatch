@@ -17,8 +17,6 @@ class DBHelper {
   static const String taskTable          = "tasks";
   static const String fakeGpsTable       = "fake_gps_logs";
   static const String locationTrackingTable = "location_tracking";
-
-  // ── NEW (v13): Interval Selfie offline queue ───────────────────────────────
   static const String selfieLogTable     = "selfie_log";
 
   static const String _taskTableDDL = '''
@@ -65,7 +63,7 @@ class DBHelper {
     String path = join(await getDatabasesPath(), dbName);
     return await openDatabase(
       path,
-      version: 13, // Bumped to 13 for selfie_log table (interval selfie offline queue)
+      version: 14, // Bumped to 14: half_day_start_time & half_day_end_time in leave_application
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -134,7 +132,6 @@ class DBHelper {
 
     if (oldVersion < 6) {
       try {
-        // Check if old table exists and drop it to recreate with correct schema
         final tables = await db.rawQuery(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='$fakeGpsTable'"
         );
@@ -182,7 +179,7 @@ class DBHelper {
       );
     }
 
-    // ── v9: Add location_name column to attendance_out ─────────────────────────
+    // ── v9: Add location_name column to attendance_out ────────────────────────
     if (oldVersion < 9) {
       await _safeAlter(db,
         'ALTER TABLE $attendanceOutTable ADD COLUMN location_name TEXT',
@@ -190,20 +187,15 @@ class DBHelper {
       );
     }
 
-    // ── v10: Safety check - ensure location_name exists (in case v9 was missed) ──
+    // ── v10: Safety check — ensure location_name exists ───────────────────────
     if (oldVersion < 10) {
-      try {
-        // Try to add it again (safe if already exists)
-        await _safeAlter(db,
-          'ALTER TABLE $attendanceOutTable ADD COLUMN location_name TEXT',
-          '✅ [DB] v10 — safety check: location_name column ensured',
-        );
-      } catch (e) {
-        debugPrint('✅ [DB] v10 — location_name column already exists');
-      }
+      await _safeAlter(db,
+        'ALTER TABLE $attendanceOutTable ADD COLUMN location_name TEXT',
+        '✅ [DB] v10 — safety check: location_name column ensured',
+      );
     }
 
-    // ── v11: Add location_tracking table for offline GPS storage ──────────────
+    // ── v11: Add location_tracking table ──────────────────────────────────────
     if (oldVersion < 11) {
       await db.execute('''
       CREATE TABLE IF NOT EXISTS $locationTrackingTable(
@@ -233,7 +225,7 @@ class DBHelper {
       debugPrint('✅ [DB] v11 migration complete');
     }
 
-    // ── v12: Add clock_out_image column to attendance_out ────────────────────
+    // ── v12: Add clock_out_image column to attendance_out ─────────────────────
     if (oldVersion < 12) {
       await _safeAlter(db,
         'ALTER TABLE $attendanceOutTable ADD COLUMN clock_out_image TEXT',
@@ -242,7 +234,7 @@ class DBHelper {
       debugPrint('✅ [DB] v12 migration complete');
     }
 
-    // ── v13: Add selfie_log table for interval-selfie offline queue ───────────
+    // ── v13: Add selfie_log table ──────────────────────────────────────────────
     if (oldVersion < 13) {
       try {
         await db.execute('''
@@ -273,6 +265,19 @@ class DBHelper {
         debugPrint('⚠️ [DB] v13 — selfie_log error: $e');
       }
       debugPrint('✅ [DB] v13 migration complete');
+    }
+
+    // ── v14: Add half_day_start_time & half_day_end_time to leave_application ──
+    if (oldVersion < 14) {
+      await _safeAlter(db,
+        'ALTER TABLE $leaveTable ADD COLUMN half_day_start_time TEXT',
+        '✅ [DB] v14 — half_day_start_time added to leave_application',
+      );
+      await _safeAlter(db,
+        'ALTER TABLE $leaveTable ADD COLUMN half_day_end_time TEXT',
+        '✅ [DB] v14 — half_day_end_time added to leave_application',
+      );
+      debugPrint('✅ [DB] v14 migration complete');
     }
   }
 
@@ -342,27 +347,30 @@ class DBHelper {
     )
     ''');
 
+    // ── leave_application: includes half_day_start_time & half_day_end_time ──
     await db.execute('''
     CREATE TABLE IF NOT EXISTS $leaveTable(
-      id               TEXT PRIMARY KEY,
-      leave_id         TEXT UNIQUE,
-      emp_id           TEXT,
-      emp_name         TEXT,
-      job_role         TEXT,
-      leave_type       TEXT,
-      start_date       TEXT,
-      end_date         TEXT,
-      total_days       INTEGER,
-      is_half_day      INTEGER DEFAULT 0,
-      reason           TEXT,
-      attachment_data  BLOB,
-      attachment_image TEXT,
-      application_date TEXT,
-      application_time TEXT,
-      status           TEXT DEFAULT 'pending',
-      posted           INTEGER DEFAULT 0,
-      has_attachment   INTEGER DEFAULT 0,
-      company_code     TEXT
+      id                   TEXT PRIMARY KEY,
+      leave_id             TEXT UNIQUE,
+      emp_id               TEXT,
+      emp_name             TEXT,
+      job_role             TEXT,
+      leave_type           TEXT,
+      start_date           TEXT,
+      end_date             TEXT,
+      total_days           INTEGER,
+      is_half_day          INTEGER DEFAULT 0,
+      reason               TEXT,
+      attachment_data      BLOB,
+      attachment_image     TEXT,
+      application_date     TEXT,
+      application_time     TEXT,
+      status               TEXT DEFAULT 'pending',
+      posted               INTEGER DEFAULT 0,
+      has_attachment       INTEGER DEFAULT 0,
+      company_code         TEXT,
+      half_day_start_time  TEXT,
+      half_day_end_time    TEXT
     )
     ''');
 
@@ -419,7 +427,6 @@ class DBHelper {
     )
     ''');
 
-    // ── NEW (v13): selfie_log — offline queue for interval selfie uploads ──────
     await db.execute('''
     CREATE TABLE IF NOT EXISTS $selfieLogTable(
       id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -643,7 +650,6 @@ class DBHelper {
   // LOCATION TRACKING BULK OPERATIONS (v11)
   // ══════════════════════════════════════════════════════════════════════════
 
-  /// Insert multiple location tracking records in bulk
   Future<int> insertLocationTrackingBulk(List<Map<String, dynamic>> records) async {
     final db = await database;
     int inserted = 0;
@@ -652,18 +658,16 @@ class DBHelper {
       try {
         final data = Map<String, dynamic>.from(record);
 
-        // Add company_code if missing
         if (_currentCompanyCode != null && data['company_code'] == null) {
           data['company_code'] = _currentCompanyCode;
         }
 
-        // Remove 'id' if present (auto-increment)
         data.remove('id');
 
         await db.insert(
           locationTrackingTable,
           data,
-          conflictAlgorithm: ConflictAlgorithm.ignore, // Ignore duplicates
+          conflictAlgorithm: ConflictAlgorithm.ignore,
         );
         inserted++;
       } catch (e) {
@@ -675,7 +679,6 @@ class DBHelper {
     return inserted;
   }
 
-  /// Get unposted location tracking records
   Future<List<Map<String, dynamic>>> getUnpostedLocationTracking({int limit = 500}) async {
     final db = await database;
 
@@ -696,7 +699,6 @@ class DBHelper {
     );
   }
 
-  /// Mark location tracking records as posted
   Future<int> markLocationTrackingAsPosted(List<int> ids) async {
     if (ids.isEmpty) return 0;
 
@@ -712,7 +714,6 @@ class DBHelper {
     return result;
   }
 
-  /// Get count of unposted location tracking records
   Future<int> getUnpostedLocationTrackingCount() async {
     final db = await database;
 
@@ -732,3 +733,5 @@ class DBHelper {
     return result.first['count'] as int? ?? 0;
   }
 }
+
+

@@ -68,7 +68,7 @@ class DevOptionsCheckResult {
 class DeveloperOptionsCheckService {
   // ✅ FIX: Correct channel — same jo MainActivity.kt mein LOCATION_CHANNEL hai
   static const _platform =
-  MethodChannel('com.metaxperts.GPS_Workforce_Monitor/location_monitor');
+  MethodChannel('com.metaxperts.GPS_Workforce_Monitor1/location_monitor');
 
   // ✅ Oracle ORDS endpoint
   static const String _apiUrl =

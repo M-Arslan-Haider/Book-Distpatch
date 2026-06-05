@@ -1,4 +1,3 @@
-
 import 'dart:typed_data';
 
 class LeaveModel {
@@ -20,7 +19,11 @@ class LeaveModel {
   final String status;
   final int posted;
   final int hasAttachment;
-  final String? company_code; // ← ADDED
+  final String? company_code;
+
+  // ── NEW: half-day time fields ──────────────────────────────────────────────
+  final String? halfDayStartTime; // e.g. "09:00"
+  final String? halfDayEndTime;   // e.g. "13:00"
 
   LeaveModel({
     required this.id,
@@ -41,7 +44,9 @@ class LeaveModel {
     this.status = 'pending',
     this.posted = 0,
     this.hasAttachment = 0,
-    this.company_code, // ← ADDED
+    this.company_code,
+    this.halfDayStartTime, // ← NEW
+    this.halfDayEndTime,   // ← NEW
   });
 
   Map<String, dynamic> toMap() {
@@ -64,7 +69,9 @@ class LeaveModel {
       'status': status,
       'posted': posted,
       'has_attachment': hasAttachment,
-      'company_code': company_code, // ← ADDED
+      'company_code': company_code,
+      'half_day_start_time': halfDayStartTime, // ← NEW
+      'half_day_end_time': halfDayEndTime,     // ← NEW
     };
   }
 
@@ -88,7 +95,9 @@ class LeaveModel {
       status: map['status'] ?? 'pending',
       posted: map['posted'] ?? 0,
       hasAttachment: map['has_attachment'] ?? 0,
-      company_code: map['company_code'], // ← ADDED
+      company_code: map['company_code'],
+      halfDayStartTime: map['half_day_start_time'], // ← NEW
+      halfDayEndTime: map['half_day_end_time'],     // ← NEW
     );
   }
 
@@ -111,7 +120,9 @@ class LeaveModel {
       'application_time': applicationTime,
       'status': status,
       'posted': posted,
-      'company_code': company_code, // ← ADDED
+      'company_code': company_code,
+      'half_day_start_time': halfDayStartTime, // ← NEW
+      'half_day_end_time': halfDayEndTime,     // ← NEW
     };
   }
 }

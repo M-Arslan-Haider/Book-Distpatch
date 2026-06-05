@@ -1,3 +1,4 @@
+import 'package:GPS_Workforce_Monitor/Screens/sync_status_card_screen.dart';
 import 'package:GPS_Workforce_Monitor/Screens/task_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -17,6 +18,7 @@ import '../ViewModels/break_viewmodel.dart';
 import '../ViewModels/short_break_viewmodel.dart';
 import '../ViewModels/location_view_model.dart';
 import '../ViewModels/task_view_model.dart';
+import 'HomeScreenComponents/app_bottom_navbar.dart';
 import 'WidgetDesignes/travel_session_card.dart';
 import 'leave_report_get_screen.dart';
 import 'my_task_activity_screen.dart';
@@ -65,6 +67,7 @@ class _HomeScreenState extends State<HomeScreen>
   String _empName  = '';
   String _empId    = '';
   String _empRole  = '';
+  int _navIndex = 0;
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -500,6 +503,11 @@ class _HomeScreenState extends State<HomeScreen>
         key: _scaffoldKey,
         drawer: const AppDrawer(),
         backgroundColor: AppColors.surface,
+        bottomNavigationBar: AppBottomNavBar(    // ✅ ADD
+          currentIndex: _navIndex,               // ✅ ADD
+          chatBadgeCount: 0,                     // ✅ ADD
+          onTap: (i) => setState(() => _navIndex = i), // ✅ ADD
+        ),                                       // ✅ ADD
         body: FadeTransition(
           opacity: _fadeAnim,
           child: CustomScrollView(
@@ -518,9 +526,15 @@ class _HomeScreenState extends State<HomeScreen>
                     SizedBox(height: context.rs(11)),
                     _buildQuickActions(),
                     SizedBox(height: context.rs(22)),
-                    const LeaveActivityStrip(),
-                    SizedBox(height: context.rs(22)),
-                    _buildTaskActivityStrip(),
+                    Padding(                                               // ✅ ADD
+                      padding: EdgeInsets.symmetric(horizontal: context.rs(5)), // ✅ ADD
+                      child: SyncStatusCard(onSyncNow: _doSync),          // ✅ ADD
+                    ),                                                     // ✅ ADD
+                    // SizedBox(height: context.rs(22)),
+                    // const LeaveActivityStrip(),
+                    // SizedBox(height: context.rs(22)),
+                    // _buildTaskActivityStrip(),
+
                   ]),
                 ),
               ),
@@ -912,79 +926,79 @@ class _HomeScreenState extends State<HomeScreen>
   // ══════════════════════════════════════════════════════════════════════════
   // TASK ACTIVITY STRIP (unchanged)
   // ══════════════════════════════════════════════════════════════════════════
-  Widget _buildTaskActivityStrip() {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: context.rs(5)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _sectionHeader(
-              'Task Overview', Icons.analytics_rounded, AppColors.cyan),
-          SizedBox(height: context.rs(12)),
-          Obx(() {
-            final isLoading  = taskVM.isLoadingAssigned.value;
-            final total      = taskVM.assignedTasks.length;
-            final pending    = taskVM.assignedTasks.where((t) => t.status == 'Pending').length;
-            final inProgress = taskVM.assignedTasks.where((t) => t.status == 'In Progress').length;
-            final completed  = taskVM.assignedTasks.where((t) => t.status == 'Completed').length;
-            final active     = pending + inProgress;
-
-            return GestureDetector(
-              onTap: () => Get.to(
-                    () => const MyTasksActivityScreen(),
-                transition: Transition.rightToLeft,
-                duration: const Duration(milliseconds: 300),
-              ),
-              child: Container(
-                padding: EdgeInsets.all(context.rs(16)),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      AppColors.cardBg,
-                      AppColors.cardBg.withOpacity(0.95),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(context.rs(20)),
-                  border: Border.all(
-                    color: active > 0
-                        ? AppColors.cyan.withOpacity(0.3)
-                        : AppColors.divider,
-                    width: 1.5,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: active > 0
-                          ? AppColors.cyan.withOpacity(0.15)
-                          : Colors.black.withOpacity(0.05),
-                      blurRadius: context.rs(16),
-                      offset: Offset(0, context.rs(6)),
-                    ),
-                  ],
-                ),
-                child: isLoading
-                    ? SizedBox(
-                  height: context.rs(120),
-                  child: const Center(
-                    child: CircularProgressIndicator(
-                        color: AppColors.cyan, strokeWidth: 2.5),
-                  ),
-                )
-                    : _taskCardContent(
-                  total: total,
-                  pending: pending,
-                  inProgress: inProgress,
-                  completed: completed,
-                  active: active,
-                ),
-              ),
-            );
-          }),
-        ],
-      ),
-    );
-  }
+  // Widget _buildTaskActivityStrip() {
+  //   return Padding(
+  //     padding: EdgeInsets.symmetric(horizontal: context.rs(5)),
+  //     child: Column(
+  //       crossAxisAlignment: CrossAxisAlignment.start,
+  //       children: [
+  //         _sectionHeader(
+  //             'Task Overview', Icons.analytics_rounded, AppColors.cyan),
+  //         SizedBox(height: context.rs(12)),
+  //         Obx(() {
+  //           final isLoading  = taskVM.isLoadingAssigned.value;
+  //           final total      = taskVM.assignedTasks.length;
+  //           final pending    = taskVM.assignedTasks.where((t) => t.status == 'Pending').length;
+  //           final inProgress = taskVM.assignedTasks.where((t) => t.status == 'In Progress').length;
+  //           final completed  = taskVM.assignedTasks.where((t) => t.status == 'Completed').length;
+  //           final active     = pending + inProgress;
+  //
+  //           return GestureDetector(
+  //             onTap: () => Get.to(
+  //                   () => const MyTasksActivityScreen(),
+  //               transition: Transition.rightToLeft,
+  //               duration: const Duration(milliseconds: 300),
+  //             ),
+  //             child: Container(
+  //               padding: EdgeInsets.all(context.rs(16)),
+  //               decoration: BoxDecoration(
+  //                 gradient: LinearGradient(
+  //                   begin: Alignment.topLeft,
+  //                   end: Alignment.bottomRight,
+  //                   colors: [
+  //                     AppColors.cardBg,
+  //                     AppColors.cardBg.withOpacity(0.95),
+  //                   ],
+  //                 ),
+  //                 borderRadius: BorderRadius.circular(context.rs(20)),
+  //                 border: Border.all(
+  //                   color: active > 0
+  //                       ? AppColors.cyan.withOpacity(0.3)
+  //                       : AppColors.divider,
+  //                   width: 1.5,
+  //                 ),
+  //                 boxShadow: [
+  //                   BoxShadow(
+  //                     color: active > 0
+  //                         ? AppColors.cyan.withOpacity(0.15)
+  //                         : Colors.black.withOpacity(0.05),
+  //                     blurRadius: context.rs(16),
+  //                     offset: Offset(0, context.rs(6)),
+  //                   ),
+  //                 ],
+  //               ),
+  //               child: isLoading
+  //                   ? SizedBox(
+  //                 height: context.rs(120),
+  //                 child: const Center(
+  //                   child: CircularProgressIndicator(
+  //                       color: AppColors.cyan, strokeWidth: 2.5),
+  //                 ),
+  //               )
+  //                   : _taskCardContent(
+  //                 total: total,
+  //                 pending: pending,
+  //                 inProgress: inProgress,
+  //                 completed: completed,
+  //                 active: active,
+  //               ),
+  //             ),
+  //           );
+  //         }),
+  //       ],
+  //     ),
+  //   );
+  // }
 
   Widget _taskCardContent({
     required int total,
