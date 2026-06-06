@@ -502,6 +502,32 @@ class _ActionCardWidgetState extends State<_ActionCardWidget> {
                             );
                             return;
                           }
+                          // ── Half Day → navigate to Leaves screen ─────
+                          if (card.title == 'Half Day') {
+                            Navigator.push(
+                              context,
+                              PageRouteBuilder(
+                                pageBuilder: (context, animation,
+                                    secondaryAnimation) =>
+                                    LeaveScreen(),
+                                transitionsBuilder: (context, animation,
+                                    secondaryAnimation, child) {
+                                  const begin = Offset(1.0, 0.0);
+                                  const end   = Offset.zero;
+                                  const curve = Curves.easeOutCubic;
+                                  final tween = Tween(begin: begin, end: end)
+                                      .chain(CurveTween(curve: curve));
+                                  return SlideTransition(
+                                    position: animation.drive(tween),
+                                    child: child,
+                                  );
+                                },
+                                transitionDuration:
+                                const Duration(milliseconds: 300),
+                              ),
+                            );
+                            return;
+                          }
                           // ── Loan / Advance → open bottom sheet ──────
                           if (card.title == 'Loan / Advance') {
                             showModalBottomSheet(
@@ -568,6 +594,32 @@ class _ActionCardWidgetState extends State<_ActionCardWidget> {
                         onTap: () {
                           // ── Leaves → open leave history screen ──────
                           if (card.title == 'Leaves') {
+                            Navigator.push(
+                              context,
+                              PageRouteBuilder(
+                                pageBuilder: (context, animation,
+                                    secondaryAnimation) =>
+                                const LeaveHistoryScreen(),
+                                transitionsBuilder: (context, animation,
+                                    secondaryAnimation, child) {
+                                  const begin = Offset(1.0, 0.0);
+                                  const end   = Offset.zero;
+                                  const curve = Curves.easeOutCubic;
+                                  final tween = Tween(begin: begin, end: end)
+                                      .chain(CurveTween(curve: curve));
+                                  return SlideTransition(
+                                    position: animation.drive(tween),
+                                    child: child,
+                                  );
+                                },
+                                transitionDuration:
+                                const Duration(milliseconds: 300),
+                              ),
+                            );
+                            return;
+                          }
+                          // ── Half Day → open leave history screen ─────
+                          if (card.title == 'Half Day') {
                             Navigator.push(
                               context,
                               PageRouteBuilder(
