@@ -1,3 +1,456 @@
+//package com.metaxperts.GPS_Workforce_Monitor
+//
+//
+//import android.content.BroadcastReceiver
+//import android.content.Context
+//import android.content.Intent
+//import android.net.ConnectivityManager
+//import android.net.NetworkCapabilities
+//import android.os.BatteryManager
+//import android.os.Build
+//import android.provider.Settings
+//import androidx.work.Constraints
+//import androidx.work.ExistingWorkPolicy
+//import androidx.work.NetworkType
+//import androidx.work.OneTimeWorkRequestBuilder
+//import androidx.work.WorkManager
+//import androidx.work.Worker
+//import androidx.work.WorkerParameters
+//import org.json.JSONArray
+//import org.json.JSONObject
+//import java.io.OutputStreamWriter
+//import java.net.HttpURLConnection
+//import java.net.URL
+//import java.text.SimpleDateFormat
+//import java.util.Date
+//import java.util.Locale
+//
+//class DateTimeChangeReceiver : BroadcastReceiver() {
+//
+//    // ── Configuration ──────────────────────────────────────────────────────
+//    private val API_URL        = "http://oracle.metaxperts.net/ords/gps_workforce/datetimechange/post/"
+//    private val APP_VERSION    = "2.3"
+//    private val PREFS_NAME     = "FlutterSharedPreferences"
+//    private val TAG            = "DateTimeChangeReceiver"
+//
+//    // ── Offline queue config ───────────────────────────────────────────────
+//    private val PENDING_PREFS  = "DateTimeChangePending"
+//    private val PENDING_KEY    = "pending_queue"
+//    private val SYNC_WORK_NAME = "datetime_pending_sync"
+//
+//    // ── Entry point ────────────────────────────────────────────────────────
+//    override fun onReceive(context: Context, intent: Intent?) {
+//        android.util.Log.d(TAG, "📣 onReceive() fired — action=${intent?.action ?: "null"}")
+//
+//        // Capture detection timestamp immediately when broadcast is received
+//        // This is the ACTUAL current timestamp when the change was detected
+//        val detectedAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(Date())
+//
+//        val action = intent?.action ?: run {
+//            android.util.Log.w(TAG, "⚠️ Intent or action is null — ignoring")
+//            return
+//        }
+//
+//        val isTimeSet     = (action == "android.intent.action.TIME_SET")
+//        val isTimeChanged = (action == Intent.ACTION_TIME_CHANGED)
+//        val isDateChanged = (action == "android.intent.action.DATE_CHANGED")
+//
+//        if (!isTimeSet && !isTimeChanged && !isDateChanged) {
+//            android.util.Log.d(TAG, "ℹ️ Action '$action' is not a date/time change — ignoring")
+//            return
+//        }
+//
+//        val changeType = when {
+//            isTimeSet     -> "TIME_SET"
+//            isTimeChanged -> "TIME_CHANGED"
+//            isDateChanged -> "DATE_CHANGED"
+//            else          -> return
+//        }
+//
+//        android.util.Log.d(TAG, "🕐 [$changeType] Device date/time was manually changed by user")
+//
+//        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+//
+//        // ── DEBUG: dump every key so we can verify exact key names ────────
+//        val allPrefs: Map<String, *> = prefs.all
+//        android.util.Log.d(TAG, "🗃️ [$changeType] ===== ALL SharedPreferences keys =====")
+//        allPrefs.entries.sortedBy { it.key }.forEach { (k, v) ->
+//            android.util.Log.d(TAG, "🗃️   '$k'  =  '$v'")
+//        }
+//        android.util.Log.d(TAG, "🗃️ [$changeType] ===== END SharedPreferences keys =====")
+//
+//        // ── emp_id (unchanged — already working) ──────────────────────────
+//        val empId = firstNonEmpty(prefs, listOf(
+//            "flutter.emp_id", "emp_id", "flutter.empId", "empId",
+//            "flutter.user_id", "user_id"
+//        ))
+//        android.util.Log.d(TAG, "👤 [$changeType] emp_id='$empId'")
+//
+//        // ── company_code ──────────────────────────────────────────────────
+//        val companyCode = firstNonEmpty(prefs, listOf(
+//            "flutter.cached_employees_company",
+//            "flutter.company_code",
+//            "company_code",
+//            "flutter.cached_company_code"
+//        ))
+//        android.util.Log.d(TAG, "🏢 [$changeType] company_code='$companyCode'")
+//
+//        // ── emp_name ──────────────────────────────────────────────────────
+//        var empName = firstNonEmpty(prefs, listOf(
+//            "flutter.emp_name",
+//            "emp_name"
+//        ))
+//        if (empName.isEmpty() && empId.isNotEmpty() && companyCode.isNotEmpty()) {
+//            empName = resolveEmpNameFromCache(prefs, empId, companyCode, changeType)
+//        }
+//        android.util.Log.d(TAG, "👤 [$changeType] emp_name='$empName'")
+//
+//        // ── device_id ─────────────────────────────────────────────────────
+//        var deviceId = firstNonEmpty(prefs, listOf(
+//            "flutter.user_name",
+//            "user_name"
+//        ))
+//        if (deviceId.isEmpty()) {
+//            deviceId = try {
+//                val id = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: ""
+//                android.util.Log.d(TAG, "📱 [$changeType] device_id resolved from Settings.Secure.ANDROID_ID='$id'")
+//                id
+//            } catch (e: Exception) {
+//                android.util.Log.w(TAG, "⚠️ [$changeType] Could not read ANDROID_ID: ${e.message}")
+//                ""
+//            }
+//        }
+//        android.util.Log.d(TAG, "📱 [$changeType] device_id='$deviceId'")
+//
+//        // ── dep_id (unchanged — already working) ──────────────────────────
+//        val depId = firstNonEmpty(prefs, listOf(
+//            "flutter.cached_dep_id", "cached_dep_id", "dep_id"
+//        ))
+//        android.util.Log.d(TAG, "🏬 [$changeType] dep_id='$depId'")
+//
+//        // Skip if we have no employee identity at all (user never logged in)
+//        if (empId.isEmpty() && companyCode.isEmpty()) {
+//            android.util.Log.w(TAG, "⚠️ [$changeType] emp_id and company_code both empty — user not logged in — skipping API post")
+//            return
+//        }
+//
+//        // NEW_DATE & NEW_TIME: Capture the newly set date and time (what user changed to)
+//        val changedNow = Date()
+//        val newDate    = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(changedNow)
+//        val newTime    = SimpleDateFormat("HH:mm:ss",   Locale.getDefault()).format(changedNow)
+//
+//        android.util.Log.d(TAG, "🗓️ [$changeType] detected_at='$detectedAt'")
+//        android.util.Log.d(TAG, "🗓️ [$changeType] new_date='$newDate'")
+//        android.util.Log.d(TAG, "🗓️ [$changeType] new_time='$newTime'")
+//
+//        // Battery level
+//        val battery = try {
+//            val bm    = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+//            val level = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).coerceIn(0, 100)
+//            android.util.Log.d(TAG, "🔋 [$changeType] battery_percent=$level%")
+//            level
+//        } catch (e: Exception) {
+//            android.util.Log.w(TAG, "⚠️ [$changeType] Could not read battery level: ${e.message}")
+//            -1
+//        }
+//
+//        val deviceModel    = Build.MODEL            ?: "unknown"
+//        val androidVersion = Build.VERSION.RELEASE  ?: "unknown"
+//        android.util.Log.d(TAG, "📲 [$changeType] device_model='$deviceModel'  android_version='$androidVersion'  app_version='$APP_VERSION'")
+//
+//        val payload = JSONObject().apply {
+//            put("emp_id",          empId)
+//            put("emp_name",        empName)
+//            put("company_code",    companyCode)
+//            put("device_id",       deviceId)
+//            put("dep_id",          depId)
+//            put("change_type",     changeType)
+//            put("detected_at",     detectedAt)
+//            put("new_date",        newDate)
+//            put("new_time",        newTime)
+//            put("battery_percent", battery)
+//            put("device_model",    deviceModel)
+//            put("android_version", androidVersion)
+//            put("app_version",     APP_VERSION)
+//        }.toString()
+//
+//        android.util.Log.d(TAG, "📦 [$changeType] Payload built → $payload")
+//
+//        Thread {
+//            android.util.Log.d(TAG, "🧵 [$changeType] Background thread started")
+//
+//            // Always pre-flush any older pending payloads first (safety net)
+//            flushPendingPayloads(context, changeType)
+//
+//            if (isNetworkAvailable(context)) {
+//                android.util.Log.d(TAG, "🌐 [$changeType] Online — posting to API")
+//                val success = postToApi(payload, changeType)
+//                if (!success) {
+//                    android.util.Log.w(TAG, "⚠️ [$changeType] Post failed — saving to offline queue, WorkManager will retry")
+//                    savePendingPayload(context, payload, changeType)
+//                }
+//            } else {
+//                android.util.Log.w(TAG, "📴 [$changeType] Offline — saving to queue, WorkManager will post when online")
+//                savePendingPayload(context, payload, changeType)
+//            }
+//        }.start()
+//    }
+//
+//    // ══════════════════════════════════════════════════════════════════════════
+//    // Offline Queue Helpers
+//    // ══════════════════════════════════════════════════════════════════════════
+//
+//    private fun savePendingPayload(context: Context, jsonPayload: String, changeType: String) {
+//        try {
+//            val pendingPrefs = context.getSharedPreferences(PENDING_PREFS, Context.MODE_PRIVATE)
+//            val existing     = pendingPrefs.getString(PENDING_KEY, "[]") ?: "[]"
+//            val arr          = try { JSONArray(existing) } catch (_: Exception) { JSONArray() }
+//            arr.put(JSONObject(jsonPayload))
+//            pendingPrefs.edit().putString(PENDING_KEY, arr.toString()).apply()
+//            android.util.Log.d(TAG, "💾 [$changeType] Saved to offline queue — total pending: ${arr.length()}")
+//        } catch (e: Exception) {
+//            android.util.Log.e(TAG, "❌ [$changeType] Failed to save pending payload: ${e.message}")
+//        }
+//        // Schedule WorkManager — runs when NETWORK_CONNECTED, survives app kill
+//        scheduleWorkManagerSync(context, changeType)
+//    }
+//
+//    private fun scheduleWorkManagerSync(context: Context, changeType: String) {
+//        try {
+//            val constraints = Constraints.Builder()
+//                .setRequiredNetworkType(NetworkType.CONNECTED)
+//                .build()
+//
+//            val syncWork = OneTimeWorkRequestBuilder<PendingSyncWorker>()
+//                .setConstraints(constraints)
+//                .build()
+//
+//            WorkManager.getInstance(context.applicationContext)
+//                .enqueueUniqueWork(SYNC_WORK_NAME, ExistingWorkPolicy.KEEP, syncWork)
+//
+//            android.util.Log.d(TAG, "📅 [$changeType] WorkManager job scheduled — will run when online")
+//        } catch (e: Exception) {
+//            android.util.Log.e(TAG, "❌ [$changeType] Failed to schedule WorkManager job: ${e.message}")
+//        }
+//    }
+//
+//    private fun flushPendingPayloads(context: Context, changeType: String) {
+//        if (!isNetworkAvailable(context)) {
+//            android.util.Log.d(TAG, "📴 [$changeType] Offline — skipping pre-flush")
+//            return
+//        }
+//        val pendingPrefs = context.getSharedPreferences(PENDING_PREFS, Context.MODE_PRIVATE)
+//        val raw          = pendingPrefs.getString(PENDING_KEY, "[]") ?: "[]"
+//        val arr          = try { JSONArray(raw) } catch (e: Exception) { return }
+//
+//        if (arr.length() == 0) return
+//
+//        android.util.Log.d(TAG, "📤 [$changeType] Pre-flushing ${arr.length()} pending payload(s)")
+//        val remaining = JSONArray()
+//        for (i in 0 until arr.length()) {
+//            val item = arr.optJSONObject(i) ?: continue
+//            val ct   = item.optString("change_type", "PENDING")
+//            if (!postToApi(item.toString(), "$ct[retry]")) remaining.put(item)
+//        }
+//        pendingPrefs.edit().putString(PENDING_KEY, remaining.toString()).apply()
+//        android.util.Log.d(TAG, "✅ [$changeType] Pre-flush done — sent=${arr.length() - remaining.length()}  still_pending=${remaining.length()}")
+//    }
+//
+//    private fun isNetworkAvailable(context: Context): Boolean {
+//        return try {
+//            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+//            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+//                val network = cm.activeNetwork ?: return false
+//                val caps    = cm.getNetworkCapabilities(network) ?: return false
+//                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+//                        caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+//            } else {
+//                @Suppress("DEPRECATION")
+//                cm.activeNetworkInfo?.isConnected == true
+//            }
+//        } catch (e: Exception) {
+//            android.util.Log.w(TAG, "⚠️ isNetworkAvailable check failed: ${e.message}")
+//            false
+//        }
+//    }
+//
+//    // ══════════════════════════════════════════════════════════════════════════
+//    // Existing Helpers (unchanged)
+//    // ══════════════════════════════════════════════════════════════════════════
+//
+//    private fun resolveEmpNameFromCache(
+//        prefs: android.content.SharedPreferences,
+//        empId: String,
+//        companyCode: String,
+//        changeType: String
+//    ): String {
+//        val cacheKey = "flutter.cached_employees_$companyCode"
+//        android.util.Log.d(TAG, "🔍 [$changeType] Resolving emp_name from cache key='$cacheKey'")
+//
+//        val raw = (prefs.all as Map<String, *>)[cacheKey]?.toString()?.trim() ?: run {
+//            android.util.Log.w(TAG, "⚠️ [$changeType] Cache key '$cacheKey' not found in prefs")
+//            return ""
+//        }
+//
+//        if (raw.isEmpty() || raw == "null") {
+//            android.util.Log.w(TAG, "⚠️ [$changeType] Cache key '$cacheKey' is empty")
+//            return ""
+//        }
+//
+//        return try {
+//            val arr = JSONArray(raw)
+//            for (i in 0 until arr.length()) {
+//                val obj = arr.optJSONObject(i) ?: continue
+//                val jsonEmpId = (obj.opt("emp_id") ?: obj.opt("EMP_ID"))?.toString()?.trim() ?: continue
+//                if (jsonEmpId == empId) {
+//                    val name = (obj.opt("emp_name") ?: obj.opt("EMP_NAME"))?.toString()?.trim() ?: ""
+//                    if (name.isNotEmpty() && name != "null") {
+//                        android.util.Log.d(TAG, "✅ [$changeType] emp_name resolved from cache → '$name'")
+//                        return name
+//                    }
+//                }
+//            }
+//            android.util.Log.w(TAG, "⚠️ [$changeType] emp_id '$empId' not found in cached_employees JSON (${arr.length()} entries)")
+//            ""
+//        } catch (e: Exception) {
+//            android.util.Log.e(TAG, "❌ [$changeType] Failed to parse cached_employees JSON: ${e.message}")
+//            ""
+//        }
+//    }
+//
+//    private fun postToApi(jsonPayload: String, changeType: String): Boolean {
+//        return try {
+//            android.util.Log.d(TAG, "📡 [$changeType] Opening connection → $API_URL")
+//
+//            val conn = (URL(API_URL).openConnection() as HttpURLConnection).apply {
+//                requestMethod = "POST"
+//                setRequestProperty("Content-Type", "application/json")
+//                setRequestProperty("Accept",       "application/json")
+//                doOutput        = true
+//                connectTimeout  = 15_000
+//                readTimeout     = 15_000
+//            }
+//
+//            android.util.Log.d(TAG, "📤 [$changeType] Writing payload to output stream...")
+//            OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(jsonPayload) }
+//
+//            val responseCode = conn.responseCode
+//            val responseMsg  = try { conn.responseMessage } catch (_: Exception) { "" }
+//            conn.disconnect()
+//
+//            android.util.Log.d(TAG, "📥 [$changeType] Response → HTTP $responseCode '$responseMsg'")
+//
+//            if (responseCode in 200..299) {
+//                android.util.Log.d(TAG, "✅ [$changeType] API post success — HTTP $responseCode $responseMsg")
+//                true
+//            } else {
+//                android.util.Log.w(TAG, "⚠️ [$changeType] API returned non-2xx → HTTP $responseCode $responseMsg")
+//                false
+//            }
+//        } catch (e: Exception) {
+//            android.util.Log.e(TAG, "❌ [$changeType] Network error: ${e.message}")
+//            false
+//        }
+//    }
+//
+//    private fun firstNonEmpty(
+//        prefs: android.content.SharedPreferences,
+//        keys: List<String>
+//    ): String {
+//        val map: Map<String, *> = prefs.all
+//        for (key in keys) {
+//            val raw = map[key]?.toString()?.trim() ?: continue
+//            if (raw.isNotEmpty() && raw != "null") {
+//                android.util.Log.d(TAG, "🔑 Key found: '$key' = '$raw'")
+//                return raw
+//            }
+//        }
+//        android.util.Log.w(TAG, "⚠️ No value found for keys: $keys")
+//        return ""
+//    }
+//}
+//
+//// ══════════════════════════════════════════════════════════════════════════════
+//// PendingSyncWorker
+////
+//// WorkManager Worker — defined in the same file, no separate file needed.
+//// Runs automatically when network is restored (even if app is fully killed).
+//// Flushes all pending date/time-change payloads from the offline queue.
+//// ══════════════════════════════════════════════════════════════════════════════
+//class PendingSyncWorker(
+//    context: Context,
+//    params: WorkerParameters
+//) : Worker(context, params) {
+//
+//    private val API_URL       = "http://oracle.metaxperts.net/ords/gps_workforce/datetimechange/post/"
+//    private val PENDING_PREFS = "DateTimeChangePending"
+//    private val PENDING_KEY   = "pending_queue"
+//    private val TAG           = "PendingSyncWorker"
+//
+//    override fun doWork(): Result {
+//        return try {
+//            android.util.Log.d(TAG, "🔄 WorkManager started — flushing pending queue")
+//
+//            val prefs = applicationContext.getSharedPreferences(PENDING_PREFS, Context.MODE_PRIVATE)
+//            val raw   = prefs.getString(PENDING_KEY, "[]") ?: "[]"
+//            val arr   = try { JSONArray(raw) } catch (e: Exception) {
+//                android.util.Log.e(TAG, "❌ Cannot parse queue: ${e.message}")
+//                return Result.failure()
+//            }
+//
+//            if (arr.length() == 0) {
+//                android.util.Log.d(TAG, "✅ Queue empty — nothing to do")
+//                return Result.success()
+//            }
+//
+//            android.util.Log.d(TAG, "📤 Sending ${arr.length()} pending payload(s)")
+//            val remaining = JSONArray()
+//
+//            for (i in 0 until arr.length()) {
+//                val item = arr.optJSONObject(i) ?: continue
+//                val ct   = item.optString("change_type", "PENDING")
+//                if (postToApi(item.toString(), ct)) {
+//                    android.util.Log.d(TAG, "✅ Item $i sent — change_type='$ct'")
+//                } else {
+//                    android.util.Log.w(TAG, "⚠️ Item $i failed — keeping for retry")
+//                    remaining.put(item)
+//                }
+//            }
+//
+//            prefs.edit().putString(PENDING_KEY, remaining.toString()).apply()
+//            val sent = arr.length() - remaining.length()
+//            android.util.Log.d(TAG, "✅ WorkManager done — sent=$sent  still_pending=${remaining.length()}")
+//
+//            if (remaining.length() == 0) Result.success() else Result.retry()
+//
+//        } catch (e: Exception) {
+//            android.util.Log.e(TAG, "❌ WorkManager exception: ${e.message}")
+//            Result.retry()
+//        }
+//    }
+//
+//    private fun postToApi(jsonPayload: String, changeType: String): Boolean {
+//        return try {
+//            val conn = (URL(API_URL).openConnection() as HttpURLConnection).apply {
+//                requestMethod = "POST"
+//                setRequestProperty("Content-Type", "application/json")
+//                setRequestProperty("Accept",       "application/json")
+//                doOutput       = true
+//                connectTimeout = 15_000
+//                readTimeout    = 15_000
+//            }
+//            OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(jsonPayload) }
+//            val code = conn.responseCode
+//            conn.disconnect()
+//            android.util.Log.d(TAG, "📥 [$changeType] HTTP $code")
+//            code in 200..299
+//        } catch (e: Exception) {
+//            android.util.Log.e(TAG, "❌ [$changeType] ${e.message}")
+//            false
+//        }
+//    }
+//}
+
 package com.metaxperts.GPS_Workforce_Monitor
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -30,7 +483,7 @@ package com.metaxperts.GPS_Workforce_Monitor
 // DEPENDENCY (add to app/build.gradle if not already present):
 //   implementation "androidx.work:work-runtime-ktx:2.9.0"
 //
-// MANIFEST REGISTRATION (unchanged — no extra actions needed):
+// MANIFEST REGISTRATION — add TIME_TICK to enable automatic snapshots:
 // ─────────────────────────────────────────────────────────────────────────────
 //   <receiver
 //       android:name=".DateTimeChangeReceiver"
@@ -38,8 +491,19 @@ package com.metaxperts.GPS_Workforce_Monitor
 //       <intent-filter>
 //           <action android:name="android.intent.action.TIME_SET" />
 //           <action android:name="android.intent.action.DATE_CHANGED" />
+//           <!-- TIME_TICK fires every minute automatically — saves old_time snapshot -->
+//           <!-- NOTE: TIME_TICK cannot be declared in manifest; register it at runtime -->
 //       </intent-filter>
 //   </receiver>
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// IMPORTANT — Register TIME_TICK at runtime from your Application or MainActivity:
+// ─────────────────────────────────────────────────────────────────────────────
+//   // In Application.onCreate() or MainActivity.onCreate():
+//   val filter = IntentFilter(Intent.ACTION_TIME_TICK)
+//   registerReceiver(DateTimeChangeReceiver(), filter)
+//   // Also call once immediately to seed the first snapshot:
+//   DateTimeChangeReceiver.snapshotCurrentTime(applicationContext)
 // ─────────────────────────────────────────────────────────────────────────────
 //
 // FIX SUMMARY (why emp_name / company_code / device_id were empty):
@@ -59,6 +523,23 @@ package com.metaxperts.GPS_Workforce_Monitor
 //                  FIX: read it directly from Settings.Secure.ANDROID_ID — no
 //                  dependency on LocationMonitorService at all.
 //
+// OLD_TIME TRACKING STRATEGY:
+//   Android's TIME_SET / TIME_CHANGED broadcast does NOT include the previous
+//   time — the OS only tells you that the clock changed, not what it was before.
+//   To capture old_time we use a periodic snapshot approach:
+//     • A companion object exposes snapshotCurrentTime(context) which saves
+//       the current device time to SharedPreferences ("DateTimeChangePending"
+//       key "last_known_time") as an ISO-8601 string.
+//     • The host Application / Service / JobScheduler must call
+//       DateTimeChangeReceiver.snapshotCurrentTime(context) regularly
+//       (e.g., every minute via a repeating AlarmManager or WorkManager job)
+//       so the snapshot stays fresh.
+//     • When onReceive() fires, old_time is read from that snapshot BEFORE
+//       Date() is called for new_time, giving the best approximation of what
+//       the clock showed prior to the change.
+//     • After building the payload the snapshot is updated to new_time so
+//       subsequent changes have an accurate baseline.
+//
 // API PAYLOAD COLUMNS:
 //   emp_id          — Employee ID (from SharedPreferences)
 //   emp_name        — Employee Name (resolved from cached employee JSON)
@@ -66,9 +547,10 @@ package com.metaxperts.GPS_Workforce_Monitor
 //   device_id       — Android Settings.Secure.ANDROID_ID
 //   dep_id          — Department ID
 //   change_type     — "TIME_SET", "TIME_CHANGED", or "DATE_CHANGED"
-//   detected_at     — Actual current timestamp when change was detected
+//   old_time        — Device time BEFORE the change (from periodic snapshot)
+//   new_time        — Device time AFTER the change (HH:mm:ss)
 //   new_date        — Newly set date that user changed to (yyyy-MM-dd)
-//   new_time        — Newly set time that user changed to (HH:mm:ss)
+//   detected_at     — Actual current timestamp when change was detected
 //   battery_percent — Device battery level at time of detection
 //   device_model    — Android device model name
 //   android_version — Android OS version
@@ -112,17 +594,66 @@ class DateTimeChangeReceiver : BroadcastReceiver() {
     private val PENDING_KEY    = "pending_queue"
     private val SYNC_WORK_NAME = "datetime_pending_sync"
 
+    // ── old_time snapshot config ───────────────────────────────────────────
+    // Key where the last-known device time is persisted between snapshots.
+    private val SNAPSHOT_KEY   = "last_known_time"
+
+    companion object {
+        private const val PENDING_PREFS_STATIC = "DateTimeChangePending"
+        private const val SNAPSHOT_KEY_STATIC  = "last_known_time"
+
+        /**
+         * Call this method periodically (e.g. every 60 s) from your
+         * Application, Service, or a repeating WorkManager/AlarmManager job.
+         *
+         * It writes the current device time to SharedPreferences so that
+         * when a TIME_SET broadcast fires we can read back what the clock
+         * showed BEFORE the user changed it.
+         *
+         * Example — schedule from Application.onCreate():
+         *
+         *   val work = PeriodicWorkRequestBuilder<TimeSnapshotWorker>(1, TimeUnit.MINUTES).build()
+         *   WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+         *       "time_snapshot", ExistingPeriodicWorkPolicy.KEEP, work)
+         *
+         * Or call directly from a running Service every minute:
+         *   DateTimeChangeReceiver.snapshotCurrentTime(applicationContext)
+         */
+        fun snapshotCurrentTime(context: Context) {
+            // Save BOTH wall-clock ms and boot-elapsed ms together.
+            // SystemClock.elapsedRealtime() is never affected by user time changes,
+            // so we can use the delta to reconstruct old_time even after the clock
+            // has been moved forward or backward by the user.
+            val wallMs    = System.currentTimeMillis()
+            val elapsedMs = android.os.SystemClock.elapsedRealtime()
+            val timeStr   = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(java.util.Date(wallMs))
+            context.getSharedPreferences(PENDING_PREFS_STATIC, Context.MODE_PRIVATE)
+                .edit()
+                .putString(SNAPSHOT_KEY_STATIC,          timeStr)
+                .putLong("last_known_wall_ms",    wallMs)
+                .putLong("last_known_elapsed_ms", elapsedMs)
+                .apply()
+            android.util.Log.d("DateTimeChangeReceiver",
+                "🕐 Snapshot saved: last_known_time='$timeStr'  wall=$wallMs  elapsed=$elapsedMs")
+        }
+    }
+
     // ── Entry point ────────────────────────────────────────────────────────
     override fun onReceive(context: Context, intent: Intent?) {
         android.util.Log.d(TAG, "📣 onReceive() fired — action=${intent?.action ?: "null"}")
 
-        // Capture detection timestamp immediately when broadcast is received
-        // This is the ACTUAL current timestamp when the change was detected
-        val detectedAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(Date())
-
         val action = intent?.action ?: run {
             android.util.Log.w(TAG, "⚠️ Intent or action is null — ignoring")
             return
+        }
+
+        // ── ACTION_TIME_TICK: fires every minute automatically ─────────────
+        // Use it to keep a fresh snapshot of wall-clock + elapsedRealtime so
+        // we always have an accurate old_time baseline when TIME_SET fires.
+        // TIME_TICK cannot be declared in AndroidManifest — register at runtime.
+        if (action == Intent.ACTION_TIME_TICK) {
+            snapshotCurrentTime(context)
+            return   // nothing else to do for a tick
         }
 
         val isTimeSet     = (action == "android.intent.action.TIME_SET")
@@ -208,14 +739,58 @@ class DateTimeChangeReceiver : BroadcastReceiver() {
             return
         }
 
-        // NEW_DATE & NEW_TIME: Capture the newly set date and time (what user changed to)
+        // ── Reconstruct PRE-CHANGE time using elapsedRealtime delta ──────────
+        //
+        // Android fires TIME_SET AFTER the system clock is already updated.
+        // So Date() / System.currentTimeMillis() already return the NEW time.
+        // We CANNOT read the old time from the clock directly.
+        //
+        // SOLUTION: snapshotCurrentTime() (called every minute via TIME_TICK)
+        // stores both wall-clock ms and SystemClock.elapsedRealtime() together.
+        // elapsedRealtime() counts ms since boot and is IMMUNE to time changes.
+        //
+        //   oldWallMs = wallSnap + (elapsedNow − elapsedSnap)
+        //             = true pre-change wall clock time
+        //
+        // Both old_time AND detected_at use this reconstructed value so both
+        // columns show the time BEFORE the change, exactly as required.
+        val pendingPrefs   = context.getSharedPreferences(PENDING_PREFS, Context.MODE_PRIVATE)
+        val elapsedNow     = android.os.SystemClock.elapsedRealtime()
+        val elapsedSnap    = pendingPrefs.getLong("last_known_elapsed_ms", -1L)
+        val wallSnap       = pendingPrefs.getLong("last_known_wall_ms",    -1L)
+
+        val preChangeWallMs: Long? = if (elapsedSnap > 0 && wallSnap > 0) {
+            wallSnap + (elapsedNow - elapsedSnap)
+        } else {
+            android.util.Log.w(TAG, "⚠️ [$changeType] No snapshot yet — TIME_TICK not registered or app just installed")
+            null
+        }
+
+        // old_time  = HH:mm:ss of pre-change clock
+        val oldTime: String = preChangeWallMs
+            ?.let { SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(java.util.Date(it)) }
+            ?: "unknown"
+
+        // detected_at = full ISO timestamp of pre-change clock (what you asked for)
+        val detectedAt: String = preChangeWallMs
+            ?.let { SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(java.util.Date(it)) }
+            ?: SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(Date())
+
+        android.util.Log.d(TAG, "⏮️ [$changeType] preChangeWallMs=$preChangeWallMs  elapsedNow=$elapsedNow  elapsedSnap=$elapsedSnap  wallSnap=$wallSnap")
+
+        // ── NEW_DATE & NEW_TIME: Capture the newly set date and time ──────────
         val changedNow = Date()
         val newDate    = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(changedNow)
         val newTime    = SimpleDateFormat("HH:mm:ss",   Locale.getDefault()).format(changedNow)
 
         android.util.Log.d(TAG, "🗓️ [$changeType] detected_at='$detectedAt'")
+        android.util.Log.d(TAG, "🗓️ [$changeType] old_time='$oldTime'")
         android.util.Log.d(TAG, "🗓️ [$changeType] new_date='$newDate'")
         android.util.Log.d(TAG, "🗓️ [$changeType] new_time='$newTime'")
+
+        // Refresh snapshot immediately after capturing new_time so the next
+        // change event has an accurate baseline.
+        snapshotCurrentTime(context)
 
         // Battery level
         val battery = try {
@@ -240,6 +815,7 @@ class DateTimeChangeReceiver : BroadcastReceiver() {
             put("dep_id",          depId)
             put("change_type",     changeType)
             put("detected_at",     detectedAt)
+            put("old_time",        oldTime)
             put("new_date",        newDate)
             put("new_time",        newTime)
             put("battery_percent", battery)
@@ -441,6 +1017,37 @@ class DateTimeChangeReceiver : BroadcastReceiver() {
         }
         android.util.Log.w(TAG, "⚠️ No value found for keys: $keys")
         return ""
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TimeSnapshotWorker
+//
+// Periodic WorkManager Worker — saves the current device time to SharedPreferences
+// every minute so DateTimeChangeReceiver always has a fresh "old_time" snapshot.
+//
+// Register once from your Application.onCreate() (or MainActivity):
+//
+//   val work = PeriodicWorkRequestBuilder<TimeSnapshotWorker>(1, TimeUnit.MINUTES)
+//       .build()
+//   WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+//       "time_snapshot",
+//       ExistingPeriodicWorkPolicy.KEEP,
+//       work)
+//
+// WorkManager honours Doze/battery restrictions — on stock Android the minimum
+// interval is 15 minutes in practice, so old_time accuracy is ±15 min worst-case.
+// For tighter accuracy, call DateTimeChangeReceiver.snapshotCurrentTime(context)
+// from your own foreground service or location-update callback instead.
+// ══════════════════════════════════════════════════════════════════════════════
+class TimeSnapshotWorker(
+    context: Context,
+    params: WorkerParameters
+) : Worker(context, params) {
+
+    override fun doWork(): Result {
+        DateTimeChangeReceiver.snapshotCurrentTime(applicationContext)
+        return Result.success()
     }
 }
 
