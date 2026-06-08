@@ -886,19 +886,22 @@ class _ReasonField extends StatelessWidget {
             color: hasError ? _errorRed : _borderColor,
             width: hasError ? 1.5 : 1),
       ),
-      child: TextField(
-        controller: controller,
-        maxLines: 5,
-        maxLength: maxLength,
-        onChanged: onChanged,
-        style: const TextStyle(
-            fontSize: 15, color: AppColors.textPrimary, height: 1.5),
-        decoration: const InputDecoration(
-          hintText: 'Purpose of loan / advance',
-          hintStyle: TextStyle(color: AppColors.textSecondary, fontSize: 15),
-          contentPadding: EdgeInsets.all(16),
-          border: InputBorder.none,
-          counterText: '',
+      child: Material(
+        color: Colors.transparent,
+        child: TextField(
+          controller: controller,
+          maxLines: 5,
+          maxLength: maxLength,
+          onChanged: onChanged,
+          style: const TextStyle(
+              fontSize: 15, color: AppColors.textPrimary, height: 1.5),
+          decoration: const InputDecoration(
+            hintText: 'Purpose of loan / advance',
+            hintStyle: TextStyle(color: AppColors.textSecondary, fontSize: 15),
+            contentPadding: EdgeInsets.all(16),
+            border: InputBorder.none,
+            counterText: '',
+          ),
         ),
       ),
     );
@@ -932,25 +935,28 @@ class _AmountField extends StatelessWidget {
             width: hasError ? 1.5 : 1),
       ),
       alignment: Alignment.center,
-      child: TextField(
-        controller: controller,
-        keyboardType: TextInputType.number,
-        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-        onChanged: onChanged,
-        textAlign: TextAlign.center,
-        style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textSecondary,
-            letterSpacing: 0.5),
-        decoration: const InputDecoration(
-          hintText: '0',
-          hintStyle: TextStyle(
+      child: Material(
+        color: Colors.transparent,
+        child: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          onChanged: onChanged,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w600,
-              color: AppColors.textSecondary),
-          contentPadding: EdgeInsets.symmetric(horizontal: 16),
-          border: InputBorder.none,
+              color: AppColors.textSecondary,
+              letterSpacing: 0.5),
+          decoration: const InputDecoration(
+            hintText: '0',
+            hintStyle: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary),
+            contentPadding: EdgeInsets.symmetric(horizontal: 16),
+            border: InputBorder.none,
+          ),
         ),
       ),
     );
@@ -1026,40 +1032,43 @@ class _PolicyDropdown extends StatelessWidget {
 
     return _shell(
       borderColor: hasValidationError ? _errorRed : _borderColor,
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<LoanPolicy>(
-          value: selected,
-          isExpanded: true,
-          icon: const Icon(Icons.keyboard_arrow_down_rounded,
-              color: AppColors.textSecondary),
-          hint: const Text('Select return policy',
-              style: TextStyle(
-                  fontSize: 15,
-                  color: AppColors.textSecondary,
-                  fontWeight: FontWeight.w500)),
-          style: const TextStyle(
-              fontSize: 15,
-              color: AppColors.textPrimary,
-              fontWeight: FontWeight.w600),
-          dropdownColor: AppColors.cardBg,
-          borderRadius: BorderRadius.circular(14),
-          onChanged: onChanged,
-          items: policies.map((p) {
-            final isCustom = p.policyName == 'Custom';
-            return DropdownMenuItem<LoanPolicy>(
-              value: p,
-              child: Row(
-                children: [
-                  if (isCustom) ...[
-                    const Icon(Icons.tune_rounded,
-                        size: 16, color: _primary),
-                    const SizedBox(width: 6),
+      child: Material(
+        color: Colors.transparent,
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<LoanPolicy>(
+            value: selected,
+            isExpanded: true,
+            icon: const Icon(Icons.keyboard_arrow_down_rounded,
+                color: AppColors.textSecondary),
+            hint: const Text('Select return policy',
+                style: TextStyle(
+                    fontSize: 15,
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w500)),
+            style: const TextStyle(
+                fontSize: 15,
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w600),
+            dropdownColor: AppColors.cardBg,
+            borderRadius: BorderRadius.circular(14),
+            onChanged: onChanged,
+            items: policies.map((p) {
+              final isCustom = p.policyName == 'Custom';
+              return DropdownMenuItem<LoanPolicy>(
+                value: p,
+                child: Row(
+                  children: [
+                    if (isCustom) ...[
+                      const Icon(Icons.tune_rounded,
+                          size: 16, color: _primary),
+                      const SizedBox(width: 6),
+                    ],
+                    Text(p.policyName),
                   ],
-                  Text(p.policyName),
-                ],
-              ),
-            );
-          }).toList(),
+                ),
+              );
+            }).toList(),
+          ),
         ),
       ),
     );
@@ -1112,52 +1121,57 @@ class _PaidEveryDropdown extends StatelessWidget {
         ),
       ),
       alignment: Alignment.center,
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: value,
-          isExpanded: true,
-          icon: const Icon(Icons.keyboard_arrow_down_rounded,
-              color: AppColors.textSecondary),
-          hint: const Text('Select frequency',
-              style: TextStyle(
-                  fontSize: 15,
-                  color: AppColors.textSecondary,
-                  fontWeight: FontWeight.w500)),
-          style: const TextStyle(
-              fontSize: 15,
-              color: AppColors.textPrimary,
-              fontWeight: FontWeight.w600),
-          dropdownColor: AppColors.cardBg,
-          borderRadius: BorderRadius.circular(14),
-          onChanged: onChanged,
-          items: _paidEveryOptions.map((option) {
-            IconData icon;
-            switch (option) {
-              case 'Week':
-                icon = Icons.view_week_rounded;
-                break;
-              case 'Month':
-                icon = Icons.calendar_month_rounded;
-                break;
-              case 'Quarter':
-                icon = Icons.date_range_rounded;
-                break;
-              default:
-                icon = Icons.schedule_rounded;
-            }
-            return DropdownMenuItem<String>(
-              value: option,
-              child: Row(
-                children: [
-                  Icon(icon, size: 16, color: _primary),
-                  const SizedBox(width: 8),
-                  Text(option),
-                ],
-              ),
-            );
-          }).toList(),
+      child: Material(
+        color: Colors.transparent,
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            value: value,
+            isExpanded: true,
+            icon: const Icon(Icons.keyboard_arrow_down_rounded,
+                color: AppColors.textSecondary),
+            hint: const Text('Select frequency',
+                style: TextStyle(
+                    fontSize: 15,
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w500)),
+            style: const TextStyle(
+                fontSize: 15,
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w600),
+            dropdownColor: AppColors.cardBg,
+            borderRadius: BorderRadius.circular(14),
+            onChanged: onChanged,
+            items: _paidEveryOptions.map((option) {
+              IconData icon;
+              switch (option) {
+                case 'Week':
+                  icon = Icons.view_week_rounded;
+                  break;
+                case 'Month':
+                  icon = Icons.calendar_month_rounded;
+                  break;
+                case 'Quarter':
+                  icon = Icons.date_range_rounded;
+                  break;
+                default:
+                  icon = Icons.schedule_rounded;
+              }
+              return DropdownMenuItem<String>(
+                value: option,
+                child: Row(
+                  children: [
+                    Icon(icon, size: 16, color: _primary),
+                    const SizedBox(width: 8),
+                    Text(option),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
         ),
       ),
     );
   }
 }
+
+
