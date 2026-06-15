@@ -1,5 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../AppColors.dart';
+import '../Database/db_helper.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // suggestion_screen.dart
@@ -18,6 +22,13 @@ class _SuggestionScreenState extends State<SuggestionScreen> {
   final TextEditingController _suggestionController = TextEditingController();
   static const int _maxChars = 500;
 
+  // ── Employee Info (loaded from SharedPreferences — same as LeaveViewModel) ─
+  String _empId       = '';
+  String _empName     = '';
+  String _companyCode = '';
+
+  bool _isLoading = false;
+
   static const _bgColor     = AppColors.surface;
   static const _cardBg      = AppColors.cardBg;
   static const _borderColor = AppColors.divider;
@@ -26,9 +37,44 @@ class _SuggestionScreenState extends State<SuggestionScreen> {
   static const _primary     = AppColors.cyan;
 
   @override
+  void initState() {
+    super.initState();
+    _loadEmployee();
+  }
+
+  @override
   void dispose() {
     _suggestionController.dispose();
     super.dispose();
+  }
+
+  // ── Load employee info exactly like LeaveViewModel._loadEmployee() ─────────
+  Future<void> _loadEmployee() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+
+    final empName = prefs.getString('userName')     ??
+        prefs.getString('user_name')    ??
+        prefs.getString('name')         ??
+        prefs.getString('full_name')    ??
+        prefs.getString('fullName')     ?? '';
+
+    final empId   = prefs.getString('userId')       ??
+        prefs.getString('user_id')      ??
+        prefs.getString('emp_id')       ??
+        prefs.getString('empId')        ??
+        prefs.getString('employee_id')  ??
+        prefs.getString('employeeId')   ?? '';
+
+    final companyCode = DBHelper.getCompanyCode() ?? '';
+
+    if (mounted) {
+      setState(() {
+        _empName     = empName;
+        _empId       = empId;
+        _companyCode = companyCode;
+      });
+    }
   }
 
   void _reset() {
@@ -80,13 +126,43 @@ class _SuggestionScreenState extends State<SuggestionScreen> {
       );
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (_suggestionController.text.trim().isEmpty) {
       _showErrorSnackBar('Please share your suggestion.');
       return;
     }
-    // TODO: Add your API submit logic here
-    Navigator.pop(context);
+
+    setState(() => _isLoading = true);
+
+    try {
+      final now = DateTime.now();
+      final suggestionDate =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+
+      final response = await http.post(
+        Uri.parse(
+            'http://oracle.metaxperts.net/ords/gps_workforce/gpssuggestion/post/'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'emp_id':          _empId,
+          'emp_name':        _empName,
+          'company_code':    _companyCode,
+          'suggestion':      _suggestionController.text.trim(),
+          'suggestion_date': suggestionDate,
+          'status':          'Pending',
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        if (mounted) Navigator.pop(context);
+      } else {
+        _showErrorSnackBar('Failed to submit. Please try again.');
+      }
+    } catch (e) {
+      _showErrorSnackBar('Network error. Please check your connection.');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -315,7 +391,7 @@ class _SuggestionScreenState extends State<SuggestionScreen> {
                       Expanded(
                         flex: 6,
                         child: GestureDetector(
-                          onTap: _submit,
+                          onTap: _isLoading ? null : _submit,
                           child: Container(
                             height: 52,
                             decoration: BoxDecoration(
@@ -329,7 +405,18 @@ class _SuggestionScreenState extends State<SuggestionScreen> {
                                 ),
                               ],
                             ),
-                            child: const Row(
+                            child: _isLoading
+                                ? const Center(
+                              child: SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2.5,
+                                ),
+                              ),
+                            )
+                                : const Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Icon(Icons.send_rounded,
@@ -356,3 +443,5 @@ class _SuggestionScreenState extends State<SuggestionScreen> {
     );
   }
 }
+
+
