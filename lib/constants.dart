@@ -108,6 +108,7 @@ const String prefClockInTime = 'clockInTime';
 const String prefAttendanceId = 'attendanceId';
 const String prefTotalDistance = 'totalDistance';
 const String prefSecondsPassed = 'secondsPassed';
+const String prefIsTimekeeper = 'isTimekeeper';
 
 // Role-based routes
 const String routeLogin = '/login';
