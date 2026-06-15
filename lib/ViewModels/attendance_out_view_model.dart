@@ -199,9 +199,19 @@ class AttendanceOutViewModel extends GetxController {
     debugPrint('🤖 [OutVM] Auto: $isAuto, Reason: $reason');
 
     final String? clockInStr = prefs.getString(_keyClockInTime);
-    final DateTime shiftStart = clockInStr != null
-        ? DateTime.parse(clockInStr)
-        : outTime.subtract(const Duration(hours: 1));
+    DateTime shiftStart;
+    if (clockInStr != null && clockInStr.isNotEmpty) {
+      try {
+        shiftStart = DateTime.parse(clockInStr);
+      } catch (e) {
+        debugPrint('⚠️ [OutVM] clockOut — DateTime.parse failed for clockInStr="$clockInStr": $e');
+        shiftStart = outTime.subtract(const Duration(hours: 1));
+      }
+    } else {
+      debugPrint('⚠️ [OutVM] clockOut — clockInStr is null/empty; falling back to outTime - 1h');
+      shiftStart = outTime.subtract(const Duration(hours: 1));
+    }
+    debugPrint('🕐 [OutVM] clockOut shiftStart=$shiftStart | outTime=$outTime | diff=${outTime.difference(shiftStart)}');
     final String totalTime = _formatDuration(outTime.difference(shiftStart));
 
     final double finalDistance = await _resolveDistance(
@@ -310,6 +320,7 @@ class AttendanceOutViewModel extends GetxController {
     String? customLocationName,  // ✅ NEW
     String? customAddress,       // ✅ NEW
     Uint8List? photoBytes,       // ✅ NEW — clock-out selfie
+    String? clockInTimeStr,      // ✅ FIX — pre-captured clockInTime before prefs were cleared
   }) async {
     // ✅ Compress before encoding — keeps base64 under Oracle VARCHAR2 limit (32,767 bytes)
     final String? clockOutImageBase64 = await _compressAndEncodeImage(photoBytes);
@@ -363,13 +374,21 @@ class AttendanceOutViewModel extends GetxController {
       debugPrint('✅ [OutVM Fast] Using same ID as attendance IN: $attendanceOutId');
     }
 
-    final String? clockInStr = prefs.getString(_keyClockInTime);
+    // ✅ FIX: Prefer the pre-captured clockInTimeStr (passed from timer_card before
+    // clearClockInState() wiped the pref). Only fall back to prefs if not provided.
+    final String? resolvedClockInStr = clockInTimeStr ?? prefs.getString(_keyClockInTime);
     String totalTime = '00:00:00';
-    if (clockInStr != null) {
+    if (resolvedClockInStr != null && resolvedClockInStr.isNotEmpty) {
       try {
-        totalTime = _formatDuration(clockOutTime.difference(DateTime.parse(clockInStr)));
-      } catch (_) {}
+        totalTime = _formatDuration(clockOutTime.difference(DateTime.parse(resolvedClockInStr)));
+      } catch (e) {
+        debugPrint('⚠️ [OutVM Fast] DateTime.parse failed for clockInStr="$resolvedClockInStr": $e');
+        debugPrint('⚠️ [OutVM Fast] totalTime will remain 00:00:00 — check how clockInTime is stored');
+      }
+    } else {
+      debugPrint('⚠️ [OutVM Fast] clockInStr is null/empty — totalTime stays 00:00:00');
     }
+    debugPrint('🕐 [OutVM Fast] clockInStr=$resolvedClockInStr | clockOutTime=$clockOutTime | totalTime=$totalTime');
 
     final Map<String, dynamic> fastData = {
       'fast_attendanceId': attendanceOutId,

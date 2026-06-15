@@ -100,7 +100,8 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
   Timer? _batteryTimer;
 
   bool _wasLocationAvailable   = true;
-  bool _autoClockOutInProgress = false;
+  bool _autoClockOutInProgress     = false;
+  bool _criticalEventProcessing    = false;
   bool _isMidnightClockOutScheduled = false;
   bool _isOnline  = false;
   bool _isSyncing = false;
@@ -485,67 +486,94 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
   // ══════════════════════════════════════════════════════════════════════════
 
   Future<void> _checkAndProcessCriticalEvent() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    bool hasCriticalEvent = prefs.getBool(KEY_HAS_CRITICAL_EVENT) ?? false;
-    bool isTimerFrozen    = prefs.getBool(KEY_IS_TIMER_FROZEN) ?? false;
-    String? bgPayloadStr  = prefs.getString('bg_clockout_payload');
+    if (_criticalEventProcessing) return;
+    _criticalEventProcessing = true;
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      // ✅ FIX: Force a fresh read from disk. Flutter's SharedPreferences maintains a
+      // Dart-side in-memory cache that is NOT updated when the Kotlin background service
+      // writes to the same SharedPreferences file while the app is backgrounded or killed.
+      // Without reload(), every read below returns stale values (e.g. isClockedIn=true,
+      // isTimerFrozen=false) and the critical event is silently skipped — leaving the
+      // timer card stuck showing "clocked in" (trigger = 1) until the notification is
+      // manually dismissed (which triggers a lifecycle event that eventually refreshes state).
+      await prefs.reload();
+      bool hasCriticalEvent = prefs.getBool(KEY_HAS_CRITICAL_EVENT) ?? false;
+      bool isTimerFrozen    = prefs.getBool(KEY_IS_TIMER_FROZEN) ?? false;
+      String? bgPayloadStr  = prefs.getString('bg_clockout_payload');
 
-    if (!hasCriticalEvent &&
-        !isTimerFrozen &&
-        (bgPayloadStr == null || bgPayloadStr.isEmpty)) {
-      return;
-    }
-
-    debugPrint('🚨 [CRITICAL EVENT] Found pending event on startup');
-
-    _localElapsedTime = '00:00:00';
-    attendanceViewModel.elapsedTime.value = '00:00:00';
-    _localBackupTimer?.cancel();
-    _localBackupTimer = null;
-    if (mounted) setState(() {});
-
-    bool needsGpxFinalization = prefs.getBool(KEY_PENDING_GPX_CLOSE) ?? false;
-
-    String? eventTimeStr  = prefs.getString(KEY_EVENT_TIMESTAMP);
-    String? eventReason   = prefs.getString(KEY_EVENT_REASON);
-    double? eventDistance = prefs.getDouble(KEY_EVENT_DISTANCE);
-    double? eventLat      = prefs.getDouble(KEY_EVENT_LATITUDE);
-    double? eventLng      = prefs.getDouble(KEY_EVENT_LONGITUDE);
-
-    if (eventTimeStr != null) {
-      DateTime eventTime = DateTime.parse(eventTimeStr);
-      debugPrint('🚨 [CRITICAL EVENT] Occurred at: $eventTime, Reason: $eventReason');
-
-      if (needsGpxFinalization) {
-        await _finalizeGPXFile(
-          eventTime     : eventTime,
-          finalDistance : eventDistance ?? 0.0,
-          latitude      : eventLat ?? 0.0,
-          longitude     : eventLng ?? 0.0,
-        );
+      if (!hasCriticalEvent &&
+          !isTimerFrozen &&
+          (bgPayloadStr == null || bgPayloadStr.isEmpty)) {
+        return;
       }
 
-      Get.snackbar(
-        '⚠️ Auto Clock-Out Occurred',
-        'Event: ${_getReasonMessage(eventReason ?? 'unknown')}\nTime: ${DateFormat('HH:mm:ss').format(eventTime)}',
-        snackPosition: SnackPosition.TOP,
-        backgroundColor: Colors.orange.shade700,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 5),
-        icon: const Icon(Icons.warning, color: Colors.white),
-      );
+      debugPrint('🚨 [CRITICAL EVENT] Found pending event on startup');
 
-      await _syncCriticalEventData(
-        eventTime : eventTime,
-        reason    : eventReason ?? 'unknown',
-        distance  : eventDistance ?? 0.0,
-        latitude  : eventLat ?? 0.0,
-        longitude : eventLng ?? 0.0,
-      );
+      _localElapsedTime = '00:00:00';
+      attendanceViewModel.elapsedTime.value = '00:00:00';
+      attendanceViewModel.isClockedIn.value = false;
+      locationViewModel.isClockedIn.value   = false;
+      _localBackupTimer?.cancel();
+      _localBackupTimer = null;
+      if (mounted) setState(() {});
 
+      bool needsGpxFinalization = prefs.getBool(KEY_PENDING_GPX_CLOSE) ?? false;
+
+      String? eventTimeStr  = prefs.getString(KEY_EVENT_TIMESTAMP);
+      String? eventReason   = prefs.getString(KEY_EVENT_REASON);
+      double? eventDistance = prefs.getDouble(KEY_EVENT_DISTANCE);
+      double? eventLat      = prefs.getDouble(KEY_EVENT_LATITUDE);
+      double? eventLng      = prefs.getDouble(KEY_EVENT_LONGITUDE);
+
+      if (eventTimeStr != null) {
+        DateTime eventTime = DateTime.parse(eventTimeStr);
+        debugPrint('🚨 [CRITICAL EVENT] Occurred at: $eventTime, Reason: $eventReason');
+
+        if (needsGpxFinalization) {
+          await _finalizeGPXFile(
+            eventTime     : eventTime,
+            finalDistance : eventDistance ?? 0.0,
+            latitude      : eventLat ?? 0.0,
+            longitude     : eventLng ?? 0.0,
+          );
+        }
+
+        Get.snackbar(
+          '⚠️ Auto Clock-Out Occurred',
+          'Event: ${_getReasonMessage(eventReason ?? 'unknown')}\nTime: ${DateFormat('HH:mm:ss').format(eventTime)}',
+          snackPosition: SnackPosition.TOP,
+          backgroundColor: Colors.orange.shade700,
+          colorText: Colors.white,
+          duration: const Duration(seconds: 5),
+          icon: const Icon(Icons.warning, color: Colors.white),
+        );
+
+        await _syncCriticalEventData(
+          eventTime : eventTime,
+          reason    : eventReason ?? 'unknown',
+          distance  : eventDistance ?? 0.0,
+          latitude  : eventLat ?? 0.0,
+          longitude : eventLng ?? 0.0,
+        );
+
+        _triggerAutoSync();
+      }
+
+      // ✅ FIX: Always run cleanup regardless of eventTimeStr.
+      // If Kotlin writes isFrozen=true but process dies before writing timestamp,
+      // eventTimeStr is null — without this, KEY_IS_TIMER_FROZEN is never cleared
+      // and notification 9999 stays stuck in the tray permanently.
       await _clearCriticalEventData();
       await prefs.remove('bg_clockout_payload');
-      _triggerAutoSync();
+      // ✅ FIX: Dismiss the Kotlin-side auto-clockout notification (hardcoded ID 9999
+      // in LocationMonitorService.showCriticalNotification). Without this, the
+      // notification stays in the tray even after the event is fully processed,
+      // causing a confusing UX where the trigger appears stuck at 1 while the
+      // notification is visible.
+      try { await flutterLocalNotificationsPlugin.cancel(9999); } catch (_) {}
+    } finally {
+      _criticalEventProcessing = false;
     }
   }
 
@@ -646,6 +674,12 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     await prefs.remove(KEY_EVENT_DISTANCE);
     await prefs.remove(KEY_EVENT_LATITUDE);
     await prefs.remove(KEY_EVENT_LONGITUDE);
+    // ✅ FIX: KEY_IS_TIMER_FROZEN was never removed here. After the critical event
+    // is processed, the frozen flag must be cleared so that:
+    //   • _restoreEverything() falls through to the isClockedIn=false branch (correct)
+    //   • _scheduleShiftEndClockOut() timer doesn't re-call _checkAndProcessCriticalEvent()
+    //     on every 5-second tick after the event has already been handled.
+    await prefs.remove(KEY_IS_TIMER_FROZEN);
     debugPrint('🧹 [CLEAR] Critical event data cleared');
   }
 
@@ -862,6 +896,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       if (shiftEndFired) { timer.cancel(); return; }
 
       final p      = await SharedPreferences.getInstance();
+      await p.reload();
       final frozen = p.getBool(KEY_IS_TIMER_FROZEN) ?? false;
 
       if (frozen) {
@@ -1281,6 +1316,13 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       );
 
       await attendanceViewModel.clearClockInState();
+      // ✅ BUG FIX: _saveCriticalEventData() sets hasCriticalEvent=true before
+      // _handleAutoClockOut() runs (safety mechanism for mid-process app kill).
+      // But _clearCriticalEventData() was never called here, so hasCriticalEvent
+      // stayed true. On next app resume, _checkAndProcessCriticalEvent() would
+      // find hasCriticalEvent=true and call fastSaveAttendanceOut() a SECOND time
+      // → duplicate attendance record on server. Clearing it here prevents that.
+      await _clearCriticalEventData();
       _triggerAutoSync();
 
       // ✅ OVERTIME: Clear any running overtime session on any clock-out path
@@ -1317,9 +1359,13 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
             timer.cancel();
             return;
           }
-          if (attendanceViewModel.isClockedIn.value) {
-            await _updateCurrentDistance();
+          // ✅ BUG FIX: Timer was never cancelled when not clocked in (only on
+          // isFrozen=true). It kept running every 5s forever, wasting battery.
+          if (!attendanceViewModel.isClockedIn.value) {
+            timer.cancel();
+            return;
           }
+          await _updateCurrentDistance();
         });
   }
 
@@ -1593,6 +1639,11 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
   Future<void> _initializeFromPersistentState() async {
     // ✅ FIX: Run in background to avoid blocking initState
     SharedPreferences prefs = await SharedPreferences.getInstance();
+    // ✅ FIX: Force a fresh read from disk on cold start. When the app is killed
+    // and restarted, the Dart-side cache is empty, so getInstance() reads from
+    // disk anyway — but an explicit reload() guarantees we get the latest values
+    // that the Kotlin service wrote before the process was killed.
+    await prefs.reload();
     bool isClockedIn = prefs.getBool(prefIsClockedIn) ?? false;
     bool isFrozen    = prefs.getBool(KEY_IS_TIMER_FROZEN) ?? false;
 
@@ -1643,6 +1694,11 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     // ✅ FIX: Run in microtask to avoid blocking UI
     Future.microtask(() async {
       SharedPreferences prefs = await SharedPreferences.getInstance();
+      // ✅ FIX: Same stale-cache issue as _checkAndProcessCriticalEvent. Without
+      // reload(), Kotlin's background writes (isClockedIn=false, isTimerFrozen=true)
+      // are invisible here, so the ViewModel stays isClockedIn=true, the backup
+      // timer keeps counting, and the timer card stays stuck at trigger=1.
+      await prefs.reload();
       bool isClockedIn = prefs.getBool(prefIsClockedIn) ?? false;
       bool isFrozen    = prefs.getBool(KEY_IS_TIMER_FROZEN) ?? false;
 
@@ -1652,6 +1708,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
         locationViewModel.isClockedIn.value   = false;
         attendanceViewModel.isClockedIn.value = false;
         if (mounted) setState(() {});
+        _initializeSelfieServiceAfterShiftEnd();
         return;
       }
 
@@ -1699,14 +1756,18 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     _localClockInTime = DateTime.parse(clockInTimeString);
     _localBackupTimer?.cancel();
 
-    _localBackupTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      SharedPreferences.getInstance().then((prefs) {
-        bool isFrozen = prefs.getBool(KEY_IS_TIMER_FROZEN) ?? false;
-        if (isFrozen) {
-          timer.cancel();
-          return;
-        }
-      });
+    _localBackupTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      // ✅ BUG FIX: Previously the isFrozen check was inside a .then() callback
+      // which runs AFTER the timer body — so even when isFrozen=true the elapsed
+      // time display got updated for one extra tick before cancelling.
+      // Using async/await makes the frozen check happen FIRST, before any UI update.
+      final prefs   = await SharedPreferences.getInstance();
+      await prefs.reload();
+      final isFrozen = prefs.getBool(KEY_IS_TIMER_FROZEN) ?? false;
+      if (isFrozen) {
+        timer.cancel();
+        return;
+      }
 
       if (_localClockInTime == null) return;
 
