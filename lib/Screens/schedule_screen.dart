@@ -29,7 +29,23 @@ class ScheduleScreen extends StatefulWidget {
   /// "Routes" tab. Default true keeps the original standalone behaviour.
   final bool showAppBar;
 
-  const ScheduleScreen({super.key, this.showAppBar = true});
+  /// Optional period to filter routes by: 'Daily' | 'Weekly' | 'Monthly' |
+  /// 'Kanban'. Passed in by ScheduleHubScreen so the Daily/Weekly/Monthly/
+  /// Kanban tabs also affect the Routes tab. Defaults to null, which means
+  /// "no filtering" — i.e. exactly the original standalone behaviour.
+  final String? periodFilter;
+
+  /// Reference date used for Weekly/Monthly filtering — the date picked
+  /// from ScheduleHubScreen's inline calendar. Defaults to null, which
+  /// falls back to today (original behaviour).
+  final DateTime? referenceDate;
+
+  const ScheduleScreen({
+    super.key,
+    this.showAppBar = true,
+    this.periodFilter,
+    this.referenceDate,
+  });
 
   @override
   State<ScheduleScreen> createState() => _ScheduleScreenState();
@@ -193,6 +209,64 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   String _getTotalWaypoints(Map<String, dynamic> r) =>
       (r['TOTAL_WAYPOINTS'] ?? r['total_waypoints'] ?? '').toString().trim();
 
+  // ── Period filter helpers (Daily / Weekly / Monthly / Kanban) ──────────
+  // Daily / Weekly / Monthly filter _routes by date relative to today.
+  // Kanban does not filter by date — it groups all routes by status into
+  // board columns instead. Only active when widget.periodFilter is set
+  // (i.e. when embedded inside ScheduleHubScreen) — standalone usage is
+  // unaffected.
+  DateTime? _getRawDate(Map<String, dynamic> r) {
+    final raw = r['SCHEDULE_DATE'] ?? r['schedule_date'] ??
+        r['ROUTE_DATE']    ?? r['route_date']    ??
+        r['DATE']          ?? r['date'];
+    if (raw == null || raw.toString().isEmpty) return null;
+    return DateTime.tryParse(raw.toString());
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  bool _isSameWeek(DateTime a, DateTime b) {
+    final weekStart = b.subtract(Duration(days: b.weekday - 1));
+    final startDay  = DateTime(weekStart.year, weekStart.month, weekStart.day);
+    final endDay    = startDay.add(const Duration(days: 6));
+    final aDay      = DateTime(a.year, a.month, a.day);
+    return !aDay.isBefore(startDay) && !aDay.isAfter(endDay);
+  }
+
+  bool _isSameMonth(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month;
+
+  List<Map<String, dynamic>> _applyPeriodFilter(
+      List<Map<String, dynamic>> items) {
+    final period = widget.periodFilter;
+    if (period == null || period == 'Kanban') return items;
+    final today = DateTime.now();
+    final ref   = widget.referenceDate ?? today;
+    return items.where((r) {
+      final d = _getRawDate(r);
+      if (d == null) return false;
+      switch (period) {
+        case 'Weekly':
+          return _isSameWeek(d, ref);
+        case 'Monthly':
+          return _isSameMonth(d, ref);
+        default: // 'Daily'
+          return _isSameDay(d, today);
+      }
+    }).toList();
+  }
+
+  Map<String, List<Map<String, dynamic>>> _groupRoutesByStatus(
+      List<Map<String, dynamic>> items) {
+    final Map<String, List<Map<String, dynamic>>> groups = {};
+    for (final r in items) {
+      final status = _getStatus(r);
+      groups.putIfAbsent(status, () => []).add(r);
+    }
+    return groups;
+  }
+
   // ── Build ──────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
@@ -290,14 +364,43 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       );
     }
 
+    // ── Kanban view — groups all routes by status into board columns ─────
+    if (widget.periodFilter == 'Kanban') {
+      return _buildRoutesKanban();
+    }
+
+    // ── Daily / Weekly / Monthly — filter by date (only when periodFilter
+    //    is set, i.e. when embedded inside ScheduleHubScreen) ─────────────
+    final filtered = _applyPeriodFilter(_routes);
+
+    if (filtered.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.event_busy_rounded,
+                color: _teal.withOpacity(0.5), size: 56),
+            const SizedBox(height: 16),
+            Text(
+              'No routes for ${(widget.periodFilter ?? 'Daily').toLowerCase()} view',
+              style: const TextStyle(
+                  color: Colors.black45,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500),
+            ),
+          ],
+        ),
+      );
+    }
+
     return RefreshIndicator(
       color: _teal,
       onRefresh: _loadEmployeeAndFetch,
       child: ListView.builder(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        itemCount: _routes.length,
+        itemCount: filtered.length,
         itemBuilder: (context, index) {
-          final r = _routes[index];
+          final r = filtered[index];
           final status     = _getStatus(r);
           final isApproved = _isApproved(status);
           return _RouteCard(
@@ -316,6 +419,61 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             totalWaypoints: _getTotalWaypoints(r),
           );
         },
+      ),
+    );
+  }
+
+  // ── Kanban board for Routes — grouped by status into columns ───────────
+  Widget _buildRoutesKanban() {
+    final groups = _groupRoutesByStatus(_routes);
+    const order  = ['Pending', 'Approved', 'Rejected', 'Cancelled'];
+    final keys   = [
+      ...order.where(groups.containsKey),
+      ...groups.keys.where((k) => !order.contains(k)),
+    ];
+
+    return RefreshIndicator(
+      color: _teal,
+      onRefresh: _loadEmployeeAndFetch,
+      child: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        children: [
+          SizedBox(
+            height: MediaQuery.of(context).size.height * 0.62,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: keys.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (context, i) {
+                final key      = keys[i];
+                final colItems = groups[key]!;
+                return _KanbanColumn(
+                  title: key,
+                  count: colItems.length,
+                  children: colItems.map((r) {
+                    final status     = _getStatus(r);
+                    final isApproved = _isApproved(status);
+                    return _RouteCard(
+                      route:         r,
+                      date:          _getDate(r),
+                      timeRange:     _getTimeRange(r),
+                      routeName:     _getRouteName(r),
+                      status:        status,
+                      isApproved:    isApproved,
+                      desc:          _getDesc(r),
+                      originAddress: _getOriginAddress(r),
+                      destAddress:   _getDestAddress(r),
+                      totalDistance: _getTotalDistance(r),
+                      totalDuration: _getTotalDuration(r),
+                      travelMode:    _getTravelMode(r),
+                      totalWaypoints: _getTotalWaypoints(r),
+                    );
+                  }).toList(),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -370,16 +528,16 @@ class _RouteCard extends StatelessWidget {
     final statsLine = statsParts.join(' · ');
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -393,20 +551,20 @@ class _RouteCard extends StatelessWidget {
             children: [
               Container(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 6),
+                    horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     colors: [_teal, _tealDark],
                     begin: Alignment.centerLeft,
                     end: Alignment.centerRight,
                   ),
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(18),
                 ),
                 child: Text(
                   date,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -415,42 +573,44 @@ class _RouteCard extends StatelessWidget {
             ],
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
 
           // ── Route name ────────────────────────────────────────────────
           Text(
             routeName,
             style: const TextStyle(
-              fontSize: 17,
+              fontSize: 15,
               fontWeight: FontWeight.w800,
               color: Color(0xFF1F2937),
             ),
           ),
 
           if (desc.isNotEmpty) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: 3),
             Text(
               desc,
               style: const TextStyle(
-                fontSize: 12,
+                fontSize: 11.5,
                 color: Color(0xFF9CA3AF),
                 fontWeight: FontWeight.w500,
               ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
 
           // ── Time row ─────────────────────────────────────────────────
           if (timeRange.isNotEmpty) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Row(
               children: [
                 const Icon(Icons.access_time_rounded,
-                    size: 16, color: Color(0xFF9CA3AF)),
-                const SizedBox(width: 6),
+                    size: 14, color: Color(0xFF9CA3AF)),
+                const SizedBox(width: 5),
                 Text(
                   timeRange,
                   style: const TextStyle(
-                    fontSize: 13,
+                    fontSize: 12,
                     color: Color(0xFF6B7280),
                     fontWeight: FontWeight.w500,
                   ),
@@ -461,30 +621,34 @@ class _RouteCard extends StatelessWidget {
 
           // ── Stops · Distance · Duration row ─────────────────────────
           if (statsLine.isNotEmpty) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
             Row(
               children: [
                 Icon(
                   travelMode.isNotEmpty
                       ? _travelModeIcon(travelMode)
                       : Icons.alt_route_rounded,
-                  size: 16,
+                  size: 14,
                   color: const Color(0xFF9CA3AF),
                 ),
-                const SizedBox(width: 6),
-                Text(
-                  statsLine,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFF6B7280),
-                    fontWeight: FontWeight.w500,
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Text(
+                    statsLine,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF6B7280),
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
             ),
           ],
 
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
 
           // ── Action buttons ───────────────────────────────────────────
           Row(
@@ -510,6 +674,104 @@ class _RouteCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Kanban column — fixed-width vertical lane used by the Kanban board view
+// ─────────────────────────────────────────────────────────────────────────────
+class _KanbanColumn extends StatelessWidget {
+  final String title;
+  final int count;
+  final List<Widget> children;
+
+  const _KanbanColumn({
+    required this.title,
+    required this.count,
+    required this.children,
+  });
+
+  static const _teal     = Color(0xFF0C9E8E);
+  static const _tealDark = Color(0xFF0C6B64);
+
+  Color get _dotColor {
+    switch (title.toLowerCase()) {
+      case 'approved':
+        return const Color(0xFF1E8A5E);
+      case 'rejected':
+      case 'cancelled':
+        return const Color(0xFFDC2626);
+      default:
+        return _tealDark;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 280,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEDE3D2).withOpacity(0.55),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 9,
+                height: 9,
+                decoration: BoxDecoration(color: _dotColor, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF1F2937),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '$count',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: _tealDark,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: children.isEmpty
+                ? Center(
+              child: Text(
+                'Empty',
+                style: TextStyle(
+                  color: _teal.withOpacity(0.6),
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            )
+                : ListView(children: children),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GPS View Button — opens RouteMapScreen for this route
 // ─────────────────────────────────────────────────────────────────────────────
 class _GpsViewButton extends StatelessWidget {
@@ -531,25 +793,25 @@ class _GpsViewButton extends StatelessWidget {
         );
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
             colors: [_teal, _tealDark],
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
           ),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(11),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: const [
-            Icon(Icons.map_rounded, size: 16, color: Colors.white),
+            Icon(Icons.map_rounded, size: 15, color: Colors.white),
             SizedBox(width: 6),
             Text(
               'GPS View',
               style: TextStyle(
                 color: Colors.white,
-                fontSize: 13,
+                fontSize: 12.5,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -601,16 +863,16 @@ class _StatusBadge extends StatelessWidget {
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(18),
       ),
       child: Text(
         label,
         style: TextStyle(
           color: fg,
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: FontWeight.w700,
         ),
       ),
@@ -639,21 +901,21 @@ class _StartButton extends StatelessWidget {
         );
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 11),
+        padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
           color: const Color(0xFFE6F4F1),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(11),
         ),
         child: const Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.play_arrow_rounded, color: _tealDark, size: 16),
+            Icon(Icons.play_arrow_rounded, color: _tealDark, size: 15),
             SizedBox(width: 6),
             Text(
               'Start',
               style: TextStyle(
                 color: _tealDark,
-                fontSize: 13,
+                fontSize: 12.5,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -663,5 +925,3 @@ class _StartButton extends StatelessWidget {
     );
   }
 }
-
-
