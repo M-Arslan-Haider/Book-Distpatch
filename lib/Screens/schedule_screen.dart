@@ -40,11 +40,18 @@ class ScheduleScreen extends StatefulWidget {
   /// falls back to today (original behaviour).
   final DateTime? referenceDate;
 
+  /// Optional — fired with the freshly-fetched routes list every time
+  /// _fetchRoutes() succeeds. Purely additive: lets ScheduleHubScreen know
+  /// which dates have routes (to show a dot on its calendar). Does not
+  /// change any fetching/filtering/rendering behaviour of this screen.
+  final ValueChanged<List<Map<String, dynamic>>>? onRoutesLoaded;
+
   const ScheduleScreen({
     super.key,
     this.showAppBar = true,
     this.periodFilter,
     this.referenceDate,
+    this.onRoutesLoaded,
   });
 
   @override
@@ -144,6 +151,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
           _routes    = items.map((e) => Map<String, dynamic>.from(e as Map)).toList();
           _isLoading = false;
         });
+        widget.onRoutesLoaded?.call(_routes);
       } else {
         setState(() {
           _error     = 'Server error: ${response.statusCode}';
@@ -925,3 +933,5 @@ class _StartButton extends StatelessWidget {
     );
   }
 }
+
+
