@@ -1193,6 +1193,30 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
         return;
       }
 
+      // ✅ FIX: Same-day guard — kal (ya pehle) ka OT session restore mat karo.
+      // Scenario: June 15 overtime session manually clock-out hua lekin
+      // _handleClockOut() mein cancel() nahi tha → SharedPrefs mein
+      // overtime_session_clock_in_time = "2026-06-15T..." reh gaya.
+      // June 16 normal clock-in ke baad jab _restoreEverything() →
+      // _checkAndRestoreOvertimeService() call hoti hai, savedTime = June 15.
+      // OvertimeClockOutService.start() detect karta hai cap kal exceed ho chuka →
+      // turant _triggerOvertimeClockOut() fire! Yeh galat tha.
+      // Fix: sirf aaj ki date ka saved session valid maano.
+      final DateTime _otNow = DateTime.now();
+      final bool _isTodaySession =
+          savedTime.year  == _otNow.year  &&
+              savedTime.month == _otNow.month &&
+              savedTime.day   == _otNow.day;
+      if (!_isTodaySession) {
+        debugPrint('⏰ [OT RESTORE] Stale OT session — '
+            'saved=${DateFormat('yyyy-MM-dd').format(savedTime)} '
+            'today=${DateFormat('yyyy-MM-dd').format(_otNow)} — '
+            'purging, NOT restoring');
+        // cancel() SharedPrefs key clear karta hai taake next session clean ho
+        unawaited(_overtimeService.cancel());
+        return;
+      }
+
       debugPrint('');
       debugPrint('══════════════════════════════════════════════════════');
       debugPrint('⏰ [OT RESTORE] Saved OT session found: $savedTime');
@@ -3229,6 +3253,21 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     _shiftEndClockOutTimer?.cancel();                  // ✅ FIX: was missing — prevents ghost auto-clockout in next session
     _permissionCheckTimer?.cancel();
     _localClockInTime = null;
+
+    // ✅ FIX: Manual clock-out pe bhi overtime service cancel karo.
+    // Bug: _handleClockOut() mein _overtimeService.cancel() nahi tha —
+    // sirf _handleAutoClockOut() aur dispose() mein tha.
+    // Result: June 15 overtime manual clock-out ke baad SharedPreferences mein
+    // overtime_session_clock_in_time = June 15 reh jaata tha.
+    // June 16 normal clock-in ke baad _restoreEverything() → _checkAndRestoreOvertimeService()
+    // is stale time ko restore karta tha aur turant fire ho jaata tha (cap exceed).
+    unawaited(_overtimeService.cancel());
+    try {
+      await platform.invokeMethod('stopOvertimeMonitor');
+      debugPrint('🛑 [OT] OvertimeMonitorService stopped (Kotlin) — manual clockout');
+    } catch (e) {
+      debugPrint('⚠️ [OT] Could not stop OvertimeMonitorService: $e');
+    }
 
     attendanceViewModel.stopElapsedTimer();
     attendanceViewModel.elapsedTime.value = '00:00:00'; // ✅ FIX: reset ViewModel elapsed so UI shows 00:00:00
