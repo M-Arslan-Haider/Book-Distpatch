@@ -683,6 +683,7 @@ import '../ViewModels/location_view_model.dart';
 import '../ViewModels/task_view_model.dart';
 import 'HomeScreenComponents/app_bottom_navbar.dart';
 import 'WidgetDesignes/travel_session_card.dart';
+import 'break_screen.dart';
 import 'leave_report_get_screen.dart';
 import 'my_task_activity_screen.dart';
 import 'HomeScreenComponents/navbar.dart';
@@ -1244,171 +1245,326 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _breakTile(double tileHeight) {
-    return Obx(() {
-      final onBreak = breakViewModel.isOnBreak.value;
-      final elapsed = breakViewModel.breakElapsed.value;
-      const activeColor = Color(0xFFF59E0B);
-      const idleColor   = Color(0xFF3DAF93);
+  // Widget _breakTile(double tileHeight) {
+  //   return Obx(() {
+  //     final onBreak = breakViewModel.isOnBreak.value;
+  //     final elapsed = breakViewModel.breakElapsed.value;
+  //     const activeColor = Color(0xFFF59E0B);
+  //     const idleColor   = Color(0xFF3DAF93);
+  //
+  //     return Expanded(
+  //       child: GestureDetector(
+  //         onTap: onBreak ? breakViewModel.endBreak : breakViewModel.startBreak,
+  //         child: Container(
+  //           height: tileHeight,
+  //           decoration: BoxDecoration(
+  //             color: Colors.white,
+  //             borderRadius: BorderRadius.circular(context.rs(16)),
+  //             border: onBreak
+  //                 ? Border.all(color: activeColor.withOpacity(0.40), width: 1.5)
+  //                 : null,
+  //             boxShadow: [
+  //               BoxShadow(
+  //                 color: onBreak
+  //                     ? activeColor.withOpacity(0.15)
+  //                     : Colors.black.withOpacity(0.06),
+  //                 blurRadius: context.rs(12),
+  //                 offset: Offset(0, context.rs(4)),
+  //               ),
+  //             ],
+  //           ),
+  //           child: Column(
+  //             mainAxisAlignment: MainAxisAlignment.center,
+  //             children: [
+  //               Container(
+  //                 width: context.rs(46),
+  //                 height: context.rs(46),
+  //                 decoration: BoxDecoration(
+  //                   color: onBreak ? activeColor : idleColor,
+  //                   borderRadius: BorderRadius.circular(context.rs(12)),
+  //                 ),
+  //                 child: Icon(
+  //                   onBreak ? Icons.stop_circle_outlined : Icons.free_breakfast_rounded,
+  //                   size: context.rs(22),
+  //                   color: Colors.white,
+  //                 ),
+  //               ),
+  //               SizedBox(height: context.rs(8)),
+  //               Text(
+  //                 onBreak ? elapsed : 'Break',
+  //                 textAlign: TextAlign.center,
+  //                 overflow: TextOverflow.ellipsis,
+  //                 style: TextStyle(
+  //                   fontSize: context.rs(onBreak ? 11 : 12),
+  //                   fontWeight: FontWeight.w600,
+  //                   color: onBreak ? activeColor : const Color(0xFF1A2B22),
+  //                 ),
+  //               ),
+  //               if (onBreak) ...[
+  //                 SizedBox(height: context.rs(2)),
+  //                 Text(
+  //                   'Tap to end',
+  //                   style: TextStyle(
+  //                     fontSize: context.rs(9),
+  //                     color: activeColor.withOpacity(0.75),
+  //                     fontWeight: FontWeight.w500,
+  //                   ),
+  //                 ),
+  //               ],
+  //             ],
+  //           ),
+  //         ),
+  //       ),
+  //     );
+  //   });
+  // }
 
-      return Expanded(
-        child: GestureDetector(
-          onTap: onBreak ? breakViewModel.endBreak : breakViewModel.startBreak,
-          child: Container(
-            height: tileHeight,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(context.rs(16)),
-              border: onBreak
-                  ? Border.all(color: activeColor.withOpacity(0.40), width: 1.5)
-                  : null,
-              boxShadow: [
-                BoxShadow(
-                  color: onBreak
-                      ? activeColor.withOpacity(0.15)
-                      : Colors.black.withOpacity(0.06),
-                  blurRadius: context.rs(12),
-                  offset: Offset(0, context.rs(4)),
-                ),
-              ],
+  Widget _breakTile(double tileHeight) {
+    const activeColor = Color(0xFFF59E0B);
+    const idleColor   = Color(0xFF3DAF93);
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          // Navigate to BreaksScreen with proper navigation callback
+          Get.to(
+                () => BreaksScreen(
+              currentIndex: 5,
+              chatBadgeCount: 0,
+              onNavTap: (int index) {
+                setState(() {
+                  _navIndex = index;
+                });
+                if (Get.isDialogOpen != true) {
+                  Get.back();
+                }
+              },
             ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: context.rs(46),
-                  height: context.rs(46),
-                  decoration: BoxDecoration(
-                    color: onBreak ? activeColor : idleColor,
-                    borderRadius: BorderRadius.circular(context.rs(12)),
-                  ),
-                  child: Icon(
-                    onBreak ? Icons.stop_circle_outlined : Icons.free_breakfast_rounded,
-                    size: context.rs(22),
-                    color: Colors.white,
-                  ),
+            transition: Transition.rightToLeft,
+            duration: const Duration(milliseconds: 300),
+          );
+        },
+        child: Container(
+          height: tileHeight,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(context.rs(16)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.06),
+                blurRadius: context.rs(12),
+                offset: Offset(0, context.rs(4)),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: context.rs(46),
+                height: context.rs(46),
+                decoration: BoxDecoration(
+                  color: idleColor,
+                  borderRadius: BorderRadius.circular(context.rs(12)),
                 ),
-                SizedBox(height: context.rs(8)),
-                Text(
-                  onBreak ? elapsed : 'Break',
-                  textAlign: TextAlign.center,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: context.rs(onBreak ? 11 : 12),
-                    fontWeight: FontWeight.w600,
-                    color: onBreak ? activeColor : const Color(0xFF1A2B22),
-                  ),
+                child: Icon(
+                  Icons.free_breakfast_rounded,
+                  size: context.rs(22),
+                  color: Colors.white,
                 ),
-                if (onBreak) ...[
-                  SizedBox(height: context.rs(2)),
-                  Text(
-                    'Tap to end',
-                    style: TextStyle(
-                      fontSize: context.rs(9),
-                      color: activeColor.withOpacity(0.75),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ],
-            ),
+              ),
+              SizedBox(height: context.rs(8)),
+              Text(
+                'Break',
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: context.rs(12),
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF1A2B22),
+                ),
+              ),
+            ],
           ),
         ),
-      );
-    });
+      ),
+    );
   }
 
+  // Widget _shortBreakActionTile(double tileHeight) {
+  //   const color = Color(0xFFE07B39);
+  //
+  //   return Obx(() {
+  //     final onBreak  = shortBreakVM.isOnShortBreak.value;
+  //     final timerStr = shortBreakVM.timerDisplay.value;
+  //
+  //     return Expanded(
+  //       child: GestureDetector(
+  //         onTap: () {
+  //           if (!attendanceViewModel.isClockedIn.value) {
+  //             Get.snackbar(
+  //               'Not Clocked In',
+  //               'Please clock in first to use Short Break.',
+  //               snackPosition: SnackPosition.BOTTOM,
+  //               duration: const Duration(seconds: 4),
+  //               backgroundColor: const Color(0xFFE05A5A).withOpacity(0.93),
+  //               colorText: Colors.white,
+  //               icon: const Icon(Icons.lock_clock_rounded, color: Colors.white),
+  //             );
+  //             return;
+  //           }
+  //           Get.to(
+  //                 () => const ShortBreakScreen(),
+  //             transition: Transition.rightToLeft,
+  //             duration: const Duration(milliseconds: 300),
+  //           );
+  //         },
+  //         child: Container(
+  //           height: tileHeight,
+  //           decoration: BoxDecoration(
+  //             color: Colors.white,
+  //             borderRadius: BorderRadius.circular(context.rs(16)),
+  //             border: onBreak
+  //                 ? Border.all(color: color.withOpacity(0.40), width: 1.5)
+  //                 : null,
+  //             boxShadow: [
+  //               BoxShadow(
+  //                 color: onBreak
+  //                     ? color.withOpacity(0.15)
+  //                     : Colors.black.withOpacity(0.06),
+  //                 blurRadius: context.rs(12),
+  //                 offset: Offset(0, context.rs(4)),
+  //               ),
+  //             ],
+  //           ),
+  //           child: Column(
+  //             mainAxisAlignment: MainAxisAlignment.center,
+  //             children: [
+  //               Container(
+  //                 width: context.rs(46),
+  //                 height: context.rs(46),
+  //                 decoration: BoxDecoration(
+  //                   color: color,
+  //                   borderRadius: BorderRadius.circular(context.rs(12)),
+  //                 ),
+  //                 child: Icon(
+  //                   onBreak ? Icons.coffee_rounded : Icons.free_breakfast_outlined,
+  //                   size: context.rs(22),
+  //                   color: Colors.white,
+  //                 ),
+  //               ),
+  //               SizedBox(height: context.rs(8)),
+  //               Text(
+  //                 onBreak ? (timerStr.isNotEmpty ? timerStr : 'Active') : 'Short Break',
+  //                 textAlign: TextAlign.center,
+  //                 overflow: TextOverflow.ellipsis,
+  //                 style: TextStyle(
+  //                   fontSize: context.rs(onBreak && timerStr.isNotEmpty ? 11 : 12),
+  //                   fontWeight: FontWeight.w600,
+  //                   color: onBreak ? color : const Color(0xFF1A2B22),
+  //                 ),
+  //               ),
+  //               if (onBreak) ...[
+  //                 SizedBox(height: context.rs(2)),
+  //                 Text(
+  //                   'Tap to manage',
+  //                   style: TextStyle(
+  //                     fontSize: context.rs(9),
+  //                     color: color.withOpacity(0.75),
+  //                     fontWeight: FontWeight.w500,
+  //                   ),
+  //                 ),
+  //               ],
+  //             ],
+  //           ),
+  //         ),
+  //       ),
+  //     );
+  //   });
+  // }
   Widget _shortBreakActionTile(double tileHeight) {
     const color = Color(0xFFE07B39);
 
-    return Obx(() {
-      final onBreak  = shortBreakVM.isOnShortBreak.value;
-      final timerStr = shortBreakVM.timerDisplay.value;
-
-      return Expanded(
-        child: GestureDetector(
-          onTap: () {
-            if (!attendanceViewModel.isClockedIn.value) {
-              Get.snackbar(
-                'Not Clocked In',
-                'Please clock in first to use Short Break.',
-                snackPosition: SnackPosition.BOTTOM,
-                duration: const Duration(seconds: 4),
-                backgroundColor: const Color(0xFFE05A5A).withOpacity(0.93),
-                colorText: Colors.white,
-                icon: const Icon(Icons.lock_clock_rounded, color: Colors.white),
-              );
-              return;
-            }
-            Get.to(
-                  () => const ShortBreakScreen(),
-              transition: Transition.rightToLeft,
-              duration: const Duration(milliseconds: 300),
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          if (!attendanceViewModel.isClockedIn.value) {
+            Get.snackbar(
+              'Not Clocked In',
+              'Please clock in first to use Short Break.',
+              snackPosition: SnackPosition.BOTTOM,
+              duration: const Duration(seconds: 4),
+              backgroundColor: const Color(0xFFE05A5A).withOpacity(0.93),
+              colorText: Colors.white,
+              icon: const Icon(Icons.lock_clock_rounded, color: Colors.white),
             );
-          },
-          child: Container(
-            height: tileHeight,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(context.rs(16)),
-              border: onBreak
-                  ? Border.all(color: color.withOpacity(0.40), width: 1.5)
-                  : null,
-              boxShadow: [
-                BoxShadow(
-                  color: onBreak
-                      ? color.withOpacity(0.15)
-                      : Colors.black.withOpacity(0.06),
-                  blurRadius: context.rs(12),
-                  offset: Offset(0, context.rs(4)),
-                ),
-              ],
+            return;
+          }
+          // Navigate to BreaksScreen with Short Breaks tab selected
+          Get.to(
+                () => BreaksScreen(
+              currentIndex: 5,
+              chatBadgeCount: 0,
+              onNavTap: (int index) {
+                setState(() {
+                  _navIndex = index;
+                });
+                if (Get.isDialogOpen != true) {
+                  Get.back();
+                }
+              },
             ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: context.rs(46),
-                  height: context.rs(46),
-                  decoration: BoxDecoration(
-                    color: color,
-                    borderRadius: BorderRadius.circular(context.rs(12)),
-                  ),
-                  child: Icon(
-                    onBreak ? Icons.coffee_rounded : Icons.free_breakfast_outlined,
-                    size: context.rs(22),
-                    color: Colors.white,
-                  ),
+            transition: Transition.rightToLeft,
+            duration: const Duration(milliseconds: 300),
+          );
+        },
+        child: Container(
+          height: tileHeight,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(context.rs(16)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.06),
+                blurRadius: context.rs(12),
+                offset: Offset(0, context.rs(4)),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: context.rs(46),
+                height: context.rs(46),
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(context.rs(12)),
                 ),
-                SizedBox(height: context.rs(8)),
-                Text(
-                  onBreak ? (timerStr.isNotEmpty ? timerStr : 'Active') : 'Short Break',
-                  textAlign: TextAlign.center,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: context.rs(onBreak && timerStr.isNotEmpty ? 11 : 12),
-                    fontWeight: FontWeight.w600,
-                    color: onBreak ? color : const Color(0xFF1A2B22),
-                  ),
+                child: Icon(
+                  Icons.coffee_rounded,
+                  size: context.rs(22),
+                  color: Colors.white,
                 ),
-                if (onBreak) ...[
-                  SizedBox(height: context.rs(2)),
-                  Text(
-                    'Tap to manage',
-                    style: TextStyle(
-                      fontSize: context.rs(9),
-                      color: color.withOpacity(0.75),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ],
-            ),
+              ),
+              SizedBox(height: context.rs(8)),
+              Text(
+                'Short Break',
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: context.rs(12),
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF1A2B22),
+                ),
+              ),
+            ],
           ),
         ),
-      );
-    });
+      ),
+    );
   }
+
 
   Widget _sectionHeader(String title, IconData icon, Color color) {
     return Row(children: [

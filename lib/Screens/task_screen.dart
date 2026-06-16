@@ -1251,6 +1251,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../AppColors.dart';
 import '../ViewModels/task_view_model.dart';
@@ -1288,6 +1289,10 @@ class _TaskScreenState extends State<TaskScreen>
 
   _TaskTab _activeTab = _TaskTab.assigned;
 
+  // ── User data ──────────────────────────────────────────────────────────────
+  String _empName = 'Employee';
+  String _empInitials = '??';
+
   @override
   void initState() {
     super.initState();
@@ -1300,6 +1305,8 @@ class _TaskScreenState extends State<TaskScreen>
         CurvedAnimation(parent: _fadeController, curve: Curves.easeOut);
     _fadeController.forward();
 
+    _loadUserData();
+
     if (!Get.isRegistered<TaskViewModel>()) {
       Get.put(TaskViewModel());
     }
@@ -1308,9 +1315,25 @@ class _TaskScreenState extends State<TaskScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final vm = Get.find<TaskViewModel>();
       vm.fetchAssignedTasks();
-      // agar MyTasks ke liye alag fetch ho to yahan call karein
-      // vm.fetchMyTasks();
     });
+  }
+
+  Future<void> _loadUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final name = prefs.getString('userName') ?? 'Employee';
+    setState(() {
+      _empName = name;
+      _empInitials = _getInitials(name);
+    });
+  }
+
+  String _getInitials(String name) {
+    if (name.isEmpty) return '??';
+    final parts = name.trim().split(' ');
+    if (parts.length >= 2) {
+      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    }
+    return name[0].toUpperCase();
   }
 
   @override
@@ -1330,11 +1353,69 @@ class _TaskScreenState extends State<TaskScreen>
       key: _scaffoldKey,
       backgroundColor: AppColors.surface,
       appBar: Navbar(
-        userName: 'Mian Muhammad Arslan',
-        userInitials: 'MM',
+        userName: _empName,
+        userInitials: _empInitials,
         lastSync: 'Just now',
         scaffoldKey: _scaffoldKey,
       ),
+      // ... rest of the build method remains the same
+
+// class _TaskScreenState extends State<TaskScreen>
+//     with SingleTickerProviderStateMixin {
+//   late final AnimationController _fadeController;
+//   late final Animation<double> _fadeAnimation;
+//
+//   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+//
+//   _TaskTab _activeTab = _TaskTab.assigned;
+//
+//   @override
+//   void initState() {
+//     super.initState();
+//
+//     _fadeController = AnimationController(
+//       vsync: this,
+//       duration: const Duration(milliseconds: 700),
+//     );
+//     _fadeAnimation =
+//         CurvedAnimation(parent: _fadeController, curve: Curves.easeOut);
+//     _fadeController.forward();
+//
+//     if (!Get.isRegistered<TaskViewModel>()) {
+//       Get.put(TaskViewModel());
+//     }
+//
+//     // fetch data on open
+//     WidgetsBinding.instance.addPostFrameCallback((_) {
+//       final vm = Get.find<TaskViewModel>();
+//       vm.fetchAssignedTasks();
+//       // agar MyTasks ke liye alag fetch ho to yahan call karein
+//       // vm.fetchMyTasks();
+//     });
+//   }
+//
+//   @override
+//   void dispose() {
+//     _fadeController.dispose();
+//     super.dispose();
+//   }
+//
+//   @override
+//   Widget build(BuildContext context) {
+//     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+//       statusBarColor: Colors.transparent,
+//       statusBarIconBrightness: Brightness.light,
+//     ));
+//
+//     return Scaffold(
+//       key: _scaffoldKey,
+//       backgroundColor: AppColors.surface,
+//       appBar: Navbar(
+//         userName: 'Mian Muhammad Arslan',
+//         userInitials: 'MM',
+//         lastSync: 'Just now',
+//         scaffoldKey: _scaffoldKey,
+//       ),
       body: Column(
         children: [
           // ── Top section (header + tabs + filter) ──
