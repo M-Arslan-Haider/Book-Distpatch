@@ -53,13 +53,17 @@ class _ScheduleHubScreenState extends State<ScheduleHubScreen> {
   static const _tealDark = Color(0xFF0C6B64);
   static const _pillBg   = Color(0xFFEDE3D2);
 
-  static const _periodTabs = ['Daily', 'Weekly', 'Monthly', 'Kanban'];
+  static const _periodTabs = ['Daily', 'Weekly', 'Monthly'];
   String _selectedPeriod = 'Daily';
 
   // Date picked from the inline calendar shown under Weekly / Monthly tabs.
   // Defaults to today, so behaviour is unchanged until the user picks a
   // different date.
   DateTime _selectedFilterDate = DateTime.now();
+
+  // Routes reported back by the embedded ScheduleScreen (Routes tab) —
+  // used only to mark dates that have a route with a dot on the calendar.
+  List<Map<String, dynamic>> _routesForCalendar = [];
 
   // false = Locations (API data, default) | true = Routes (embedded ScheduleScreen)
   bool _routesActive = false;
@@ -437,7 +441,7 @@ class _ScheduleHubScreenState extends State<ScheduleHubScreen> {
               ),
             ),
 
-            // ── Daily / Weekly / Monthly / Kanban (dummy) ─────────────────
+            // ── Daily / Weekly / Monthly (dummy) ───────────────────────────
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: _buildPeriodTabs(),
@@ -454,7 +458,9 @@ class _ScheduleHubScreenState extends State<ScheduleHubScreen> {
             const SizedBox(height: 16),
 
             // ── Calendar — shown only for Weekly / Monthly so the user can
-            //    pick which week/month to view ───────────────────────────
+            //    pick which week/month to view. Compact custom calendar —
+            //    small, predictable height, so it never pushes the list
+            //    below off-screen ─────────────────────────────────────────
             if (_selectedPeriod == 'Weekly' || _selectedPeriod == 'Monthly') ...[
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -470,6 +476,9 @@ class _ScheduleHubScreenState extends State<ScheduleHubScreen> {
                 showAppBar: false,
                 periodFilter: _selectedPeriod,
                 referenceDate: _selectedFilterDate,
+                onRoutesLoaded: (routes) {
+                  if (mounted) setState(() => _routesForCalendar = routes);
+                },
               )
                   : _buildLocationsList(),
             ),
@@ -557,8 +566,28 @@ class _ScheduleHubScreenState extends State<ScheduleHubScreen> {
   }
 
   // ── Inline calendar — lets the user pick the week/month to view ────────
+  // Route-date parsing (mirrors schedule_screen.dart's own field lookup) —
+  // used only to know which dates to mark with a dot on the calendar.
+  DateTime? _getRawRouteDate(Map<String, dynamic> r) {
+    final raw = r['SCHEDULE_DATE'] ?? r['schedule_date'] ??
+        r['ROUTE_DATE']    ?? r['route_date']    ??
+        r['DATE']          ?? r['date'];
+    if (raw == null || raw.toString().isEmpty) return null;
+    return DateTime.tryParse(raw.toString());
+  }
+
   Widget _buildCalendarPicker() {
-    final now = DateTime.now();
+    // Dates that should show a dot — any date with a location or a route.
+    final markedDates = <DateTime>{};
+    for (final loc in _locations) {
+      final d = _getRawScheduleDate(loc);
+      if (d != null) markedDates.add(DateTime(d.year, d.month, d.day));
+    }
+    for (final r in _routesForCalendar) {
+      final d = _getRawRouteDate(r);
+      if (d != null) markedDates.add(DateTime(d.year, d.month, d.day));
+    }
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -571,20 +600,10 @@ class _ScheduleHubScreenState extends State<ScheduleHubScreen> {
           ),
         ],
       ),
-      child: Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: Theme.of(context).colorScheme.copyWith(
-            primary: _tealDark,
-            onPrimary: Colors.white,
-            onSurface: const Color(0xFF1F2937),
-          ),
-        ),
-        child: CalendarDatePicker(
-          initialDate: _selectedFilterDate,
-          firstDate: DateTime(now.year - 5, 1, 1),
-          lastDate: DateTime(now.year + 5, 12, 31),
-          onDateChanged: (date) => setState(() => _selectedFilterDate = date),
-        ),
+      child: _MiniCalendar(
+        selectedDate: _selectedFilterDate,
+        markedDates: markedDates,
+        onDateSelected: (date) => setState(() => _selectedFilterDate = date),
       ),
     );
   }
@@ -1156,6 +1175,228 @@ class _PageIndicator extends StatelessWidget {
               shape: BoxShape.circle,
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Compact custom calendar — replaces Material's CalendarDatePicker.
+// Small, predictable height (so it never pushes the list below off-screen)
+// and supports a small dot under any date that has a location or route
+// scheduled (passed in via markedDates).
+// ─────────────────────────────────────────────────────────────────────────────
+class _MiniCalendar extends StatefulWidget {
+  final DateTime selectedDate;
+  final Set<DateTime> markedDates;
+  final ValueChanged<DateTime> onDateSelected;
+
+  const _MiniCalendar({
+    required this.selectedDate,
+    required this.markedDates,
+    required this.onDateSelected,
+  });
+
+  @override
+  State<_MiniCalendar> createState() => _MiniCalendarState();
+}
+
+class _MiniCalendarState extends State<_MiniCalendar> {
+  static const _teal     = Color(0xFF0C9E8E);
+  static const _tealDark = Color(0xFF0C6B64);
+
+  static const _monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+  static const _weekdayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+  late DateTime _visibleMonth; // first day of the month currently shown
+
+  @override
+  void initState() {
+    super.initState();
+    _visibleMonth =
+        DateTime(widget.selectedDate.year, widget.selectedDate.month, 1);
+  }
+
+  @override
+  void didUpdateWidget(covariant _MiniCalendar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Keep the visible month in sync if the selected date jumps to a
+    // different month from elsewhere (e.g. switching tabs).
+    if (oldWidget.selectedDate.year != widget.selectedDate.year ||
+        oldWidget.selectedDate.month != widget.selectedDate.month) {
+      _visibleMonth =
+          DateTime(widget.selectedDate.year, widget.selectedDate.month, 1);
+    }
+  }
+
+  void _goToPrevMonth() => setState(() {
+    _visibleMonth = DateTime(_visibleMonth.year, _visibleMonth.month - 1, 1);
+  });
+
+  void _goToNextMonth() => setState(() {
+    _visibleMonth = DateTime(_visibleMonth.year, _visibleMonth.month + 1, 1);
+  });
+
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  bool _hasEvent(DateTime day) {
+    for (final d in widget.markedDates) {
+      if (_isSameDay(d, day)) return true;
+    }
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final firstOfMonth = DateTime(_visibleMonth.year, _visibleMonth.month, 1);
+    final daysInMonth =
+        DateTime(_visibleMonth.year, _visibleMonth.month + 1, 0).day;
+    // DateTime.weekday: Mon=1 … Sun=7 → map so Sunday starts the grid.
+    final leadingBlanks = firstOfMonth.weekday % 7;
+    final totalCells = leadingBlanks + daysInMonth;
+    final rows = (totalCells / 7).ceil();
+    final today = DateTime.now();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // ── Month header with prev / next navigation ─────────────────
+          Row(
+            children: [
+              IconButton(
+                onPressed: _goToPrevMonth,
+                icon: const Icon(Icons.chevron_left_rounded),
+                color: _tealDark,
+                padding: EdgeInsets.zero,
+                constraints:
+                const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+              Expanded(
+                child: Center(
+                  child: Text(
+                    '${_monthNames[_visibleMonth.month - 1]} ${_visibleMonth.year}',
+                    style: const TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF1F2937),
+                    ),
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: _goToNextMonth,
+                icon: const Icon(Icons.chevron_right_rounded),
+                color: _tealDark,
+                padding: EdgeInsets.zero,
+                constraints:
+                const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+
+          // ── Weekday labels ──────────────────────────────────────────
+          Row(
+            children: _weekdayLabels
+                .map((d) => Expanded(
+              child: Center(
+                child: Text(
+                  d,
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF9CA3AF),
+                  ),
+                ),
+              ),
+            ))
+                .toList(),
+          ),
+          const SizedBox(height: 2),
+
+          // ── Day grid ────────────────────────────────────────────────
+          ...List.generate(rows, (row) {
+            return Row(
+              children: List.generate(7, (col) {
+                final cellIndex = row * 7 + col;
+                final dayNumber = cellIndex - leadingBlanks + 1;
+
+                if (dayNumber < 1 || dayNumber > daysInMonth) {
+                  return const Expanded(child: SizedBox(height: 36));
+                }
+
+                final cellDate = DateTime(
+                    _visibleMonth.year, _visibleMonth.month, dayNumber);
+                final isSelected =
+                _isSameDay(cellDate, widget.selectedDate);
+                final isToday = _isSameDay(cellDate, today);
+                final hasEvent = _hasEvent(cellDate);
+
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () => widget.onDateSelected(cellDate),
+                    child: Container(
+                      height: 36,
+                      margin: const EdgeInsets.symmetric(
+                          vertical: 2, horizontal: 1),
+                      decoration: BoxDecoration(
+                        gradient: isSelected
+                            ? const LinearGradient(
+                          colors: [_teal, _tealDark],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        )
+                            : null,
+                        shape: BoxShape.circle,
+                        border: (!isSelected && isToday)
+                            ? Border.all(color: _tealDark, width: 1.2)
+                            : null,
+                      ),
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Text(
+                            '$dayNumber',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: isSelected
+                                  ? FontWeight.w800
+                                  : FontWeight.w600,
+                              color: isSelected
+                                  ? Colors.white
+                                  : (isToday
+                                  ? _tealDark
+                                  : const Color(0xFF374151)),
+                            ),
+                          ),
+                          if (hasEvent)
+                            Positioned(
+                              bottom: 3,
+                              child: Container(
+                                width: 5,
+                                height: 5,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color:
+                                  isSelected ? Colors.white : _teal,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            );
+          }),
         ],
       ),
     );
