@@ -7,6 +7,7 @@ import '../break_screen.dart';
 import '../schedule_hub_screen.dart';
 import '../../ViewModels/login_view_model.dart';
 import '../task_screen.dart';
+import '../company_screen.dart';
 
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -260,6 +261,43 @@ class _AppBottomNavBarState extends State<AppBottomNavBar>
       return;
     }
 
+    // ── Company tab (index 5 in allTabs) → push CompanyScreen ─────────────
+    if (allTabIndex == 5) {
+      if (widget.currentIndex == 5) return;
+      Navigator.push(
+        context,
+        PageRouteBuilder(
+          pageBuilder: (context, animation, secondaryAnimation) => CompanyScreen(
+            currentIndex: 5,
+            chatBadgeCount: widget.chatBadgeCount,
+            onNavTap: (i) {
+              if (Navigator.of(context, rootNavigator: true).canPop()) {
+                Navigator.of(context, rootNavigator: true).pop();
+              }
+              widget.onTap(i);
+            },
+          ),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            final fade  = CurvedAnimation(parent: animation, curve: Curves.easeOut);
+            final slide = Tween<Offset>(begin: const Offset(0.0, 0.018), end: Offset.zero)
+                .animate(CurvedAnimation(parent: animation, curve: Curves.easeOutQuart));
+            final scale = Tween<double>(begin: 0.97, end: 1.0)
+                .animate(CurvedAnimation(parent: animation, curve: Curves.easeOutQuart));
+            return FadeTransition(
+              opacity: fade,
+              child: ScaleTransition(
+                scale: scale,
+                alignment: Alignment.bottomCenter,
+                child: SlideTransition(position: slide, child: child),
+              ),
+            );
+          },
+          transitionDuration: const Duration(milliseconds: 260),
+        ),
+      );
+      return;
+    }
+
     // ── TimeKeeper tab → push TimekeeperScreen ─────────────────────────────
     // if (tab.isTimekeeper) {
     //   Navigator.push(
@@ -292,16 +330,7 @@ class _AppBottomNavBarState extends State<AppBottomNavBar>
       Navigator.push(
         context,
         PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) => TimekeeperScreen(
-            currentIndex: 7,
-            chatBadgeCount: widget.chatBadgeCount,
-            onNavTap: (i) {
-              if (Navigator.of(context, rootNavigator: true).canPop()) {
-                Navigator.of(context, rootNavigator: true).pop();
-              }
-              widget.onTap(i);
-            },
-          ),
+          pageBuilder: (context, animation, secondaryAnimation) => TimekeeperScreen(),
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             final fade  = CurvedAnimation(parent: animation, curve: Curves.easeOut);
             final slide = Tween<Offset>(begin: const Offset(0.0, 0.018), end: Offset.zero)
