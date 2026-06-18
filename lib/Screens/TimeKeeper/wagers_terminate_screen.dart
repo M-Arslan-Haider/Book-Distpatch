@@ -1828,6 +1828,89 @@ class _WagersTerminateScreenState extends State<WagersTerminateScreen> {
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED Gradient AppBar Widget — same across all Wagers screens
 // ─────────────────────────────────────────────────────────────────────────────
+// class _WagersGradientHeader extends StatelessWidget {
+//   final String   title;
+//   final String   subtitle;
+//   final IconData icon;
+//   final Color    rightIconBg;
+//
+//   const _WagersGradientHeader({
+//     required this.title,
+//     required this.subtitle,
+//     required this.icon,
+//     this.rightIconBg = const Color(0x33FFFFFF),
+//   });
+//
+//   @override
+//   Widget build(BuildContext context) {
+//     return Container(
+//       decoration: const BoxDecoration(
+//         gradient: LinearGradient(
+//           colors: [Color(0xFF0C6B64), Color(0xFF1AAD9E)],
+//           begin:  Alignment.topLeft,
+//           end:    Alignment.bottomRight,
+//         ),
+//         borderRadius: BorderRadius.only(
+//           bottomLeft:  Radius.circular(28),
+//           bottomRight: Radius.circular(28),
+//         ),
+//       ),
+//       child: SafeArea(
+//         bottom: false,
+//         child: Padding(
+//           padding: const EdgeInsets.fromLTRB(8, 8, 8, 20),
+//           child: Row(
+//             children: [
+//               // Back button
+//               GestureDetector(
+//                 onTap: () => Get.back(),
+//                 child: Container(
+//                   width: 42, height: 42,
+//                   decoration: BoxDecoration(
+//                     color: Colors.white.withOpacity(0.2),
+//                     borderRadius: BorderRadius.circular(13),
+//                   ),
+//                   child: const Icon(Icons.arrow_back_ios_new_rounded,
+//                       color: Colors.white, size: 18),
+//                 ),
+//               ),
+//               const SizedBox(width: 12),
+//               // Title + subtitle
+//               Expanded(
+//                 child: Column(
+//                   crossAxisAlignment: CrossAxisAlignment.start,
+//                   children: [
+//                     Text(title,
+//                         style: const TextStyle(
+//                             fontSize:   22,
+//                             fontWeight: FontWeight.w700,
+//                             color:      Colors.white)),
+//                     const SizedBox(height: 2),
+//                     Text(subtitle,
+//                         style: const TextStyle(
+//                             fontSize: 13, color: Colors.white70)),
+//                   ],
+//                 ),
+//               ),
+//               // Right icon badge
+//               Container(
+//                 width: 42, height: 42,
+//                 decoration: BoxDecoration(
+//                   color: rightIconBg,
+//                   borderRadius: BorderRadius.circular(13),
+//                 ),
+//                 child: Icon(icon, color: Colors.white, size: 20),
+//               ),
+//             ],
+//           ),
+//         ),
+//       ),
+//     );
+//   }
+// }
+
+// In the _WagersGradientHeader class, update the gradient colors to match Navbar:
+
 class _WagersGradientHeader extends StatelessWidget {
   final String   title;
   final String   subtitle;
@@ -1846,7 +1929,7 @@ class _WagersGradientHeader extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [Color(0xFF0C6B64), Color(0xFF1AAD9E)],
+          colors: [Color(0xFF3DAF93), Color(0xFF1A6E59)], // 👈 Changed to match Navbar
           begin:  Alignment.topLeft,
           end:    Alignment.bottomRight,
         ),
@@ -1908,6 +1991,7 @@ class _WagersGradientHeader extends StatelessWidget {
     );
   }
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Section Label

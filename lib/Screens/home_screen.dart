@@ -683,6 +683,7 @@ import '../ViewModels/location_view_model.dart';
 import '../ViewModels/task_view_model.dart';
 import 'HomeScreenComponents/app_bottom_navbar.dart';
 import 'WidgetDesignes/travel_session_card.dart';
+import 'actions_screen.dart';
 import 'break_screen.dart';
 import 'leave_report_get_screen.dart';
 import 'my_task_activity_screen.dart';
@@ -1147,7 +1148,7 @@ class _HomeScreenState extends State<HomeScreen>
                 iconColor: const Color(0xFF3DAF93),
                 iconBg: const Color(0xFF3DAF93),
                 tileHeight: tileH,
-                onTap: () => Get.to(() => LeaveScreen()),
+                onTap: () => Get.to(() => ActionsScreen()),
               ),
               SizedBox(width: context.rs(12)),
               _actionTile(
