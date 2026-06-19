@@ -1,4 +1,3 @@
-
 import 'package:intl/intl.dart';
 
 class TaskModel {
@@ -207,6 +206,7 @@ class CreateTaskRequest {
 // ════════════════════════════════════════════════════════════════════════════
 class UpdateTaskRequest {
   final int taskId;
+  final int empId; // ← ADDED — naye TaskManagerUpdate proc ke :emp_id bind var ke liye
   final String status;
   final String comments;
   final String priority;
@@ -218,6 +218,7 @@ class UpdateTaskRequest {
 
   UpdateTaskRequest({
     required this.taskId,
+    required this.empId, // ← ADDED
     required this.status,
     required this.comments,
     required this.priority,
@@ -237,12 +238,11 @@ class UpdateTaskRequest {
 
   Map<String, dynamic> toJson() {
     final json = <String, dynamic>{
-      'id': taskId,
-      'status': status,  // ✅ Changed from 'task_status' to 'status' to match GET response
-      'comments': comments,
+      'task_id': taskId,        // ✅ Changed from 'id' to 'task_id' to match TaskManagerUpdate proc
+      'emp_id': empId,          // ← ADDED — proc ke :emp_id bind var ke liye
+      'status': status,
+      'remarks': comments,      // ✅ Changed from 'comments' to 'remarks' to match TaskManagerUpdate proc
       'priority': priority,
-      'updated_date': updatedDate,
-      'updated_time': updatedTime,
     };
 
     // Only add if not null/empty
@@ -259,3 +259,5 @@ class UpdateTaskRequest {
     return json;
   }
 }
+
+

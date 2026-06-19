@@ -231,7 +231,7 @@ class _AssignedTasksScreenState extends State<AssignedTasksScreen>
     debugPrint('🔍 AssignedTask - ID: ${task.id}, Title: ${task.taskTitle}');
 
     String selectedStatus   = task.status;
-    String selectedPriority = task.priority.isNotEmpty ? task.priority : 'Medium';
+    String selectedPriority = task.priority.isNotEmpty ? task.priority : 'medium';
     String? selectedCategory = task.category.isNotEmpty ? task.category : null;
     DateTime? selectedDueDate;
 
@@ -458,11 +458,11 @@ class _AssignedTasksScreenState extends State<AssignedTasksScreen>
                         title: 'Priority',
                         icon: Icons.flag_rounded,
                         child: Row(
-                          children: ['Low', 'Medium', 'High'].map((p) {
+                          children: ['low', 'medium', 'high'].map((p) {
                             final selected = selectedPriority == p;
-                            final color = p == 'High'
+                            final color = p == 'high'
                                 ? AppColors.error
-                                : p == 'Medium'
+                                : p == 'medium'
                                 ? AppColors.warning
                                 : AppColors.greenTeal;
                             return Expanded(
@@ -876,9 +876,9 @@ class _TaskCard extends StatelessWidget {
     }
 
     Color priorityColor = AppColors.textSecondary;
-    if (task.priority == 'High')   priorityColor = AppColors.error;
-    if (task.priority == 'Medium') priorityColor = AppColors.warning;
-    if (task.priority == 'Low')    priorityColor = AppColors.greenTeal;
+    if (task.priority == 'high')   priorityColor = AppColors.error;
+    if (task.priority == 'medium') priorityColor = AppColors.warning;
+    if (task.priority == 'low')    priorityColor = AppColors.greenTeal;
 
     return Container(
       decoration: BoxDecoration(

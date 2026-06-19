@@ -1,7 +1,11 @@
 import 'package:GPS_Workforce_Monitor/Screens/policy_screen.dart';
 import 'package:flutter/material.dart';
 import 'HomeScreenComponents/app_bottom_navbar.dart';
+import '../company_analytics/company_analytics_screen.dart';
+
+import 'company_help_screen.dart';
 import 'news_screen.dart';
+
 
 
 
@@ -48,22 +52,6 @@ class _CompanyItem {
   });
 
 
-}
-
-class _StatTile {
-  final IconData icon;
-  final String label;
-  final String value;
-  final String trend;
-  final bool isPositive;
-
-  const _StatTile({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.trend,
-    this.isPositive = true,
-  });
 }
 
 class CompanyScreen extends StatefulWidget {
@@ -158,35 +146,6 @@ class _CompanyScreenState extends State<CompanyScreen> {
       description: 'Facing an app issue? Here is how to reach the IT support team directly.',
       tags: [_Tag('SUPPORT', _orangeBg, _orangeTx), _Tag('IT', _lowBg, _lowText)],
       isUnread: false,
-    ),
-  ];
-
-  // ── Dummy data — Analytics ──────────────────────────────────────────
-  final List<_StatTile> _statTiles = const [
-    _StatTile(
-      icon: Icons.event_available_rounded,
-      label: 'Attendance Rate',
-      value: '96%',
-      trend: '+2% this month',
-    ),
-    _StatTile(
-      icon: Icons.groups_rounded,
-      label: 'Active Employees',
-      value: '124',
-      trend: '+5 new',
-    ),
-    _StatTile(
-      icon: Icons.task_alt_rounded,
-      label: 'Tasks Completed',
-      value: '87%',
-      trend: '-3% this week',
-      isPositive: false,
-    ),
-    _StatTile(
-      icon: Icons.alarm_on_rounded,
-      label: 'On-time Check-ins',
-      value: '92%',
-      trend: '+1% this month',
     ),
   ];
 
@@ -360,13 +319,16 @@ class _CompanyScreenState extends State<CompanyScreen> {
           children: [
             _buildHeader(),
             _buildSegmentedControl(),
-            if (_selectedTab != _CompanyTab.analytics)
+            if (_selectedTab != _CompanyTab.analytics &&
+                _selectedTab != _CompanyTab.help)
               _buildUnreadAndControls()
             else
               const SizedBox(height: 16),
             Expanded(
               child: _selectedTab == _CompanyTab.analytics
-                  ? _buildAnalyticsGrid()
+                  ? const  CompanyAnalyticsTab()
+                  : _selectedTab == _CompanyTab.help
+                  ? const CompanyHelpTab()
                   : _buildList(),
             ),
           ],
@@ -737,63 +699,4 @@ class _CompanyScreenState extends State<CompanyScreen> {
     );
   }
 
-  // ── Analytics grid ───────────────────────────────────────────────────
-  Widget _buildAnalyticsGrid() {
-    return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
-      itemCount: _statTiles.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 14,
-        crossAxisSpacing: 14,
-        childAspectRatio: 1.15,
-      ),
-      itemBuilder: (context, index) => _buildStatTile(_statTiles[index]),
-    );
-  }
-
-  Widget _buildStatTile(_StatTile stat) {
-    final trendColor = stat.isPositive ? const Color(0xFF15803D) : const Color(0xFFDC2626);
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _borderColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(color: _tealLight, borderRadius: BorderRadius.circular(10)),
-            child: Icon(stat.icon, color: _tealDark, size: 19),
-          ),
-          const Spacer(),
-          Text(stat.value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: _textDark)),
-          const SizedBox(height: 2),
-          Text(stat.label, style: const TextStyle(fontSize: 12, color: _textGray)),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Icon(
-                stat.isPositive ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
-                size: 12,
-                color: trendColor,
-              ),
-              const SizedBox(width: 2),
-              Expanded(
-                child: Text(
-                  stat.trend,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 10.5, color: trendColor, fontWeight: FontWeight.w600),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
 }

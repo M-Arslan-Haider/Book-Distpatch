@@ -197,8 +197,12 @@ class TaskViewModel extends GetxController {
 
     debugPrint('📝 [ViewModel] Updating task ID: $taskId');
 
+    final prefs   = await SharedPreferences.getInstance();
+    final empId   = int.tryParse(prefs.getString('userId') ?? '') ?? 0;
+
     final request = UpdateTaskRequest(
       taskId:       taskId,
+      empId:        empId, // ✅ naye proc ke :emp_id bind var ke liye
       status:       status,
       comments:     comments,
       priority:     priority,

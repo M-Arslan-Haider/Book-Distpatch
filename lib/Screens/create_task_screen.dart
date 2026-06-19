@@ -748,9 +748,11 @@ class _CreateTaskScreenState extends State<CreateTaskScreen>
   // ── Dropdown values ─────────────────────────────────────────────────────────
   String _status   = 'Pending';
   String _priority = 'Medium';
+  String _taskType = 'SELF'; // ✅ NEW — matches previous default in TaskViewModel.createTask()
 
   final List<String> _statusOptions   = ['Pending', 'In Progress', 'Completed'];
-  final List<String> _priorityOptions = ['Low', 'Medium', 'High'];
+  final List<String> _priorityOptions = ['low', 'medium', 'high'];
+  final List<String> _taskTypeOptions = ['SELF', 'ok', 'OFFICE', 'OTHER']; // ✅ NEW
 
   // ── Date ───────────────────────────────────────────────────────────────────
   DateTime? _dueDate;
@@ -881,6 +883,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen>
       priority:        _priority,
       dueDate:         _dueDateStr,
       comments:        _commentsCtrl.text.trim(),
+      taskType:        _taskType, // ✅ NEW — sends the dropdown-selected type
     );
 
     _isPosting = false;
@@ -1142,28 +1145,42 @@ class _CreateTaskScreenState extends State<CreateTaskScreen>
 
   // ── Status & Priority Row (mobile/tablet) ──────────────────────────────────
   Widget _buildStatusPriorityRow() {
-    return Row(
+    return Column(
       children: [
-        Expanded(
-          child: _buildDropdown(
-            label:    'Status',
-            value:    _status,
-            items:    _statusOptions,
-            icon:     Icons.circle_rounded,
-            color:    _statusColor(_status),
-            onChanged: (v) => setState(() => _status = v!),
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: _buildDropdown(
+                label:    'Status',
+                value:    _status,
+                items:    _statusOptions,
+                icon:     Icons.circle_rounded,
+                color:    _statusColor(_status),
+                onChanged: (v) => setState(() => _status = v!),
+              ),
+            ),
+            SizedBox(width: _responsiveSpacing()),
+            Expanded(
+              child: _buildDropdown(
+                label:    'Priority',
+                value:    _priority,
+                items:    _priorityOptions,
+                icon:     Icons.flag_rounded,
+                color:    _priorityColor(_priority),
+                onChanged: (v) => setState(() => _priority = v!),
+              ),
+            ),
+          ],
         ),
-        SizedBox(width: _responsiveSpacing()),
-        Expanded(
-          child: _buildDropdown(
-            label:    'Priority',
-            value:    _priority,
-            items:    _priorityOptions,
-            icon:     Icons.flag_rounded,
-            color:    _priorityColor(_priority),
-            onChanged: (v) => setState(() => _priority = v!),
-          ),
+        SizedBox(height: _responsiveSpacing()),
+        // ✅ NEW — Task Type dropdown
+        _buildDropdown(
+          label:    'Task Type',
+          value:    _taskType,
+          items:    _taskTypeOptions,
+          icon:     Icons.category_rounded,
+          color:    AppColors.primary,
+          onChanged: (v) => setState(() => _taskType = v!),
         ),
       ],
     );
@@ -1189,6 +1206,16 @@ class _CreateTaskScreenState extends State<CreateTaskScreen>
           icon:     Icons.flag_rounded,
           color:    _priorityColor(_priority),
           onChanged: (v) => setState(() => _priority = v!),
+        ),
+        SizedBox(height: _responsiveSpacing()),
+        // ✅ NEW — Task Type dropdown
+        _buildDropdown(
+          label:    'Task Type',
+          value:    _taskType,
+          items:    _taskTypeOptions,
+          icon:     Icons.category_rounded,
+          color:    AppColors.primary,
+          onChanged: (v) => setState(() => _taskType = v!),
         ),
       ],
     );
@@ -1597,3 +1624,4 @@ class _CreateTaskScreenState extends State<CreateTaskScreen>
     }
   }
 }
+

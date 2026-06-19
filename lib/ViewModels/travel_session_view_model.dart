@@ -1175,12 +1175,60 @@ class TravelViewModel extends GetxController {
     final destRadius= (loc['radius'] ?? 100).toDouble();
     final destName  = loc['location_name'] as String? ?? 'destination';
 
-    final radiusCheck = await _checkInsideRadius(
-      targetLat   : destLat,
-      targetLng   : destLng,
-      radiusMeters: destRadius,
-      locationName: destName,
-    );
+    // ── NEW: polygon / rectangle shape check (same priority as clock-in) ────
+    // FIX: Switch Location was always doing a plain circle/radius check on
+    // the destination, so switching INTO a polygon/rectangle location could
+    // say "outside" even when standing inside the actual shape.
+    final destShapeCoords = loc['shape_coords']?.toString();
+    final destShapeType   = loc['shape_type']?.toString();
+
+    _RadiusResult radiusCheck;
+
+    if (destShapeType == 'polygon' && destShapeCoords != null && destShapeCoords.isNotEmpty) {
+      final polygon = _parsePolygonCoords(destShapeCoords);
+      radiusCheck = (polygon != null && polygon.isNotEmpty)
+          ? await _checkInsideShape(
+        isPolygon   : true,
+        polygon     : polygon,
+        rect        : null,
+        targetLat   : destLat,
+        targetLng   : destLng,
+        radiusMeters: destRadius,
+        locationName: destName,
+      )
+          : await _checkInsideRadius(
+        targetLat   : destLat,
+        targetLng   : destLng,
+        radiusMeters: destRadius,
+        locationName: destName,
+      );
+    } else if (destShapeType == 'rectangle' && destShapeCoords != null && destShapeCoords.isNotEmpty) {
+      final rect = _parseRectangleCoords(destShapeCoords);
+      radiusCheck = (rect != null)
+          ? await _checkInsideShape(
+        isPolygon   : false,
+        polygon     : null,
+        rect        : rect,
+        targetLat   : destLat,
+        targetLng   : destLng,
+        radiusMeters: destRadius,
+        locationName: destName,
+      )
+          : await _checkInsideRadius(
+        targetLat   : destLat,
+        targetLng   : destLng,
+        radiusMeters: destRadius,
+        locationName: destName,
+      );
+    } else {
+      radiusCheck = await _checkInsideRadius(
+        targetLat   : destLat,
+        targetLng   : destLng,
+        radiusMeters: destRadius,
+        locationName: destName,
+      );
+    }
+    // ──────────────────────────────────────────────────────────────────────
 
     if (!radiusCheck.inside) {
       isOutsideRadius.value = true;
@@ -1511,6 +1559,23 @@ class TravelViewModel extends GetxController {
         await prefs.setDouble('selected_lng',             newLng);
         await prefs.setDouble('selected_radius',          newRadius);
         await prefs.setString('selected_location_name',   newLocationName);
+
+        // ── NEW: persist the destination's shape so a later "Start Travel"
+        // guard reads the CORRECT geofence shape for the new current
+        // location, instead of stale data from the previous location.
+        final newShapeCoords = locData['shape_coords']?.toString();
+        final newShapeType   = locData['shape_type']?.toString();
+        if (newShapeCoords != null && newShapeCoords.isNotEmpty) {
+          await prefs.setString('selected_shape_coords', newShapeCoords);
+        } else {
+          await prefs.remove('selected_shape_coords');
+        }
+        if (newShapeType != null && newShapeType.isNotEmpty) {
+          await prefs.setString('selected_shape_type', newShapeType);
+        } else {
+          await prefs.remove('selected_shape_type');
+        }
+
         await prefs.setString('${newWorkId}_location',    newLocationName);
         await prefs.setDouble('${newWorkId}_lat',         newLat);
         await prefs.setDouble('${newWorkId}_lng',         newLng);
@@ -1857,12 +1922,166 @@ class TravelViewModel extends GetxController {
           inside: true, distanceMeters: 0, radiusMeters: radius, locationName: name);
     }
 
+    // ── NEW: polygon / rectangle shape check (same priority as clock-in) ────
+    // FIX: Start Travel was always doing a plain circle/radius check, so for
+    // polygon or rectangle locations it could say "outside" even when the
+    // user was physically inside the shape. This mirrors the same
+    // polygon → rectangle → radius priority used by the clock-in geofence
+    // check, without touching any other logic.
+    final shapeCoords = prefs.getString('selected_shape_coords');
+    final shapeType   = prefs.getString('selected_shape_type');
+
+    if (shapeType == 'polygon' && shapeCoords != null && shapeCoords.isNotEmpty) {
+      final polygon = _parsePolygonCoords(shapeCoords);
+      if (polygon != null && polygon.isNotEmpty) {
+        return _checkInsideShape(
+          isPolygon   : true,
+          polygon     : polygon,
+          rect        : null,
+          targetLat   : lat,
+          targetLng   : lng,
+          radiusMeters: radius,
+          locationName: name,
+        );
+      }
+    }
+
+    if (shapeType == 'rectangle' && shapeCoords != null && shapeCoords.isNotEmpty) {
+      final rect = _parseRectangleCoords(shapeCoords);
+      if (rect != null) {
+        return _checkInsideShape(
+          isPolygon   : false,
+          polygon     : null,
+          rect        : rect,
+          targetLat   : lat,
+          targetLng   : lng,
+          radiusMeters: radius,
+          locationName: name,
+        );
+      }
+    }
+    // ──────────────────────────────────────────────────────────────────────
+
     return _checkInsideRadius(
       targetLat   : lat,
       targetLng   : lng,
       radiusMeters: radius,
       locationName: name,
     );
+  }
+
+  /// ── NEW: Shape-aware geofence check (polygon / rectangle) ────────────────
+  /// Used only by [_checkInsideCurrentLocationRadius] (Start Travel guard) so
+  /// it respects the saved location's actual shape instead of always falling
+  /// back to a plain circle/radius distance check.
+  Future<_RadiusResult> _checkInsideShape({
+    required bool isPolygon,
+    List<Map<String, double>>? polygon,
+    Map<String, Map<String, double>>? rect,
+    required double targetLat,
+    required double targetLng,
+    required double radiusMeters,
+    required String locationName,
+  }) async {
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit      : const Duration(seconds: 10),
+      );
+
+      final dist = Geolocator.distanceBetween(
+          pos.latitude, pos.longitude, targetLat, targetLng);
+
+      final bool inside = isPolygon
+          ? _isPointInPolygon(pos.latitude, pos.longitude, polygon!)
+          : _isPointInRectangle(pos.latitude, pos.longitude, rect!);
+
+      debugPrint('🔷 [TravelVM] Shape check (${isPolygon ? "polygon" : "rectangle"}): '
+          'inside=$inside, dist=${dist.toStringAsFixed(1)} m for "$locationName"');
+
+      return _RadiusResult(
+        inside        : inside,
+        distanceMeters: dist,
+        radiusMeters  : radiusMeters,
+        locationName  : locationName,
+      );
+    } catch (e) {
+      debugPrint('⚠️ [TravelVM] _checkInsideShape GPS error: $e — allowing action');
+      return _RadiusResult(
+          inside: true, distanceMeters: 0, radiusMeters: radiusMeters,
+          locationName: locationName);
+    }
+  }
+
+  // ── NEW: Polygon / rectangle parsing helpers (mirrors clock-in geofence) ──
+
+  List<Map<String, double>>? _parsePolygonCoords(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final j      = jsonDecode(raw) as Map<String, dynamic>;
+      final coords = (j['coordinates'] as List<dynamic>)
+          .map((c) => {
+        'lat': double.parse(c['lat'].toString()),
+        'lng': double.parse(c['lng'].toString()),
+      })
+          .toList();
+      return coords;
+    } catch (e) {
+      debugPrint('⚠️ [TravelVM] _parsePolygonCoords error: $e');
+      return null;
+    }
+  }
+
+  bool _isPointInPolygon(
+      double lat, double lng, List<Map<String, double>> polygon) {
+    int  n      = polygon.length;
+    bool inside = false;
+    int  j      = n - 1;
+    for (int i = 0; i < n; i++) {
+      final double xi = polygon[i]['lat']!;
+      final double yi = polygon[i]['lng']!;
+      final double xj = polygon[j]['lat']!;
+      final double yj = polygon[j]['lng']!;
+      if (((yi > lng) != (yj > lng)) &&
+          (lat < (xj - xi) * (lng - yi) / (yj - yi) + xi)) {
+        inside = !inside;
+      }
+      j = i;
+    }
+    return inside;
+  }
+
+  /// Parses a rectangle shape_coords JSON into NE and SW corners.
+  Map<String, Map<String, double>>? _parseRectangleCoords(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final j  = jsonDecode(raw) as Map<String, dynamic>;
+      final ne = j['ne'] as Map<String, dynamic>;
+      final sw = j['sw'] as Map<String, dynamic>;
+      return {
+        'ne': {
+          'lat': double.parse(ne['lat'].toString()),
+          'lng': double.parse(ne['lng'].toString()),
+        },
+        'sw': {
+          'lat': double.parse(sw['lat'].toString()),
+          'lng': double.parse(sw['lng'].toString()),
+        },
+      };
+    } catch (e) {
+      debugPrint('⚠️ [TravelVM] _parseRectangleCoords error: $e');
+      return null;
+    }
+  }
+
+  /// Checks if a point is inside a rectangle defined by NE and SW corners.
+  bool _isPointInRectangle(
+      double lat, double lng, Map<String, Map<String, double>> rect) {
+    final neLat = rect['ne']!['lat']!;
+    final neLng = rect['ne']!['lng']!;
+    final swLat = rect['sw']!['lat']!;
+    final swLng = rect['sw']!['lng']!;
+    return lat >= swLat && lat <= neLat && lng >= swLng && lng <= neLng;
   }
 
   /// Generic radius check against any [targetLat]/[targetLng]/[radiusMeters].
