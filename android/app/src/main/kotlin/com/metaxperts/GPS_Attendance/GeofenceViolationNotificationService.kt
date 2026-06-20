@@ -145,16 +145,26 @@ class GeofenceViolationNotificationService : Service() {
     override fun onCreate() {
         super.onCreate()
         android.util.Log.d("GeoViolNotif", "🟢 Service onCreate")
+
+        // ✅ FIX: Create channel FIRST, then immediately call startForeground()
+        // Never let anything run between channel creation and startForeground()
         createNotificationChannels()
-        acquireWakeLock()
-        startForeground(FG_NOTIFICATION_ID, buildForegroundNotification())
+        startForeground(FG_NOTIFICATION_ID, buildForegroundNotification()) // ← MOVED UP
+
+        acquireWakeLock() // ← now safe to do after startForeground
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // ✅ FIX: MUST call startForeground() here too.
+        // onCreate() is skipped when the service is already running.
+        // Every startForegroundService() call (alarm fires every 15s) resets
+        // the 5-second timer, so startForeground() must be called each time.
+        startForeground(FG_NOTIFICATION_ID, buildForegroundNotification())
+
         android.util.Log.d("GeoViolNotif", "▶️ onStartCommand — starting poll loop")
         isDestroyed = false
         startPolling()
-        scheduleAlarmRestart()   // always (re)schedule so kill recovery is up-to-date
+        scheduleAlarmRestart()
         return START_STICKY
     }
 
