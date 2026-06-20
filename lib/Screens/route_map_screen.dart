@@ -1,17 +1,4 @@
-// ═══════════════════════════════════════════════════════════════════════════
-// route_map_screen.dart
-//
-// Opens when the driver taps "Start" on a ScheduleScreen card.
-// Displays a real road route between Origin → Destination on OpenStreetMap.
-//
-// ── pubspec.yaml dependencies ──────────────────────────────────────────────
-//   flutter_map: ^7.0.2
-//   latlong2:    ^0.9.0
-//   http:        ^1.2.0   (already present)
-//
-// ── AndroidManifest.xml permissions ───────────────────────────────────────
-//   <uses-permission android:name="android.permission.INTERNET"/>
-// ═══════════════════════════════════════════════════════════════════════════
+
 
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -845,3 +832,6 @@ class _LocationRow extends StatelessWidget {
     );
   }
 }
+
+
+

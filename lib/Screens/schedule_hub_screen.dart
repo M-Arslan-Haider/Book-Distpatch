@@ -1,5 +1,5 @@
-
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -31,6 +31,9 @@ class _ScheduleHubScreenState extends State<ScheduleHubScreen> {
   static const _teal = Color(0xFF0C9E8E);
   static const _tealDark = Color(0xFF0C6B64);
   static const _pillBg = Color(0xFFEDE3D2);
+
+  // ✅ GPS-accuracy tolerance for rectangle/polygon geofence checks (meters)
+  static const double _geofenceBufferMeters = 10.0;
 
   static const _periodTabs = ['Daily', 'Weekly', 'Monthly'];
   String _selectedPeriod = 'Daily';
@@ -316,6 +319,170 @@ class _ScheduleHubScreenState extends State<ScheduleHubScreen> {
 
   double? _getGeoRadius(Map<String, dynamic> r) =>
       _toDouble(r['RADIUS'] ?? r['radius']);
+
+  // ✅ Geofence shape support (circle / rectangle / polygon)
+  String? _getShapeType(Map<String, dynamic> r) {
+    final v = r['SHAPE_TYPE'] ?? r['shape_type'];
+    if (v == null) return null;
+    final s = v.toString().trim().toLowerCase();
+    return s.isEmpty ? null : s;
+  }
+
+  Map<String, dynamic>? _getShapeCoords(Map<String, dynamic> r) {
+    final raw = r['SHAPE_COORDS'] ?? r['shape_coords'];
+    if (raw == null) return null;
+    try {
+      if (raw is String) {
+        if (raw.trim().isEmpty) return null;
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+        return null;
+      } else if (raw is Map) {
+        return Map<String, dynamic>.from(raw);
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
+
+  bool _isPointInRectangle(double lat, double lng, Map<String, dynamic> coords) {
+    try {
+      final ne = coords['ne'] as Map;
+      final sw = coords['sw'] as Map;
+      final neLat = _toDouble(ne['lat']);
+      final neLng = _toDouble(ne['lng']);
+      final swLat = _toDouble(sw['lat']);
+      final swLng = _toDouble(sw['lng']);
+      if (neLat == null || neLng == null || swLat == null || swLng == null) {
+        return false;
+      }
+      final minLat = swLat < neLat ? swLat : neLat;
+      final maxLat = swLat < neLat ? neLat : swLat;
+      final minLng = swLng < neLng ? swLng : neLng;
+      final maxLng = swLng < neLng ? neLng : swLng;
+
+      // ✅ Expand bounds slightly to tolerate normal GPS accuracy noise
+      final centerLat = (minLat + maxLat) / 2;
+      final latBufferDeg = _geofenceBufferMeters / 111320.0;
+      final lngBufferDeg = _geofenceBufferMeters /
+          (111320.0 * math.cos(centerLat * math.pi / 180.0));
+
+      return lat >= (minLat - latBufferDeg) &&
+          lat <= (maxLat + latBufferDeg) &&
+          lng >= (minLng - lngBufferDeg) &&
+          lng <= (maxLng + lngBufferDeg);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Distance in meters from point to a line segment, using a flat-plane
+  /// approximation (accurate enough for short geofence-scale distances).
+  double _pointToSegmentDistanceMeters(
+      double lat,
+      double lng,
+      double lat1,
+      double lng1,
+      double lat2,
+      double lng2,
+      double refLat,
+      ) {
+    final mLat = 111320.0;
+    final mLng = 111320.0 * math.cos(refLat * math.pi / 180.0);
+
+    final px = (lng - lng1) * mLng;
+    final py = (lat - lat1) * mLat;
+    final dx = (lng2 - lng1) * mLng;
+    final dy = (lat2 - lat1) * mLat;
+
+    final lenSq = dx * dx + dy * dy;
+    double t = lenSq == 0 ? 0 : ((px * dx + py * dy) / lenSq);
+    t = t.clamp(0.0, 1.0);
+
+    final ddx = px - (dx * t);
+    final ddy = py - (dy * t);
+    return math.sqrt(ddx * ddx + ddy * ddy);
+  }
+
+  bool _isPointInPolygon(double lat, double lng, Map<String, dynamic> coords) {
+    try {
+      final List pts = coords['coordinates'] as List;
+      final List<List<double>> poly = [];
+      for (final p in pts) {
+        final m = p as Map;
+        final plat = _toDouble(m['lat']);
+        final plng = _toDouble(m['lng']);
+        if (plat == null || plng == null) return false;
+        poly.add([plat, plng]);
+      }
+      if (poly.length < 3) return false;
+
+      bool inside = false;
+      int j = poly.length - 1;
+      for (int i = 0; i < poly.length; i++) {
+        final yi = poly[i][0]; // lat
+        final xi = poly[i][1]; // lng
+        final yj = poly[j][0];
+        final xj = poly[j][1];
+        final intersect = ((yi > lat) != (yj > lat)) &&
+            (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+        j = i;
+      }
+
+      if (inside) {
+        debugPrint('🔷 [Polygon Check] userLat=$lat userLng=$lng result=true (inside)');
+        return true;
+      }
+
+      // ✅ Just outside? Check distance to nearest polygon edge — if within
+      // the GPS-accuracy buffer, still treat as inside.
+      final refLat = poly[0][0];
+      double minEdgeDist = double.infinity;
+      int k = poly.length - 1;
+      for (int i = 0; i < poly.length; i++) {
+        final d = _pointToSegmentDistanceMeters(
+          lat, lng, poly[k][0], poly[k][1], poly[i][0], poly[i][1], refLat,
+        );
+        if (d < minEdgeDist) minEdgeDist = d;
+        k = i;
+      }
+
+      final withinBuffer = minEdgeDist <= _geofenceBufferMeters;
+      debugPrint('🔷 [Polygon Check] userLat=$lat userLng=$lng nearestEdgeDist=${minEdgeDist.toStringAsFixed(1)}m buffer=${_geofenceBufferMeters}m result=$withinBuffer');
+      return withinBuffer;
+    } catch (e) {
+      debugPrint('❌ [Polygon Check] Parse error: $e | coords=$coords');
+      return false;
+    }
+  }
+
+  /// ✅ Unified geofence check: handles circle (LAT_IN/LNG_IN/RADIUS),
+  /// rectangle (NE/SW corners), and polygon (list of points) shapes.
+  bool _isInsideGeofence({
+    required double userLat,
+    required double userLng,
+    required Map<String, dynamic> loc,
+    required double geoLat,
+    required double geoLng,
+    required double geoRadius,
+  }) {
+    final shapeType = _getShapeType(loc);
+    final shapeCoords = _getShapeCoords(loc);
+
+    // 🐛 DEBUG (temporary): log raw shape info to diagnose geofence mismatches
+    debugPrint('🧭 [Geofence Check] shapeType=$shapeType userLat=$userLat userLng=$userLng raw_shape_coords=${loc['SHAPE_COORDS'] ?? loc['shape_coords']}');
+
+    if (shapeType == 'rectangle' && shapeCoords != null) {
+      return _isPointInRectangle(userLat, userLng, shapeCoords);
+    } else if (shapeType == 'polygon' && shapeCoords != null) {
+      return _isPointInPolygon(userLat, userLng, shapeCoords);
+    }
+
+    final distanceM = Geolocator.distanceBetween(userLat, userLng, geoLat, geoLng);
+    return distanceM <= geoRadius;
+  }
 
   DateTime? _getRawScheduleDate(Map<String, dynamic> r) {
     final raw = r['SCHEDULE_DATE'] ?? r['schedule_date'];
@@ -675,11 +842,17 @@ class _ScheduleHubScreenState extends State<ScheduleHubScreen> {
         locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
       );
 
-      final distanceM = Geolocator.distanceBetween(
-        pos.latitude, pos.longitude, geoLat, geoLng,
+      final shapeType = _getShapeType(loc);
+      final isInside = _isInsideGeofence(
+        userLat: pos.latitude,
+        userLng: pos.longitude,
+        loc: loc,
+        geoLat: geoLat,
+        geoLng: geoLng,
+        geoRadius: geoRadius,
       );
 
-      if (distanceM <= geoRadius) {
+      if (isInside) {
         final now = DateTime.now().toIso8601String();
         final action = {
           'schedule_no': scheduleNo,  // ✅ Use SCHEDULE_NO
@@ -711,14 +884,27 @@ class _ScheduleHubScreenState extends State<ScheduleHubScreen> {
           _updateLocationStatus(loc, 'Started');
         }
       } else {
-        _showStatusSnackBar(
-          title: 'Outside Location Range',
-          subtitle: 'You must be within ${geoRadius.toStringAsFixed(0)} m of "$name" to start. '
-              'You are currently ${distanceM.toStringAsFixed(0)} m away.',
-          icon: Icons.wrong_location_rounded,
-          color: const Color(0xFFDC2626),
-          duration: const Duration(seconds: 4),
-        );
+        if (shapeType == 'rectangle' || shapeType == 'polygon') {
+          _showStatusSnackBar(
+            title: 'Outside Location Range',
+            subtitle: 'You must be inside the marked boundary of "$name" to start.',
+            icon: Icons.wrong_location_rounded,
+            color: const Color(0xFFDC2626),
+            duration: const Duration(seconds: 4),
+          );
+        } else {
+          final distanceM = Geolocator.distanceBetween(
+            pos.latitude, pos.longitude, geoLat, geoLng,
+          );
+          _showStatusSnackBar(
+            title: 'Outside Location Range',
+            subtitle: 'You must be within ${geoRadius.toStringAsFixed(0)} m of "$name" to start. '
+                'You are currently ${distanceM.toStringAsFixed(0)} m away.',
+            icon: Icons.wrong_location_rounded,
+            color: const Color(0xFFDC2626),
+            duration: const Duration(seconds: 4),
+          );
+        }
       }
     } catch (e) {
       _showStatusSnackBar(
