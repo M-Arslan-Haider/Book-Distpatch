@@ -21,7 +21,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 #version: 1.0.0+2
 #version: 27.1.2+6
 #version: 29.1.0+8
-version: 8.0.0+0
+version: 8.0.0+1
 
 environment:
   sdk: ^3.5.4
@@ -79,7 +79,7 @@ dependencies:
   #  shared_preferences: ^2.5.2
   shared_preferences: ^2.2.2
   flutter_image_compress: ^2.4.0
-  intl: ^0.20.1
+  intl: ^0.20.2
   connectivity_plus: ^6.1.2
   #  connectivity: ^3.0.6
   cloud_functions: ^5.0.3
@@ -129,6 +129,10 @@ dependencies:
   firebase_remote_config: ^5.5.0
   local_auth: ^3.0.1
   timezone: ^0.10.1
+  dio: ^5.9.2
+#  speech_to_text: ^6.6.0
+  flutter_tts: ^3.8.0
+  speech_to_text: ^7.4.0
 
 
 

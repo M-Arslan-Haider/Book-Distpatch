@@ -3604,7 +3604,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
       return Container(
         decoration: BoxDecoration(
-          color: _cardBg,
+          color: Color(0xFF1A6E59),
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
@@ -3651,7 +3651,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
                           color: isClockedIn
-                              ? _accentGreen.withOpacity(0.5)
+                              ? Color(0xFF1A6E59).withOpacity(0.5)
                               : _labelClr.withOpacity(0.3),
                           width: 1,
                         ),

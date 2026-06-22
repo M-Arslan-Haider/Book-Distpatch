@@ -1338,7 +1338,7 @@ class _TravelSessionCardState extends State<TravelSessionCard> {
 
           return Container(
             decoration: BoxDecoration(
-              color: const Color(0xFF0F3D2E),
+              color: const Color(0xFF1A6E59),
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(

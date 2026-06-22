@@ -759,7 +759,7 @@ class LoginRepository extends GetxService {
   static const String prefCachedEntryTime = 'cached_entry_time';
   static const String prefCachedShiftType = 'cached_shift_type'; // 🌙 Night/Day shift
   static const String prefCachedWagers = 'cached_wagers'; // 📦 Offline wager-detail cache
-  static const String currentAppVersion = "2.3";
+  static const String currentAppVersion = "2.4";
 
   final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
 
@@ -1089,7 +1089,7 @@ class LoginRepository extends GetxService {
       'emp_id': empId,
       'emp_name': empName,
       'company_code': companyCode,
-      'app_version': 2.3,
+      'app_version': 2.4,
       'timestamp': DateTime.now().toIso8601String(),
       'device_info': deviceModel,
       'android_version': androidVersion,

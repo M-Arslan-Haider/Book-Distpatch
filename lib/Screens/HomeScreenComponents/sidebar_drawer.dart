@@ -7,6 +7,7 @@ import '../../Services/biometric_service.dart';
 import '../../Services/logout_api_service.dart';
 import '../../ViewModels/login_view_model.dart';
 import '../../ViewModels/attendance_view_model.dart';
+import '../../chatbot/ui/chatbot_screen.dart';
 import '../SalarySlipScreen.dart';
 import '../home_screen.dart';
 import '../login_screen.dart';
@@ -129,6 +130,13 @@ class _AppDrawerState extends State<AppDrawer>
         label: 'Salary Slip',
         onTap: () => Get.to(() => const SalarySlipScreen()),
       ),
+
+      // _NavItem(
+      //   icon: Icons.person_rounded,
+      //   label: 'ChatBot',
+      //   onTap: () => Get.to(() => ChatbotScreen()),
+      // ),
+
     ]),
   ];
 
