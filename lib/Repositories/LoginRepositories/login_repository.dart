@@ -778,7 +778,37 @@ class LoginRepository extends GetxService {
     return 'unknown';
   }
 
-
+  // ─────────────────────────────────────────────────────────────────────────
+  // DEVICE TOKEN — Single Device Login
+  // Generated once from device hardware IDs and cached in SharedPreferences.
+  // Android: androidInfo.id + model + brand combination
+  // iOS: identifierForVendor
+  // ─────────────────────────────────────────────────────────────────────────
+  Future<String> _getDeviceToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    String? token = prefs.getString('local_device_token');
+    if (token == null || token.isEmpty) {
+      try {
+        if (defaultTargetPlatform == TargetPlatform.android) {
+          final androidInfo = await _deviceInfo.androidInfo;
+          token = '${androidInfo.id}_${androidInfo.model}_${androidInfo.brand}';
+        } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+          final iosInfo = await _deviceInfo.iosInfo;
+          token = iosInfo.identifierForVendor ?? 'ios_unknown';
+        } else {
+          token = 'unknown_device';
+        }
+      } catch (e) {
+        debugPrint('⚠️ [DEVICE TOKEN] Could not generate: $e');
+        token = 'unknown_device';
+      }
+      await prefs.setString('local_device_token', token!);
+      debugPrint('🔑 [DEVICE TOKEN] Generated & cached: $token');
+    } else {
+      debugPrint('🔑 [DEVICE TOKEN] Loaded from cache: $token');
+    }
+    return token!;
+  }
 
   // ─────────────────────────────────────────────────────────────────────────
   // NIGHT / DAY SHIFT DETECTION HELPERS
@@ -993,6 +1023,21 @@ class LoginRepository extends GetxService {
           return LoginResult.wrongPassword();
         }
 
+        // ── Single Device Login: Device Token Check ───────────────────────
+        final String localToken   = await _getDeviceToken();
+        final String? serverToken = user.device_token;
+        debugPrint('🔑 [DEVICE CHECK] Local  token: $localToken');
+        debugPrint('🔑 [DEVICE CHECK] Server token: $serverToken');
+
+        if (serverToken != null &&
+            serverToken.isNotEmpty &&
+            serverToken != localToken) {
+          debugPrint('❌ [DEVICE CHECK] Token mismatch — login rejected');
+          return LoginResult.deviceConflict();
+        }
+        debugPrint('✅ [DEVICE CHECK] Token OK — proceeding with login');
+        // ─────────────────────────────────────────────────────────────────
+
         if (user.end_time != null && user.end_time!.isNotEmpty) {
           await prefs.setString(prefCachedEndTime, user.end_time!);
         }
@@ -1031,6 +1076,7 @@ class LoginRepository extends GetxService {
           empId: userId,
           empName: user.emp_name ?? '',
           companyCode: savedCompanyCode,
+          deviceToken: localToken,
         );
 
         // ── Refresh location cache at every successful login ──────────────────
@@ -1051,6 +1097,7 @@ class LoginRepository extends GetxService {
     required String empId,
     required String empName,
     required String companyCode,
+    String deviceToken = '',
   }) async {
     final signInEndpoint = RemoteConfigService.getSignInUrl();
 
@@ -1086,15 +1133,16 @@ class LoginRepository extends GetxService {
     }
 
     final body = jsonEncode({
-      'emp_id': empId,
-      'emp_name': empName,
-      'company_code': companyCode,
-      'app_version': 2.4,
-      'timestamp': DateTime.now().toIso8601String(),
-      'device_info': deviceModel,
+      'emp_id':          empId,
+      'emp_name':        empName,
+      'company_code':    companyCode,
+      'app_version':     2.4,
+      'timestamp':       DateTime.now().toIso8601String(),
+      'device_info':     deviceModel,
       'android_version': androidVersion,
-      'device_id': deviceId,
-      'sim_info': simInfo,
+      'device_id':       deviceId,
+      'sim_info':        simInfo,
+      'device_token':    deviceToken,   // ← Single Device Login token
     });
 
     try {
@@ -1456,7 +1504,7 @@ class LoginRepository extends GetxService {
   }
 }
 
-enum LoginStatus { success, notInCompany, wrongPassword, noCompany, networkError, versionMismatch }
+enum LoginStatus { success, notInCompany, wrongPassword, noCompany, networkError, versionMismatch, deviceConflict }
 
 class LoginResult {
   final LoginStatus status;
@@ -1483,6 +1531,9 @@ class LoginResult {
 
   factory LoginResult.versionMismatch([String? message]) =>
       LoginResult._(status: LoginStatus.versionMismatch, errorMessage: message);
+
+  factory LoginResult.deviceConflict() =>
+      LoginResult._(status: LoginStatus.deviceConflict);
 
   bool get isSuccess => status == LoginStatus.success;
 }
