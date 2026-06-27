@@ -129,6 +129,18 @@
             </intent-filter>
         </receiver>
 
+        <!-- ✅ POWER OFF RECEIVER
+             Detects device shutdown and saves event locally.
+             On next app open, power_off_service.dart posts it to server. -->
+        <receiver
+            android:name=".PowerOffReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.ACTION_SHUTDOWN" />
+            </intent-filter>
+        </receiver>
+
         <!-- Google Maps API Key -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"

@@ -23,6 +23,7 @@ import 'ViewModels/location_view_model.dart';
 import 'Models/LoginModels/login_models.dart';
 import 'Services/remote_config_service.dart';
 import 'Services/play_integrity_service.dart'; // ✅ NEW
+import 'Services/power_off_service.dart';       // ✅ POWER OFF
 import 'constants.dart';
 
 Future<void> main() async {
@@ -43,6 +44,10 @@ Future<void> main() async {
   debugPrint("Initializing SharedPreferences main...");
   final prefs = await SharedPreferences.getInstance();
   await prefs.reload();
+
+  // ✅ POWER OFF: Check and post any pending power off event
+  // NOTE: Must be BEFORE prefs.clear() — fresh install wipe se pehle post kar do
+  await PowerOffService.checkAndPostPowerOffEvent();
 
   // Restore company code on app start
   final savedCompanyCode = prefs.getString(prefCompanyCode);

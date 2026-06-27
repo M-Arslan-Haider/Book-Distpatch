@@ -7558,6 +7558,8 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       case 'Lunch Break: User Clock Out':
       case 'System Break  - Clockout':
         return '⏸️ Break time shuru — Auto Clock-Out ho gaya';
+      case 'System Clockout - Auto Time Off':
+        return 'Auto clockout because Automatic Date & Time was turned off';
       default:
         return 'Auto clockout completed successfully';
     }
