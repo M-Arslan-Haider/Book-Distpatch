@@ -21,7 +21,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 #version: 1.0.0+2
 #version: 27.1.2+6
 #version: 29.1.0+8
-version: 8.0.0+1
+version: 8.0.0+6
 
 environment:
   sdk: ^3.5.4
@@ -118,7 +118,7 @@ dependencies:
   http: ^1.5.0
   google_maps_cluster_manager: ^3.1.0
   latlong2: ^0.9.1
-  flutter_map: ^8.2.2
+  flutter_map: ^8.3.0
   file_picker: ^10.3.7
   mqtt_client: ^10.11.9
   lucide_icons: ^0.257.0
@@ -133,6 +133,10 @@ dependencies:
 #  speech_to_text: ^6.6.0
   flutter_tts: ^3.8.0
   speech_to_text: ^7.4.0
+  emoji_picker_flutter: ^4.4.0
+  audioplayers: ^6.7.1
+  record: ^6.2.1
+  open_file: ^3.5.11
 
 
 

@@ -10,6 +10,7 @@ import '../Models/task_model.dart';
 import 'HomeScreenComponents/app_bottom_navbar.dart';
 import 'HomeScreenComponents/navbar.dart';
 import 'create_task_screen.dart';
+import 'task_chat_screen.dart';
 
 /// Active tab enum
 enum _TaskTab { assigned, myTasks }
@@ -1306,7 +1307,45 @@ class _TaskCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    // ── Update button — hidden when Completed or Cancelled ──
+                    // ── Messages Button (Naya) ──
+                    if (!isCompleted && !isCancelled)
+                      GestureDetector(
+                        onTap: () {
+                          Get.to(
+                                () => TaskChatScreen(task: task),
+                            transition: Transition.rightToLeft,
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeOut,
+                          );
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withOpacity(0.10),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                                color: AppColors.primary.withOpacity(0.20)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.message_rounded,
+                                  size: 13, color: AppColors.primary),
+                              const SizedBox(width: 4),
+                              const Text(
+                                'Messages',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    const SizedBox(width: 8),
+                    // ── Update button ── (pehle se tha)
                     if (!isCompleted && !isCancelled)
                       GestureDetector(
                         onTap: onUpdate,

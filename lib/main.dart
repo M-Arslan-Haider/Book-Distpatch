@@ -24,6 +24,7 @@ import 'Models/LoginModels/login_models.dart';
 import 'Services/remote_config_service.dart';
 import 'Services/play_integrity_service.dart'; // ✅ NEW
 import 'Services/power_off_service.dart';       // ✅ POWER OFF
+import 'Services/exit_reason_service.dart';     // ✅ FORCE-STOP DETECTION
 import 'constants.dart';
 
 Future<void> main() async {
@@ -85,6 +86,11 @@ Future<void> main() async {
       job: prefs.getString(prefUserDesignation),
     );
   }
+
+  // ✅ FORCE-STOP DETECTION: read how the process died last time and, if it was
+  // a deliberate force stop (or OEM kill / crash), post that event to the server.
+  // Additive — reads the OS exit-reason log, dedupes by timestamp, never blocks startup.
+  await ExitReasonService.runOnLaunch();
 
   // Start listening for connectivity changes
   FakeGpsLog.startConnectivityListener();

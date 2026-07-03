@@ -1828,6 +1828,44 @@ class LocationMonitorService : Service() {
     }
 
     // ══════════════════════════════════════════════════════════════════════════
+    // DAY-WISE SHIFT SCHEDULE — Kotlin helper  ✅
+    // Reads today's end_time from flutter.cached_shift_schedule JSON.
+    // Returns:
+    //   non-empty string → today's end_time (use this for alarm)
+    //   empty string ""  → today is non-working day (cancel alarm, skip)
+    //   null             → no day-wise schedule (fall back to flutter.cached_end_time)
+    // ══════════════════════════════════════════════════════════════════════════
+    private fun getTodayShiftEndFromSchedule(
+        prefs: android.content.SharedPreferences
+    ): String? {
+        return try {
+            val scheduleJson = prefString(prefs, "flutter.cached_shift_schedule")
+            if (scheduleJson.isEmpty()) return null
+
+            val schedule = org.json.JSONObject(scheduleJson)
+            val dayName  = java.text.SimpleDateFormat("EEEE", java.util.Locale.ENGLISH)
+                .format(java.util.Date()) // e.g. "Monday"
+
+            if (!schedule.has(dayName)) return null
+
+            val dayData = schedule.getJSONObject(dayName)
+            val working = dayData.optString("working", "Yes")
+
+            if (working.equals("No", ignoreCase = true)) {
+                android.util.Log.d("LocationMonitor",
+                    "📅 [SHIFT SCHEDULE] Non-working day ($dayName) — alarm skipped")
+                return "" // signal: non-working day, cancel alarm
+            }
+
+            dayData.optString("end_time", "").trim()
+        } catch (e: Exception) {
+            android.util.Log.w("LocationMonitor",
+                "⚠️ [SHIFT SCHEDULE] Parse error: ${e.message}")
+            null // parse failed → fall back to cached_end_time
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
     // ✅ BACKGROUND ALARM FIX — SHIFT END EXACT ALARM
     // scheduleShiftEndAlarm(): reads cached_end_time → schedules AlarmManager.RTC_WAKEUP
     //   at the exact wall-clock shift-end time.  This wakeup fires even if the
@@ -1837,10 +1875,29 @@ class LocationMonitorService : Service() {
 
     private fun scheduleShiftEndAlarm() {
         try {
-            val prefs      = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val endTimeStr = prefString(prefs, "flutter.cached_end_time")
+            val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+            // ✅ Day-wise schedule: try today's end_time first, fallback to cached_end_time
+            val scheduleResult = getTodayShiftEndFromSchedule(prefs)
+            val endTimeStr: String = when {
+                scheduleResult == null -> {
+                    // No day-wise schedule yet — use flat cached value
+                    val cached = prefString(prefs, "flutter.cached_end_time")
+                    if (cached.isEmpty()) {
+                        android.util.Log.d("LocationMonitor", "⏰ [SHIFT ALARM] No cached_end_time — skipping")
+                        return
+                    }
+                    cached
+                }
+                scheduleResult.isEmpty() -> {
+                    // Non-working day — cancel any existing alarm and skip
+                    cancelShiftEndAlarm()
+                    return
+                }
+                else -> scheduleResult
+            }
             if (endTimeStr.isEmpty()) {
-                android.util.Log.d("LocationMonitor", "⏰ [SHIFT ALARM] No cached_end_time — skipping")
+                android.util.Log.d("LocationMonitor", "⏰ [SHIFT ALARM] No end_time for today — skipping")
                 return
             }
             // ✅ FIX: Overtime user — aaj clockout already ho chuka hai → alarm schedule mat karo

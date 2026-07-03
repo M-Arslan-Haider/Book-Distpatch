@@ -732,6 +732,11 @@ class MainActivity : FlutterFragmentActivity(), ProviderInstaller.ProviderInstal
                     else -> result.notImplemented()
                 }
             }
+
+        // ✅ EXIT-REASON (FORCE-STOP) DETECTION — additive, touches nothing above.
+        // Registers channel "com.metaxperts.gwm/exit_reason" so Flutter can read
+        // how the process died last time (force stop vs OEM kill vs crash).
+        ExitReasonPlugin.register(this, flutterEngine)
     }
 
     private fun hasLocationPermission(): Boolean {
