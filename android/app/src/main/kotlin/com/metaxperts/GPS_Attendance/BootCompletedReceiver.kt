@@ -7,20 +7,14 @@ import android.content.Intent
 class BootCompletedReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
-            // Check if user was clocked in before reboot
             val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             val isClockedIn = prefs.getBoolean("flutter.isClockedIn", false)
             val isFrozen = prefs.getBoolean("flutter.is_timer_frozen", false)
 
-            // Only restart if clocked in and not already frozen (event handled)
             if (isClockedIn && !isFrozen) {
-                // Identity (deviceId, companyCode, empName) will be read from
-                // SharedPreferences by LocationMonitorService.onStartCommand()
-                // because the service now persists them on every start.
                 val serviceIntent = Intent(context, LocationMonitorService::class.java)
                 context.startForegroundService(serviceIntent)
 
-                // ✅ NEW: Agar overtime session active tha to OvertimeMonitorService bhi restart karo
                 val otClockInTime = prefs.getString("overtime_session_clock_in_time", null)
                 if (!otClockInTime.isNullOrEmpty()) {
                     android.util.Log.d("BootReceiver", "⏰ [OT] Restoring OvertimeMonitorService after boot")
@@ -28,8 +22,6 @@ class BootCompletedReceiver : BroadcastReceiver() {
                     context.startForegroundService(otIntent)
                 }
 
-                // ✅ POWER OFF BACKUP: Agar ACTION_SHUTDOWN ROM ne block kar diya tha to
-                // BOOT_COMPLETED pe power off event save karo — PowerOffService app open par post karega
                 try {
                     val empId = prefs.getString("flutter.userId", null)
                         ?: prefs.getString("flutter.user_id", null)
@@ -48,14 +40,21 @@ class BootCompletedReceiver : BroadcastReceiver() {
                         ?: prefs.getString("flutter.COMPANY_CODE", null)
                         ?: ""
 
-                    val time = java.text.SimpleDateFormat(
-                        "yyyy-MM-dd'T'HH:mm:ss",
-                        java.util.Locale.getDefault()
-                    ).format(java.util.Date())
-
-                    // Sirf tab save karo jab ACTION_SHUTDOWN ne pehle se save nahi kiya
+                    // ✅ FIX: Boot time ki jagah last_active_time use karo
+                    // ACTION_SHUTDOWN ne already exact time save kiya hoga
+                    // Agar nahi kiya (ROM ne block kiya) to last_active_time use karo
                     val alreadySaved = prefs.getString("flutter.pending_power_off", null)
                     if (alreadySaved.isNullOrEmpty()) {
+                        val lastActiveTime = prefs.getString("flutter.last_active_time", null)
+                        val time = if (!lastActiveTime.isNullOrEmpty()) {
+                            lastActiveTime!! // App ka last 60-second checkpoint
+                        } else {
+                            java.text.SimpleDateFormat(
+                                "yyyy-MM-dd'T'HH:mm:ss",
+                                java.util.Locale.US
+                            ).format(java.util.Date())
+                        }
+
                         val json = """{"emp_id":"$empId","emp_name":"$empName","company_code":"$companyCode","power_off":"yes","event_time":"$time"}"""
 
                         prefs.edit()

@@ -445,6 +445,7 @@ class MainActivity : FlutterFragmentActivity(), ProviderInstaller.ProviderInstal
             .setMethodCallHandler { call, result ->
                 when (call.method) {
 
+
                     "isAutoTimeEnabled" -> {
                         try {
                             val autoTime = Settings.Global.getInt(
