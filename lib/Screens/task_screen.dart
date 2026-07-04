@@ -462,15 +462,16 @@ class _TaskScreenState extends State<TaskScreen>
   }
 
   // ====================== UPDATE SHEET ======================
+  // ====================== PROFESSIONAL UPDATE SHEET (DASHBOARD STYLE) ======================
   void _showUpdateSheet(TaskModel task) {
     debugPrint('🔍 UpdateSheet - ID: ${task.id}, Title: ${task.taskTitle}');
 
     // Check if task is already completed or cancelled
-    final isCompletedOrCancelled = task.status == 'Done' || task.status == 'Cancel' || task.status == 'Cancelled';
+    final isCompletedOrCancelled = task.status == 'Done' || task.status == 'Cancel' || task.status == 'Cancelled' || task.status.toLowerCase() == 'completed';
 
     if (isCompletedOrCancelled) {
       Get.showSnackbar(const GetSnackBar(
-        message: 'This task is already completed or cancelled and cannot be updated.',
+        message: 'This task is already completed or cancelled.',
         duration: Duration(seconds: 2),
         backgroundColor: AppColors.warning,
         borderRadius: 10,
@@ -480,11 +481,9 @@ class _TaskScreenState extends State<TaskScreen>
       return;
     }
 
-    // ✅ Map backend status to UI display
+    // Data Mapping
     String displayStatus = task.status;
-    if (displayStatus == 'Done') {
-      displayStatus = 'Completed';
-    }
+    if (displayStatus == 'Done') displayStatus = 'Completed';
 
     String selectedStatus = displayStatus;
     String selectedPriority = task.priority.isNotEmpty ? task.priority : 'Medium';
@@ -503,55 +502,36 @@ class _TaskScreenState extends State<TaskScreen>
 
     final commentsController = TextEditingController(text: task.comments);
     final vm = Get.find<TaskViewModel>();
-
-    // ✅ Status options: Open, In Progress, Completed, Cancel
     final statusOptions = ['Open', 'In Progress', 'Completed', 'Cancel'];
 
     Get.bottomSheet(
       StatefulBuilder(
         builder: (sheetCtx, setSheetState) => Container(
           decoration: const BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            color: AppColors.surface, // Clean background
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
+          // Fixed height for dashboard-like layout
+          height: MediaQuery.of(sheetCtx).size.height * 0.92,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // --- Clean Drag Handle ---
               Container(
-                margin: const EdgeInsets.only(top: 12, bottom: 8),
+                margin: const EdgeInsets.only(top: 12, bottom: 2),
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: AppColors.divider,
-                  borderRadius: BorderRadius.circular(2),
+                  color: AppColors.textSecondary.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [AppColors.primary, AppColors.cyan],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(28),
-                    topRight: Radius.circular(28),
-                  ),
-                ),
+
+              // --- Minimalist Header ---
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
                 child: Row(
                   children: [
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: const Icon(Icons.edit_note_rounded,
-                          size: 24, color: Colors.white),
-                    ),
-                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -559,398 +539,291 @@ class _TaskScreenState extends State<TaskScreen>
                           const Text(
                             'Update Task',
                             style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
                               letterSpacing: -0.5,
                             ),
                           ),
+                          const SizedBox(height: 2),
                           Text(
                             task.taskTitle,
-                            style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.white.withOpacity(0.85)),
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w400,
+                              color: AppColors.textSecondary,
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ],
                       ),
                     ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '#${task.id}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
-              Flexible(
+
+              const Divider(height: 1, color: AppColors.divider),
+
+              // --- Professional Dashboard Body ---
+              Expanded(
                 child: SingleChildScrollView(
                   padding: EdgeInsets.only(
-                    left: 20,
-                    right: 20,
-                    top: 20,
-                    bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 24,
+                    left: 24,
+                    right: 24,
+                    top: 16,
+                    bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 20,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(colors: [
-                            AppColors.cyan.withOpacity(0.08),
-                            AppColors.primary.withOpacity(0.08),
-                          ]),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                              color: AppColors.cyan.withOpacity(0.2)),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.task_alt_rounded,
-                                size: 20, color: AppColors.cyan),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text('Task ID',
-                                      style: TextStyle(
-                                          fontSize: 10,
+
+                      // ================= STATUS SECTION =================
+                      _buildProfLabel('Status'),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: statusOptions.map((s) {
+                          final selected = selectedStatus == s;
+                          final color = s == 'Open'
+                              ? AppColors.warning
+                              : s == 'In Progress'
+                              ? AppColors.skyBlueDk
+                              : s == 'Completed'
+                              ? AppColors.greenTeal
+                              : AppColors.error;
+                          return Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                              child: GestureDetector(
+                                onTap: () => setSheetState(() => selectedStatus = s),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  decoration: BoxDecoration(
+                                    color: selected ? color : Colors.white,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: selected ? color : AppColors.divider,
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Icon(
+                                        s == 'Open' ? Icons.hourglass_empty_rounded
+                                            : s == 'In Progress' ? Icons.autorenew_rounded
+                                            : s == 'Completed' ? Icons.check_circle_rounded
+                                            : Icons.cancel_rounded,
+                                        size: 18,
+                                        color: selected ? Colors.white : color,
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        s,
+                                        style: TextStyle(
+                                          fontSize: 11,
                                           fontWeight: FontWeight.w600,
-                                          color: AppColors.textSecondary)),
-                                  Text('#${task.id}',
-                                      style: const TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w700,
-                                          color: AppColors.textPrimary)),
-                                ],
+                                          color: selected ? Colors.white : color,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
                             ),
-                          ],
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 24),
+
+                      // ================= PRIORITY SECTION =================
+                      _buildProfLabel('Priority'),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: ['Low', 'Medium', 'High'].map((p) {
+                          final selected = selectedPriority == p;
+                          final color = p == 'High'
+                              ? AppColors.error
+                              : p == 'Medium'
+                              ? AppColors.warning
+                              : AppColors.greenTeal;
+                          return Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                              child: GestureDetector(
+                                onTap: () => setSheetState(() => selectedPriority = p),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  decoration: BoxDecoration(
+                                    color: selected ? color.withOpacity(0.08) : Colors.white,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: selected ? color : AppColors.divider,
+                                      width: selected ? 2 : 1,
+                                    ),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Icon(
+                                        p == 'High' ? Icons.flag_rounded
+                                            : p == 'Medium' ? Icons.flag_outlined
+                                            : Icons.flag_outlined,
+                                        size: 18,
+                                        color: selected ? color : AppColors.textSecondary,
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        p,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: selected ? color : AppColors.textSecondary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 24),
+
+                      // ================= DUE DATE SECTION =================
+                      _buildProfLabel('Due Date'),
+                      const SizedBox(height: 12),
+                      GestureDetector(
+                        onTap: () async {
+                          final picked = await showDatePicker(
+                            context: sheetCtx,
+                            initialDate: selectedDueDate ?? DateTime.now(),
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2030),
+                            builder: (context, child) => Theme(
+                              data: Theme.of(context).copyWith(
+                                colorScheme: const ColorScheme.light(
+                                  primary: AppColors.primary,
+                                  onPrimary: Colors.white,
+                                  surface: Colors.white,
+                                ),
+                              ),
+                              child: child!,
+                            ),
+                          );
+                          if (picked != null) setSheetState(() => selectedDueDate = picked);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.divider),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                selectedDueDate == null
+                                    ? 'Set due date'
+                                    : DateFormat('dd MMM yyyy').format(selectedDueDate!),
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: selectedDueDate == null ? AppColors.textSecondary : AppColors.textPrimary,
+                                ),
+                              ),
+                              const Icon(Icons.calendar_today_outlined, size: 18, color: AppColors.textSecondary),
+                            ],
+                          ),
                         ),
                       ),
                       const SizedBox(height: 24),
 
-                      // ── Status ──
-                      _buildModernSection(
-                        title: 'Status',
-                        icon: Icons.timeline_rounded,
-                        child: Row(
-                          children: statusOptions.map((s) {
-                            final selected = selectedStatus == s;
-                            final color = s == 'Open'
-                                ? AppColors.warning
-                                : s == 'In Progress'
-                                ? AppColors.skyBlueDk
-                                : s == 'Completed'
-                                ? AppColors.greenTeal
-                                : AppColors.error;
-                            return Expanded(
-                              child: GestureDetector(
-                                onTap: () =>
-                                    setSheetState(() => selectedStatus = s),
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 200),
-                                  margin: const EdgeInsets.only(right: 8),
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
-                                  decoration: BoxDecoration(
-                                    gradient: selected
-                                        ? LinearGradient(
-                                      colors: [
-                                        color.withOpacity(0.9),
-                                        color,
-                                      ],
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                    )
-                                        : null,
-                                    color: selected ? null : AppColors.cardBg,
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: selected
-                                          ? color
-                                          : AppColors.divider,
-                                      width: selected ? 0 : 1,
-                                    ),
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        s == 'Open'
-                                            ? Icons.hourglass_empty_rounded
-                                            : s == 'In Progress'
-                                            ? Icons.autorenew_rounded
-                                            : s == 'Completed'
-                                            ? Icons.check_circle_rounded
-                                            : Icons.cancel_rounded,
-                                        size: 16,
-                                        color: selected ? Colors.white : color,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Flexible(
-                                        child: Text(
-                                          s,
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w600,
-                                            color: selected
-                                                ? Colors.white
-                                                : color,
-                                          ),
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-
-                      // ── Priority ──
-                      _buildModernSection(
-                        title: 'Priority',
-                        icon: Icons.flag_rounded,
-                        child: Row(
-                          children: ['Low', 'Medium', 'High'].map((p) {
-                            final selected = selectedPriority == p;
-                            final color = p == 'High'
-                                ? AppColors.error
-                                : p == 'Medium'
-                                ? AppColors.warning
-                                : AppColors.greenTeal;
-                            return Expanded(
-                              child: GestureDetector(
-                                onTap: () =>
-                                    setSheetState(() => selectedPriority = p),
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 200),
-                                  margin: const EdgeInsets.only(right: 8),
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
-                                  decoration: BoxDecoration(
-                                    color: selected
-                                        ? color.withOpacity(0.12)
-                                        : AppColors.cardBg,
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: selected
-                                          ? color
-                                          : AppColors.divider,
-                                      width: selected ? 1.5 : 1,
-                                    ),
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      Icon(Icons.flag_rounded,
-                                          size: 18, color: color),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        p,
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
-                                          color: color,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-
-                      // ── Due date ──
-                      _buildModernSection(
-                        title: 'Due Date',
-                        icon: Icons.calendar_today_rounded,
-                        child: GestureDetector(
-                          onTap: () async {
-                            final picked = await showDatePicker(
-                              context: sheetCtx,
-                              initialDate:
-                              selectedDueDate ?? DateTime.now(),
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime(2030),
-                              builder: (ctx, child) => Theme(
-                                data: Theme.of(ctx).copyWith(
-                                  colorScheme: const ColorScheme.light(
-                                    primary: AppColors.cyan,
-                                    onPrimary: Colors.white,
-                                  ),
-                                ),
-                                child: child!,
-                              ),
-                            );
-                            if (picked != null) {
-                              setSheetState(
-                                      () => selectedDueDate = picked);
-                            }
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: AppColors.cardBg,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: selectedDueDate != null
-                                    ? AppColors.cyan.withOpacity(0.4)
-                                    : AppColors.divider,
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 40,
-                                  height: 40,
-                                  decoration: BoxDecoration(
-                                    color: AppColors.cyan.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Icon(
-                                    Icons.calendar_month_rounded,
-                                    color: selectedDueDate != null
-                                        ? AppColors.cyan
-                                        : AppColors.textSecondary,
-                                    size: 20,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Due Date',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w500,
-                                          color: selectedDueDate != null
-                                              ? AppColors.cyan
-                                              : AppColors.textSecondary,
-                                          letterSpacing: 0.5,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        selectedDueDate == null
-                                            ? 'Tap to set a deadline'
-                                            : DateFormat('EEEE, dd MMM yyyy')
-                                            .format(selectedDueDate!),
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w700,
-                                          color: selectedDueDate == null
-                                              ? AppColors.textSecondary
-                                              : AppColors.textPrimary,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Icon(Icons.chevron_right_rounded,
-                                    color: AppColors.textSecondary, size: 24),
-                              ],
-                            ),
+                      // ================= COMMENTS SECTION =================
+                      _buildProfLabel('Comments'),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: commentsController,
+                        maxLines: 3,
+                        style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
+                        decoration: InputDecoration(
+                          hintText: 'Add notes...',
+                          hintStyle: TextStyle(color: AppColors.textSecondary.withOpacity(0.6)),
+                          filled: true,
+                          fillColor: Colors.white,
+                          contentPadding: const EdgeInsets.all(14),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: AppColors.divider),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: AppColors.divider),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
                           ),
                         ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 32),
 
-                      // ── Comments ──
-                      _buildModernSection(
-                        title: 'Comments',
-                        icon: Icons.comment_rounded,
-                        child: TextField(
-                          controller: commentsController,
-                          maxLines: 4,
-                          style: const TextStyle(
-                              fontSize: 13, color: AppColors.textPrimary),
-                          decoration: InputDecoration(
-                            hintText: 'Add your comments or notes...',
-                            hintStyle: TextStyle(
-                              color: AppColors.textSecondary.withOpacity(0.5),
-                              fontSize: 13,
-                            ),
-                            filled: true,
-                            fillColor: AppColors.cardBg,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: BorderSide.none,
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: BorderSide.none,
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: const BorderSide(
-                                  color: AppColors.cyan, width: 1.5),
-                            ),
-                            contentPadding: const EdgeInsets.all(16),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 28),
-
-                      // ── Action buttons ──
+                      // ================= ACTION BUTTONS (Fully Professional) =================
                       Row(
                         children: [
                           Expanded(
-                            child: GestureDetector(
-                              onTap: () => Get.back(),
-                              child: Container(
-                                height: 52,
-                                decoration: BoxDecoration(
-                                  color: AppColors.cardBg,
-                                  borderRadius: BorderRadius.circular(16),
-                                  border:
-                                  Border.all(color: AppColors.divider),
+                            child: TextButton(
+                              onPressed: () => Get.back(),
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                foregroundColor: AppColors.textSecondary,
+                                backgroundColor: Colors.transparent,
+                                side: const BorderSide(color: AppColors.divider),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
-                                child: const Center(
-                                  child: Text(
-                                    'Cancel',
-                                    style: TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                ),
+                              ),
+                              child: const Text(
+                                'Cancel',
+                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                               ),
                             ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
-                            child: Obx(() => GestureDetector(
-                              onTap: vm.isUpdating.value
-                                  ? null
-                                  : () async {
+                            child: Obx(() => ElevatedButton(
+                              onPressed: vm.isUpdating.value ? null : () async {
                                 String? dueDateStr;
                                 if (selectedDueDate != null) {
-                                  dueDateStr = DateFormat('yyyy-MM-dd')
-                                      .format(selectedDueDate!);
+                                  dueDateStr = DateFormat('yyyy-MM-dd').format(selectedDueDate!);
                                 }
-
-                                // ✅ Convert UI status to backend status
                                 final backendStatus = _getBackendStatus(selectedStatus);
-                                debugPrint('🔄 [Update] UI Status: $selectedStatus → Backend: $backendStatus');
-
                                 final ok = await vm.updateTask(
                                   taskId: task.id,
                                   status: backendStatus,
-                                  comments:
-                                  commentsController.text.trim(),
+                                  comments: commentsController.text.trim(),
                                   priority: selectedPriority,
                                   dueDate: dueDateStr,
                                   category: selectedCategory,
                                   isAssigned: true,
                                 );
-
                                 if (ok) {
                                   _updatedIds.add(task.id);
                                   Get.back();
@@ -958,87 +831,39 @@ class _TaskScreenState extends State<TaskScreen>
                                     message: 'Task updated successfully!',
                                     duration: Duration(seconds: 2),
                                     backgroundColor: AppColors.greenTeal,
-                                    icon: Icon(
-                                      Icons.check_circle_outline_rounded,
-                                      color: Colors.white,
-                                    ),
+                                    icon: Icon(Icons.check_circle_outline_rounded, color: Colors.white),
                                     borderRadius: 10,
                                     margin: EdgeInsets.all(12),
                                   ));
                                 } else {
                                   Get.showSnackbar(GetSnackBar(
-                                    message: vm.errorMessage.value
-                                        .isNotEmpty
-                                        ? vm.errorMessage.value
-                                        : 'Update failed. Try again.',
+                                    message: vm.errorMessage.value.isNotEmpty ? vm.errorMessage.value : 'Update failed.',
                                     duration: const Duration(seconds: 3),
                                     backgroundColor: AppColors.error,
-                                    icon: const Icon(
-                                      Icons.error_outline_rounded,
-                                      color: Colors.white,
-                                    ),
+                                    icon: const Icon(Icons.error_outline_rounded, color: Colors.white),
                                     borderRadius: 10,
                                     margin: const EdgeInsets.all(12),
                                   ));
                                 }
                               },
-                              child: Container(
-                                height: 52,
-                                decoration: BoxDecoration(
-                                  gradient: vm.isUpdating.value
-                                      ? null
-                                      : const LinearGradient(
-                                    colors: [
-                                      AppColors.primary,
-                                      AppColors.cyan,
-                                      AppColors.greenTeal,
-                                    ],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  ),
-                                  color: vm.isUpdating.value
-                                      ? AppColors.divider
-                                      : null,
-                                  borderRadius: BorderRadius.circular(16),
-                                  boxShadow: vm.isUpdating.value
-                                      ? []
-                                      : [
-                                    BoxShadow(
-                                      color: AppColors.cyan
-                                          .withOpacity(0.3),
-                                      blurRadius: 12,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                backgroundColor: AppColors.primary,
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
-                                child: Center(
-                                  child: vm.isUpdating.value
-                                      ? const SizedBox(
-                                    width: 22,
-                                    height: 22,
-                                    child: CircularProgressIndicator(
-                                      color: Colors.white,
-                                      strokeWidth: 2.5,
-                                    ),
-                                  )
-                                      : const Row(
-                                    mainAxisAlignment:
-                                    MainAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.save_rounded,
-                                          color: Colors.white, size: 18),
-                                      SizedBox(width: 8),
-                                      Text(
-                                        'Save Changes',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                              ),
+                              child: vm.isUpdating.value
+                                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                  : const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.save_rounded, size: 18),
+                                  SizedBox(width: 8),
+                                  Text('Save', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                                ],
                               ),
                             )),
                           ),
@@ -1055,6 +880,22 @@ class _TaskScreenState extends State<TaskScreen>
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       enableDrag: true,
+    );
+  }
+
+  // ====================== PROFESSIONAL SECTION LABEL ======================
+  Widget _buildProfLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4.0),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: AppColors.textSecondary.withOpacity(0.9),
+          letterSpacing: 0.5,
+        ),
+      ),
     );
   }
 
@@ -1333,7 +1174,7 @@ class _TaskCard extends StatelessWidget {
                                   size: 13, color: AppColors.primary),
                               const SizedBox(width: 4),
                               const Text(
-                                'Messages',
+                                'Chat',
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
@@ -1433,3 +1274,4 @@ class _MetaChip extends StatelessWidget {
     );
   }
 }
+

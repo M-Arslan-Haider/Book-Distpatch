@@ -8,17 +8,20 @@ import android.util.Log
 class PowerOffReceiver : BroadcastReceiver() {
 
     companion object {
-        private const val TAG              = "PowerOffReceiver"
-        private const val PREFS_NAME       = "FlutterSharedPreferences"
-        private const val KEY_POWER_OFF    = "flutter.pending_power_off"
+        private const val TAG = "PowerOffReceiver"
+        private const val PREFS_NAME = "FlutterSharedPreferences"
+        // ✅ FIX: "flutter." prefix ZARURI hai — Flutter's SharedPreferences plugin
+        // internally is reads "flutter." + key. Agar prefix nahi toh Flutter null pata hai.
+        private const val KEY_POWER_OFF = "flutter.pending_power_off"
         private const val KEY_POWER_OFF_TIME = "flutter.pending_power_off_time"
+        // ✅ Exact shutdown timestamp key — matches rubyform_orderbooking
+        private const val KEY_SHUTDOWN_TIME = "flutter.pending_shutdown_time"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_SHUTDOWN) return
 
         Log.d(TAG, "ACTION_SHUTDOWN received — saving locally")
-
 
         try {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -53,6 +56,7 @@ class PowerOffReceiver : BroadcastReceiver() {
             prefs.edit()
                 .putString(KEY_POWER_OFF, json)
                 .putString(KEY_POWER_OFF_TIME, time)
+                .putLong(KEY_SHUTDOWN_TIME, System.currentTimeMillis())
                 .commit()
 
             Log.d(TAG, "Power off event saved locally: $json")

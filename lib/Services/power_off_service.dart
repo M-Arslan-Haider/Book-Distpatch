@@ -7,9 +7,10 @@ class PowerOffService {
   static const String _baseUrl =
       'http://oracle.metaxperts.net/ords/gps_workforce/';
 
-  static const String _keyPowerOff      = 'pending_power_off';
-  static const String _keyPowerOffTime  = 'pending_power_off_time';
-  static const String _keyLastActive    = 'last_active_time';
+  // ✅ These keys match PowerOffReceiver.kt (NO "flutter." prefix)
+  static const String _keyPowerOff = 'pending_power_off';
+  static const String _keyPowerOffTime = 'pending_power_off_time';
+  static const String _keyLastActive = 'last_active_time';
 
   /// Har 60 second mein call karo — timer_card se
   static Future<void> saveLastActiveTime() async {

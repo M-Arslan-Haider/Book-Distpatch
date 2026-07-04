@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';  // ✅ ADDED for jsonEncode
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -42,12 +43,24 @@ Future<void> main() async {
   await RemoteConfigService.refresh();
   debugPrint("🔄 Remote Config force refreshed");
 
+  // ── ✅ Capture pending shutdown time ──
+  await _capturePendingShutdownTime();
+
   debugPrint("Initializing SharedPreferences main...");
   final prefs = await SharedPreferences.getInstance();
   await prefs.reload();
 
+  // ✅ FRESH INSTALL DETECTION - MOVED BEFORE PowerOffService
+  final isAppInstalled = prefs.getBool('app_installed_flag') ?? false;
+  if (!isAppInstalled) {
+    await prefs.clear();                              // Wipe stale session
+    await prefs.setBool('app_installed_flag', true);  // Mark as installed
+    debugPrint('🆕 Fresh install detected — session cleared');
+  }
+  // ✅ END
+
   // ✅ POWER OFF: Check and post any pending power off event
-  // NOTE: Must be BEFORE prefs.clear() — fresh install wipe se pehle post kar do
+  // MOVED AFTER fresh install check so data is not cleared after posting
   await PowerOffService.checkAndPostPowerOffEvent();
 
   // Restore company code on app start
@@ -56,15 +69,6 @@ Future<void> main() async {
     DBHelper.setCompanyCode(savedCompanyCode);
     debugPrint('🏢 Restored company code: $savedCompanyCode');
   }
-
-  // ✅ FRESH INSTALL DETECTION
-  final isAppInstalled = prefs.getBool('app_installed_flag') ?? false;
-  if (!isAppInstalled) {
-    await prefs.clear();                              // Wipe stale session
-    await prefs.setBool('app_installed_flag', true);  // Mark as installed
-    debugPrint('🆕 Fresh install detected — session cleared');
-  }
-  // ✅ END
 
   // Register dependencies
   Get.put(LoginRepository(), permanent: true);
@@ -100,6 +104,82 @@ Future<void> main() async {
 
   debugPrint("Running the app...");
   runApp(const MyApp());
+}
+
+/// ── ✅ EXACT COPY from rubyform_orderbooking ──
+/// ShutdownReceiver / LocationMonitorService native side par
+/// "pending_shutdown_time" key ke andar exact shutdown time (millis)
+/// save karta hai. Yahan usko read karke PowerOffService ke through
+/// server par post kar dete hain.
+Future<void> _capturePendingShutdownTime() async {
+  debugPrint('🔍 [ShutdownCapture] Checking for pending shutdown time...');
+
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+
+    final pendingMillis = prefs.getInt('pending_shutdown_time');
+
+    if (pendingMillis == null) {
+      debugPrint('ℹ️ [ShutdownCapture] Koi pending shutdown time nahi mila');
+      return;
+    }
+
+    debugPrint('🔍 [ShutdownCapture] Pending millis mila: $pendingMillis');
+
+    // Read user data from SharedPreferences
+    final empId = prefs.getString('flutter.emp_id') ??
+        prefs.getString('emp_id') ??
+        prefs.getString('flutter.user_id') ??
+        prefs.getString('user_id') ?? '';
+
+    final empName = prefs.getString('flutter.emp_name') ??
+        prefs.getString('emp_name') ??
+        prefs.getString('flutter.user_name') ??
+        prefs.getString('user_name') ?? '';
+
+    final companyCode = prefs.getString('flutter.company_code') ??
+        prefs.getString('company_code') ?? '';
+
+    debugPrint('🔍 [ShutdownCapture] empId=$empId empName=$empName companyCode=$companyCode');
+
+    if (empId.isEmpty) {
+      debugPrint('⚠️ [ShutdownCapture] emp_id khali hai — record discard kar rahe hain');
+      await prefs.remove('pending_shutdown_time');
+      return;
+    }
+
+    final shutdownTime = DateTime.fromMillisecondsSinceEpoch(pendingMillis);
+    final formattedTime =
+        '${shutdownTime.year}-${shutdownTime.month.toString().padLeft(2, '0')}-${shutdownTime.day.toString().padLeft(2, '0')}'
+        'T${shutdownTime.hour.toString().padLeft(2, '0')}:${shutdownTime.minute.toString().padLeft(2, '0')}:${shutdownTime.second.toString().padLeft(2, '0')}';
+
+    debugPrint('💾 [ShutdownCapture] Shutdown captured → empId=$empId time=$formattedTime');
+
+    // ── Store for PowerOffService to process ──
+    final powerOffData = {
+      'emp_id': empId,
+      'emp_name': empName,
+      'company_code': companyCode,
+      'power_off': 'yes',
+      'event_time': formattedTime,
+    };
+
+    await prefs.setString('pending_power_off', jsonEncode(powerOffData));
+    await prefs.setString('pending_power_off_time', formattedTime);
+
+    // Clear pending shutdown time so it doesn't fire again
+    await prefs.remove('pending_shutdown_time');
+    debugPrint('🧹 [ShutdownCapture] pending_shutdown_time key clear kar di');
+
+    // ── Immediately try to post to server ──
+    debugPrint('📡 [ShutdownCapture] Trying to post power-off event to server...');
+    await PowerOffService.checkAndPostPowerOffEvent();
+
+  } catch (e, stack) {
+    debugPrint('❌ [ShutdownCapture] Error: $e');
+    debugPrint('❌ [ShutdownCapture] Stack: $stack');
+  }
 }
 
 class MyApp extends StatelessWidget {

@@ -2016,6 +2016,7 @@ class _AttachmentBubbleState extends State<_AttachmentBubble> {
   }
 
   void _openImageViewer(Uint8List bytes) {
+    FocusScope.of(context).unfocus();
     Navigator.of(context).push(
       PageRouteBuilder(
         opaque: false,
@@ -2238,10 +2239,7 @@ class _AttachmentBubbleState extends State<_AttachmentBubble> {
             final bytes = snapshot.data!;
             return GestureDetector(
               onTap: () => _openImageViewer(bytes),
-              child: Hero(
-                tag: 'attachment_$_fileUrl',
-                child: Image.memory(bytes, fit: BoxFit.cover),
-              ),
+              child: Image.memory(bytes, fit: BoxFit.cover),
             );
           },
         ),
@@ -2383,7 +2381,14 @@ class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
+      // FIX: without this, if the keyboard is still open from the chat
+      // input when an attachment is tapped, Scaffold shrinks the body to
+      // avoid the keyboard, squeezing the image into a tiny sliver at the
+      // top instead of the full screen. This viewer has no text field, so
+      // it never needs to resize for the keyboard.
+      resizeToAvoidBottomInset: false,
       body: Stack(
+        fit: StackFit.expand,
         children: [
           // FIX: Image now properly centered — the image is constrained to
           // the exact viewport size before being handed to InteractiveViewer,
@@ -2400,25 +2405,22 @@ class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
                       width: constraints.maxWidth,
                       height: constraints.maxHeight,
                       child: Center(
-                        child: Hero(
-                          tag: 'attachment_${widget.url}',
-                          child: widget.initialBytes != null
-                              ? Image.memory(widget.initialBytes!, fit: BoxFit.contain)
-                              : Image.network(
-                            widget.url,
-                            fit: BoxFit.contain,
-                            loadingBuilder: (context, child, progress) {
-                              if (progress == null) return child;
-                              return const Center(
-                                child: CircularProgressIndicator(
-                                    color: Colors.white),
-                              );
-                            },
-                            errorBuilder: (context, error, stack) =>
-                            const Center(
-                              child: Icon(Icons.broken_image_rounded,
-                                  color: Colors.white54, size: 48),
-                            ),
+                        child: widget.initialBytes != null
+                            ? Image.memory(widget.initialBytes!, fit: BoxFit.contain)
+                            : Image.network(
+                          widget.url,
+                          fit: BoxFit.contain,
+                          loadingBuilder: (context, child, progress) {
+                            if (progress == null) return child;
+                            return const Center(
+                              child: CircularProgressIndicator(
+                                  color: Colors.white),
+                            );
+                          },
+                          errorBuilder: (context, error, stack) =>
+                          const Center(
+                            child: Icon(Icons.broken_image_rounded,
+                                color: Colors.white54, size: 48),
                           ),
                         ),
                       ),

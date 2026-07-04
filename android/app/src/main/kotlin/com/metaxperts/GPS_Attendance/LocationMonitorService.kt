@@ -98,6 +98,7 @@ class LocationMonitorService : Service() {
     private val KEY_EVENT_REASON       = "flutter.critical_event_reason"
     private val KEY_IS_TIMER_FROZEN    = "flutter.is_timer_frozen"
     private val KEY_ELAPSED_TIME       = "flutter.elapsed_time"
+    private val KEY_SHUTDOWN_TIME = "flutter.pending_shutdown_time"
 
     private lateinit var handler: Handler
     private var checkRunnable: Runnable     = Runnable {}
@@ -112,6 +113,7 @@ class LocationMonitorService : Service() {
     private var wakeLock: android.os.PowerManager.WakeLock? = null
     // ✅ FIX: Class-level reference so onDestroy() can unregisterReceiver()
     private var locationModeReceiver: android.content.BroadcastReceiver? = null
+    private var shutdownReceiver: BroadcastReceiver? = null
 
     private var wasLocationEnabled   = true
     private var wasPermissionGranted = true
@@ -315,6 +317,7 @@ class LocationMonitorService : Service() {
             android.util.Log.e("LocationMonitor", "WakeLock acquire failed: ${e.message}")
         }
 
+        registerShutdownReceiver()
         registerReceivers()
         registerNetworkCallback()
         registerAppOpsListener()
@@ -1579,6 +1582,62 @@ class LocationMonitorService : Service() {
         }
     }
 
+    private fun registerShutdownReceiver() {
+        if (shutdownReceiver != null) return
+
+        shutdownReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                if (intent.action == Intent.ACTION_SHUTDOWN) {
+                    android.util.Log.d("LocationMonitor", "🔻 ACTION_SHUTDOWN received — saving exact time")
+                    saveShutdownTimestamp(context)
+                }
+            }
+        }
+
+        val filter = IntentFilter(Intent.ACTION_SHUTDOWN)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(shutdownReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                registerReceiver(shutdownReceiver, filter)
+            }
+            android.util.Log.d("LocationMonitor", "✅ Shutdown receiver registered dynamically")
+        } catch (e: Exception) {
+            android.util.Log.e("LocationMonitor", "❌ Shutdown receiver register failed: ${e.message}")
+        }
+    }
+
+    // ✅ THIS FUNCTION USES commit() — SYNCHRONOUS WRITE
+    private fun saveShutdownTimestamp(context: Context) {
+        try {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val exactTime = System.currentTimeMillis()
+            val saved = prefs.edit()
+                .putLong(KEY_SHUTDOWN_TIME, exactTime)
+                .commit()  // ✅ SYNCHRONOUS — GUARANTEED WRITE!
+
+            android.util.Log.d("LocationMonitor",
+                "💾 Shutdown time saved = $exactTime | commit success = $saved")
+        } catch (e: Exception) {
+            android.util.Log.e("LocationMonitor", "❌ Failed to save shutdown time: ${e.message}")
+        }
+    }
+
+    private fun unregisterShutdownReceiver() {
+        shutdownReceiver?.let {
+            try {
+                unregisterReceiver(it)
+                android.util.Log.d("LocationMonitor", "🛑 Shutdown receiver unregistered")
+            } catch (e: Exception) {
+                android.util.Log.e("LocationMonitor", "⚠️ Shutdown receiver unregister failed: ${e.message}")
+            }
+        }
+        shutdownReceiver = null
+    }
+
+
+
+
     // ══════════════════════════════════════════════════════════════════════════
     // NOTIFICATIONS (unchanged)
     // ══════════════════════════════════════════════════════════════════════════
@@ -2010,6 +2069,7 @@ class LocationMonitorService : Service() {
 
     override fun onDestroy() {
         isDestroyed = true
+        unregisterShutdownReceiver()
         handler.removeCallbacks(checkRunnable)
         handler.removeCallbacks(gpsRunnable)
         httpPostRunnable?.let { handler.removeCallbacks(it) }
