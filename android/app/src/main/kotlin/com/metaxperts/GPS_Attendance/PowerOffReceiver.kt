@@ -43,7 +43,7 @@ class PowerOffReceiver : BroadcastReceiver() {
 
             val time = java.text.SimpleDateFormat(
                 "yyyy-MM-dd'T'HH:mm:ss",
-                java.util.Locale.getDefault()
+                java.util.Locale.US
             ).format(java.util.Date())
 
             // JSON string bana ke save karo

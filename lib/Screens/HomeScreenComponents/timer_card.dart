@@ -1889,6 +1889,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
       SharedPreferences.getInstance().then((prefs) {
         prefs.setString('elapsed_time', _localElapsedTime);
+
       });
 
       if (mounted) setState(() {});
