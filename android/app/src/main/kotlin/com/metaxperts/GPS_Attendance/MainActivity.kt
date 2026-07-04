@@ -740,6 +740,7 @@ class MainActivity : FlutterFragmentActivity(), ProviderInstaller.ProviderInstal
         ExitReasonPlugin.register(this, flutterEngine)
     }
 
+
     private fun hasLocationPermission(): Boolean {
         return ContextCompat.checkSelfPermission(
             this, Manifest.permission.ACCESS_FINE_LOCATION
