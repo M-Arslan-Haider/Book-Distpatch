@@ -9,6 +9,7 @@
     <!-- Location Permissions -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
@@ -132,14 +133,14 @@
         <!-- ✅ POWER OFF RECEIVER
              Detects device shutdown and saves event locally.
              On next app open, power_off_service.dart posts it to server. -->
-        <receiver
-            android:name=".PowerOffReceiver"
-            android:enabled="true"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.ACTION_SHUTDOWN" />
-            </intent-filter>
-        </receiver>
+<!--        <receiver-->
+<!--            android:name=".PowerOffReceiver"-->
+<!--            android:enabled="true"-->
+<!--            android:exported="false">-->
+<!--            <intent-filter>-->
+<!--                <action android:name="android.intent.action.ACTION_SHUTDOWN" />-->
+<!--            </intent-filter>-->
+<!--        </receiver>-->
 
         <!-- Google Maps API Key -->
         <meta-data
