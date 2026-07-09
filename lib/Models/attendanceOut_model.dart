@@ -18,6 +18,7 @@ class AttendanceOutModel {
   int posted;
   String? reason;
   String? clock_out_image;  // ✅ ADDED — base64 clock-out selfie
+  int? battery_used;        // ✅ NEW — battery % consumed during shift
 
   AttendanceOutModel({
     this.attendance_out_id,
@@ -34,6 +35,7 @@ class AttendanceOutModel {
     this.posted = 0,
     this.reason,
     this.clock_out_image,  // ✅ ADDED
+    this.battery_used,     // ✅ NEW
   });
 
   factory AttendanceOutModel.fromMap(Map<dynamic, dynamic> json) {
@@ -52,6 +54,7 @@ class AttendanceOutModel {
       posted: json['posted'] ?? 0,
       reason: json['reason'] ?? 'manual',
       clock_out_image: json['clock_out_image'] as String?,  // ✅ ADDED
+      battery_used: json['battery_used'] as int?,           // ✅ NEW
     );
   }
 
@@ -99,6 +102,7 @@ class AttendanceOutModel {
       'posted': posted,
       'reason': reason ?? 'manual',
       'clock_out_image': clock_out_image,    // ✅ ADDED
+      'battery_used': battery_used,          // ✅ NEW
     };
   }
 }

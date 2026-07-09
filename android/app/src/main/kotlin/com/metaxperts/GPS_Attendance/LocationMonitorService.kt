@@ -159,6 +159,16 @@ class LocationMonitorService : Service() {
     private var lastFakeGpsReportTime: Long = 0
     private val FAKE_GPS_COOLDOWN_MS = 30_000L
 
+    // ── Dead Zone Detection ─────────────────────────────────────────────────
+    // ✅ Confirmed live endpoint — inserts into APP_EMP_DEADZONE_TRACKING
+    private val DEAD_ZONE_API                = "http://oracle.metaxperts.net/ords/gps_workforce/deadzone/post/"
+    private val DEAD_ZONE_THRESHOLD_MS       = 60_000L        // no usable fix for 60s → dead zone
+    private val DEAD_ZONE_REPORT_COOLDOWN_MS = 5 * 60_000L    // re-report every 5min while it persists
+    private val DEAD_ZONE_OFFLINE_FILE       = "dead_zone_offline.json"
+    private var lastGoodFixTime: Long        = System.currentTimeMillis()
+    private var lastDeadZoneReportTime: Long = 0
+    private var isDeadZone: Boolean          = false
+
     // ── GPS Fraud Detection — Satellite Count (CHECK 1) ───────────────────
     // Updated by GnssStatus.Callback on every GNSS fix.
     // Read by the Flutter MethodChannel 'getSatelliteCount' handler.
@@ -923,8 +933,18 @@ class LocationMonitorService : Service() {
         wasPermissionGranted  = currentPermissionGranted
         wasAutoTimeEnabled    = currentAutoTimeEnabled   // ✅ NEW
 
+        // ── Dead Zone Detection: no usable GPS fix for a sustained duration ──
+        if (isClockedIn && currentLocationEnabled && currentPermissionGranted) {
+            val sinceGoodFix = System.currentTimeMillis() - lastGoodFixTime
+            isDeadZone = sinceGoodFix > DEAD_ZONE_THRESHOLD_MS
+            if (isDeadZone) checkAndReportDeadZone(sinceGoodFix)
+        } else {
+            isDeadZone = false
+        }
+
         val status = if (currentLocationEnabled && currentPermissionGranted) {
-            "Monitoring | MQTT: ${if (isMqttConnected) "●" else "○"} | Buf:${bulkLocationBuffer.size}"
+            val base = "Monitoring | MQTT: ${if (isMqttConnected) "●" else "○"} | Buf:${bulkLocationBuffer.size}"
+            if (isDeadZone) "$base | ⚠️ DeadZone" else base
         } else {
             "Issue detected - Processing..."
         }
@@ -1205,6 +1225,8 @@ class LocationMonitorService : Service() {
                     lastAccuracy = loc.accuracy
                     lastSpeed    = loc.speed
                     lastHeartbeatTime = System.currentTimeMillis()
+                    // ✅ Dead zone tracking — only usable (within accuracy threshold) fixes reset the clock
+                    if (loc.accuracy in 0f..MIN_ACCURACY_METERS) lastGoodFixTime = lastHeartbeatTime
                     android.util.Log.d("LocationMonitor",
                         "📍 [GPS] lat=$lastLat lng=$lastLon acc=${lastAccuracy}m spd=${lastSpeed}")
                     if (loc.isFromMockProvider) checkAndReportFakeGps(loc)
@@ -1488,6 +1510,125 @@ class LocationMonitorService : Service() {
         }.start()
     }
 
+    /**
+     * Reports a sustained GPS dead zone to the server (company_code + emp_name included).
+     * Cooldown-gated so it fires once on entry, then re-fires every DEAD_ZONE_REPORT_COOLDOWN_MS
+     * while the dead zone persists — duration_seconds keeps growing each report.
+     * ✅ Offline-safe: if there's no network, or the POST fails, the event is saved to disk
+     * and auto-synced later via flushDeadZoneOffline() when connectivity returns.
+     */
+    private fun checkAndReportDeadZone(durationMs: Long) {
+        val now = System.currentTimeMillis()
+        if (now - lastDeadZoneReportTime < DEAD_ZONE_REPORT_COOLDOWN_MS) return
+        lastDeadZoneReportTime = now
+
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val empId = prefString(prefs, "emp_id")
+        val detectedAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(Date())
+        val record = JSONObject().apply {
+            put("emp_id", empId); put("emp_name", empName); put("company_code", companyCode)
+            put("last_lat", lastLat); put("last_lon", lastLon)
+            put("duration_seconds", durationMs / 1000)
+            put("gps_unavailable", true)
+            put("detected_at", detectedAt)
+        }
+
+        android.util.Log.w("LocationMonitor",
+            "⚠️ [DEAD ZONE] No usable GPS fix for ${durationMs / 1000}s — reporting to server")
+
+        if (!isNetworkAvailable()) {
+            saveDeadZoneOffline(record)
+            android.util.Log.d("LocationMonitor",
+                "💾 [DEAD ZONE OFFLINE] No network — saved event to disk")
+            return
+        }
+
+        Thread {
+            try {
+                val conn = (URL(DEAD_ZONE_API).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"; setRequestProperty("Content-Type", "application/json")
+                    doOutput = true; connectTimeout = 10_000; readTimeout = 10_000
+                }
+                OutputStreamWriter(conn.outputStream).use { it.write(record.toString()) }
+                val code = conn.responseCode
+                conn.disconnect()
+                if (code !in 200..299) {
+                    saveDeadZoneOffline(record)
+                    android.util.Log.w("LocationMonitor",
+                        "⚠️ [DEAD ZONE OFFLINE] Server $code — saved event to disk")
+                }
+            } catch (_: Exception) {
+                saveDeadZoneOffline(record)
+                android.util.Log.w("LocationMonitor",
+                    "⚠️ [DEAD ZONE OFFLINE] POST failed — saved event to disk")
+            }
+        }.start()
+    }
+
+    /**
+     * Appends one dead-zone event to disk (JSON array file). Safe to call from any thread
+     * that already caught its own exceptions — this function catches its own too.
+     */
+    private fun saveDeadZoneOffline(record: JSONObject) {
+        try {
+            val file  = File(filesDir, DEAD_ZONE_OFFLINE_FILE)
+            val array = if (file.exists() && file.readText().trim().isNotEmpty())
+                JSONArray(file.readText()) else JSONArray()
+            array.put(record)
+            file.writeText(array.toString())
+        } catch (e: Exception) {
+            android.util.Log.e("LocationMonitor", "❌ [DEAD ZONE OFFLINE] save error: ${e.message}")
+        }
+    }
+
+    /**
+     * Called when connectivity returns — resends every saved dead-zone event.
+     * On success the file is cleared; on failure records are re-saved for the next attempt.
+     */
+    private fun flushDeadZoneOffline() {
+        Thread {
+            try {
+                val file = File(filesDir, DEAD_ZONE_OFFLINE_FILE)
+                if (!file.exists()) return@Thread
+                val content = file.readText().trim()
+                if (content.isEmpty()) { file.delete(); return@Thread }
+                val array = JSONArray(content)
+                if (array.length() == 0) { file.delete(); return@Thread }
+                file.delete()   // clear now — failed sends re-append below
+
+                val stillFailed = mutableListOf<JSONObject>()
+                for (i in 0 until array.length()) {
+                    val record = array.getJSONObject(i)
+                    try {
+                        val conn = (URL(DEAD_ZONE_API).openConnection() as HttpURLConnection).apply {
+                            requestMethod = "POST"; setRequestProperty("Content-Type", "application/json")
+                            doOutput = true; connectTimeout = 10_000; readTimeout = 10_000
+                        }
+                        OutputStreamWriter(conn.outputStream).use { it.write(record.toString()) }
+                        val code = conn.responseCode
+                        conn.disconnect()
+                        if (code !in 200..299) stillFailed.add(record)
+                    } catch (_: Exception) {
+                        stillFailed.add(record)
+                    }
+                }
+
+                if (stillFailed.isNotEmpty()) {
+                    val retryArray = JSONArray()
+                    stillFailed.forEach { retryArray.put(it) }
+                    file.writeText(retryArray.toString())
+                    android.util.Log.w("LocationMonitor",
+                        "⚠️ [DEAD ZONE OFFLINE] ${stillFailed.size} events still failed — kept on disk")
+                } else {
+                    android.util.Log.d("LocationMonitor",
+                        "✅ [DEAD ZONE OFFLINE] Synced ${array.length()} saved event(s)")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("LocationMonitor", "❌ [DEAD ZONE OFFLINE] flush error: ${e.message}")
+            }
+        }.start()
+    }
+
     private fun disconnectMqtt() {
         try { if (mqttClient?.isConnected == true) mqttClient?.disconnect() } catch (_: Exception) {}
         isMqttConnected = false
@@ -1522,6 +1663,7 @@ class LocationMonitorService : Service() {
                         // ✅ FIX: Trigger bulk post when internet comes back
                         if (!isDestroyed) {
                             postBulkLocationToApi()
+                            flushDeadZoneOffline()
                         }
                     }
                 }

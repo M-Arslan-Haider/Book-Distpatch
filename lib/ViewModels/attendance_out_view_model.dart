@@ -19,6 +19,7 @@ import '../Models/attendanceOut_model.dart';
 import '../Repositories/attendance_out_repository.dart';
 import 'attendance_view_model.dart';
 import 'location_view_model.dart';
+import '../Services/battery_consumption_service.dart'; // ✅ NEW
 
 class AttendanceOutViewModel extends GetxController {
   // ── Dependencies ──────────────────────────────────────────────────────────
@@ -185,9 +186,9 @@ class AttendanceOutViewModel extends GetxController {
     double? totalDistance,
     bool isAuto = false,
     String reason = 'manual',
-    String? customLocationName,  // ✅ NEW - for custom location name from travel
-    String? customAddress,       // ✅ NEW - for custom address from travel
-    String? clockOutImage,       // ✅ FIX - restored base64 image from fast data
+    String? customLocationName,
+    String? customAddress,
+    String? clockOutImage,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
@@ -219,6 +220,11 @@ class AttendanceOutViewModel extends GetxController {
       prefs: prefs,
       shiftStart: shiftStart,
     );
+
+    // ✅ Battery consumption tracking
+    final int batteryUsed = await BatteryConsumptionService.getBatteryUsed();
+    await BatteryConsumptionService.clearClockInBattery();
+    debugPrint('🔋 [OutVM] Battery used this shift: $batteryUsed%');
 
     // ✅ USE THE SAME ATTENDANCE IN ID - NO CONVERSION
     String attendanceOutId = prefs.getString(_keyAttendanceId)
@@ -272,7 +278,7 @@ class AttendanceOutViewModel extends GetxController {
       address: address,
       reason: reason,
       locationName: locationName,
-      clockOutImage: clockOutImage,  // ✅ FIX — pass image to backup
+      clockOutImage: clockOutImage,
     );
 
     final model = AttendanceOutModel(
@@ -289,7 +295,8 @@ class AttendanceOutViewModel extends GetxController {
       attendance_out_date: outTime,
       posted: 0,
       company_code: DBHelper.getCompanyCode(),
-      clock_out_image: clockOutImage,  // ✅ FIX - restored image from fast data
+      clock_out_image: clockOutImage,
+      battery_used: batteryUsed,  // ✅ NEW
     );
 
     debugPrint('📊 [OutVM] Clock-out data:');
@@ -299,6 +306,7 @@ class AttendanceOutViewModel extends GetxController {
     debugPrint('   - Reason: $reason');
     debugPrint('   - Location Name: ${locationName.isEmpty ? "(empty - normal user)" : locationName}');
     debugPrint('   - Address: $humanAddress');
+    debugPrint('   - Battery Used: $batteryUsed%');
 
     await addAttendanceOut(model);
     await _postIfOnline(prefs);
@@ -317,13 +325,18 @@ class AttendanceOutViewModel extends GetxController {
     required double totalDistance,
     bool isAuto = false,
     String reason = 'fast_manual',
-    String? customLocationName,  // ✅ NEW
-    String? customAddress,       // ✅ NEW
-    Uint8List? photoBytes,       // ✅ NEW — clock-out selfie
-    String? clockInTimeStr,      // ✅ FIX — pre-captured clockInTime before prefs were cleared
+    String? customLocationName,
+    String? customAddress,
+    Uint8List? photoBytes,
+    String? clockInTimeStr,
   }) async {
     // ✅ Compress before encoding — keeps base64 under Oracle VARCHAR2 limit (32,767 bytes)
     final String? clockOutImageBase64 = await _compressAndEncodeImage(photoBytes);
+
+    // ✅ Battery consumption tracking
+    final int fastBatteryUsed = await BatteryConsumptionService.getBatteryUsed();
+    await BatteryConsumptionService.clearClockInBattery();
+    debugPrint('🔋 [OutVM Fast] Battery used this shift: $fastBatteryUsed%');
 
     debugPrint('⚡ [OutVM] Fast clock-out started');
 
@@ -404,6 +417,7 @@ class AttendanceOutViewModel extends GetxController {
       'fast_savedAt': DateTime.now().millisecondsSinceEpoch.toString(),
       'fast_company_code': DBHelper.getCompanyCode(),
       if (clockOutImageBase64 != null) 'fast_clock_out_image': clockOutImageBase64,
+      'fast_battery_used': fastBatteryUsed,  // ✅ NEW
     };
 
     await prefs.setString(_keyFastData, jsonEncode(fastData));
@@ -416,6 +430,7 @@ class AttendanceOutViewModel extends GetxController {
     debugPrint('⚡ [OutVM] Fast data persisted. ID: $attendanceOutId');
     debugPrint('📍 [OutVM Fast] Location Name: ${locationName.isEmpty ? "(empty - normal user)" : locationName}');
     debugPrint('📍 [OutVM Fast] Reason: $reason');
+    debugPrint('🔋 [OutVM Fast] Battery Used: $fastBatteryUsed%');
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
@@ -433,7 +448,8 @@ class AttendanceOutViewModel extends GetxController {
           attendance_out_date: clockOutTime,
           posted: 0,
           company_code: DBHelper.getCompanyCode(),
-          clock_out_image: clockOutImageBase64,  // ✅ NEW — clock-out selfie
+          clock_out_image: clockOutImageBase64,
+          battery_used: fastBatteryUsed,  // ✅ NEW
         );
 
         await addAttendanceOut(model);
@@ -468,7 +484,7 @@ class AttendanceOutViewModel extends GetxController {
     required DateTime clockOutTime,
     String address = '',
     bool isAuto = false,
-    String? customLocationName,  // ✅ NEW
+    String? customLocationName,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final String? clockInStr = prefs.getString(_keyClockInTime);
@@ -594,10 +610,10 @@ class AttendanceOutViewModel extends GetxController {
         final empId = data['backup_empId'] as String? ?? '';
         final locationName = data['backup_location_name'] as String?;
         final address = data['backup_address'] as String?;
-        final restoredClockOutImage = data['backup_clock_out_image'] as String?;  // ✅ FIX
+        final restoredClockOutImage = data['backup_clock_out_image'] as String?;
 
         debugPrint('✅ [OutVM] Restore with real time=$realTime');
-        debugPrint('📸 [OutVM] Backup restore image: ${restoredClockOutImage != null ? "✅ (${restoredClockOutImage.length} chars)" : "❌ NULL"}');  // ✅ FIX
+        debugPrint('📸 [OutVM] Backup restore image: ${restoredClockOutImage != null ? "✅ (${restoredClockOutImage.length} chars)" : "❌ NULL"}');
 
         await clockOut(
           empId: empId,
@@ -607,7 +623,7 @@ class AttendanceOutViewModel extends GetxController {
           reason: reason,
           customLocationName: locationName,
           customAddress: address,
-          clockOutImage: restoredClockOutImage,  // ✅ FIX
+          clockOutImage: restoredClockOutImage,
         );
 
         await prefs.setBool(_keyHasBackup, false);
@@ -658,15 +674,15 @@ class AttendanceOutViewModel extends GetxController {
       final DateTime realTime = DateTime.parse(timeStr);
 
       String empId = '';
-      String? restoredClockOutImage;  // ✅ FIX
+      String? restoredClockOutImage;
       try {
         final blob = jsonDecode(prefs.getString(_keyFastData) ?? '{}') as Map<String, dynamic>;
         empId = blob['fast_empId'] as String? ?? '';
-        restoredClockOutImage = blob['fast_clock_out_image'] as String?;  // ✅ FIX
+        restoredClockOutImage = blob['fast_clock_out_image'] as String?;
       } catch (_) {}
 
       debugPrint('✅ [OutVM] Fast restore: time=$realTime, dist=$dist km');
-      debugPrint('📸 [OutVM] Fast restore image: ${restoredClockOutImage != null ? "✅ (${restoredClockOutImage.length} chars)" : "❌ NULL (auto clockout)"}');  // ✅ FIX
+      debugPrint('📸 [OutVM] Fast restore image: ${restoredClockOutImage != null ? "✅ (${restoredClockOutImage.length} chars)" : "❌ NULL (auto clockout)"}');
 
       await clockOut(
         empId: empId,
@@ -676,7 +692,7 @@ class AttendanceOutViewModel extends GetxController {
         reason: reason,
         customLocationName: locationName,
         customAddress: address,
-        clockOutImage: restoredClockOutImage,  // ✅ FIX
+        clockOutImage: restoredClockOutImage,
       );
 
       await prefs.setBool(_keyHasFastData, false);
@@ -719,7 +735,7 @@ class AttendanceOutViewModel extends GetxController {
     }
     for (final r in records) {
       debugPrint(
-          '📊 ID=${r.attendance_out_id} | dist=${r.total_distance} km | time=${r.total_time} | posted=${r.posted} | company=${r.company_code} | location_name=${r.location_name} | reason=${r.reason}');
+          '📊 ID=${r.attendance_out_id} | dist=${r.total_distance} km | time=${r.total_time} | posted=${r.posted} | company=${r.company_code} | location_name=${r.location_name} | reason=${r.reason} | battery_used=${r.battery_used}%');
     }
   }
 
@@ -870,7 +886,7 @@ class AttendanceOutViewModel extends GetxController {
     required String address,
     required String reason,
     String? locationName,
-    String? clockOutImage,  // ✅ FIX — persist image in backup
+    String? clockOutImage,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final finalLocationName = locationName ?? await _getLocationName();
@@ -887,13 +903,13 @@ class AttendanceOutViewModel extends GetxController {
       'backup_reason': reason,
       'backup_savedAt': DateTime.now().toIso8601String(),
       'backup_company_code': DBHelper.getCompanyCode(),
-      if (clockOutImage != null) 'backup_clock_out_image': clockOutImage,  // ✅ FIX
+      if (clockOutImage != null) 'backup_clock_out_image': clockOutImage,
     };
     await prefs.setString(_keyBackupData, jsonEncode(data));
     await prefs.setBool(_keyHasBackup, true);
     await prefs.setDouble(_keyBackupDistance, totalDistance);
     debugPrint('📱 [OutVM] Backup saved: ${totalDistance.toStringAsFixed(3)} km, location: $finalLocationName, reason: $reason');
-    debugPrint('📸 [OutVM] Backup image: ${clockOutImage != null ? "✅ (${clockOutImage.length} chars)" : "❌ NULL (auto/no-selfie)"}');  // ✅ FIX
+    debugPrint('📸 [OutVM] Backup image: ${clockOutImage != null ? "✅ (${clockOutImage.length} chars)" : "❌ NULL (auto/no-selfie)"}');
   }
 
   Future<void> _clearBackupKeys(SharedPreferences prefs) async {

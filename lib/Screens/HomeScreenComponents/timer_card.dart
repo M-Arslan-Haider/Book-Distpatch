@@ -21,7 +21,9 @@ import '../../Database/util.dart';
 import '../../Repositories/LoginRepositories/login_repository.dart';
 import '../../Services/Overtime_Clock_Out_Service.dart';
 import '../../Services/auto_time_log_service.dart';
+import '../../Services/battery_consumption_service.dart';
 import '../../Services/developer_options_check_service.dart';
+import '../../Services/location_accuracy_indicator_service.dart';
 import '../../Services/selfie_notification_policy_service.dart';
 import '../../Services/interval_selfie_service.dart';
 import '../../ViewModels/attendance_out_view_model.dart';
@@ -42,6 +44,7 @@ import 'package:battery_plus/battery_plus.dart'; // ✅ Battery monitoring
 import '../../Services/time_sync_service.dart';  // ✅ Server Time Sync
 import '../../Services/gps_fraud_detection_service.dart';
 import '../sync_status_card_screen.dart'; // ✅ GPS Fraud Detection
+
 
 
 class TimerCard extends StatefulWidget {
@@ -3017,6 +3020,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
       // ── Battery monitoring ─────────────────────────────────────────────────
       _startBatteryMonitoring();
+      unawaited(BatteryConsumptionService.saveClockInBattery());
 
       // ── 12. CLOSE LOADING DIALOG ───────────────────────────────────────────
       if (Navigator.of(context).canPop()) Navigator.of(context).pop();
@@ -3841,6 +3845,15 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
                   ),
                 ),
               ),
+
+              // ── Live GPS Accuracy Indicator (visible only when clocked in) ──
+              if (isClockedIn) ...[
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: LocationAccuracyIndicator(isClockedIn: isClockedIn),
+                ),
+              ],
 
               const SizedBox(height: 10),
 
