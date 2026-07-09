@@ -21,7 +21,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 #version: 1.0.0+2
 #version: 27.1.2+6
 #version: 29.1.0+8
-version: 8.0.0+6
+version: 8.0.0+7
 
 environment:
   sdk: ^3.5.4
@@ -137,6 +137,7 @@ dependencies:
   audioplayers: ^6.7.1
   record: ^6.2.1
   open_file: ^3.5.11
+  firebase_crashlytics: ^4.3.10
 
 
 
