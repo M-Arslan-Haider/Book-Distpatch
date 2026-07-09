@@ -893,18 +893,15 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ],
           ),
-          ElevatedButton.icon(
-            onPressed: () async {
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.setBool('debug_force_deadzone', true);
-            },
-            icon: const Icon(Icons.location_off),
-            label: const Text('Test Dead Zone'),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-          ),
-
-          SizedBox(height: context.rs(22)),
-
+          // ElevatedButton.icon(
+          //   onPressed: () async {
+          //     final prefs = await SharedPreferences.getInstance();
+          //     await prefs.setBool('debug_force_deadzone', true);
+          //   },
+          //   icon: const Icon(Icons.location_off),
+          //   label: const Text('Test Dead Zone'),
+          //   style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+          // ),
           SizedBox(height: context.rs(12)),
 
           // ── Row 1 — Leave / Tasks ─────────────────────────────────────────
