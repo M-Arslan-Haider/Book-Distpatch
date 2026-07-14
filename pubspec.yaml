@@ -1,5 +1,5 @@
-name: GPS_Workforce_Monitor
-description: "A new Flutter project."
+name: book_dispatch
+description: BookDispatch application."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -21,7 +21,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 #version: 1.0.0+2
 #version: 27.1.2+6
 #version: 29.1.0+8
-version: 8.0.0+8
+version: 8.0.0+6
 
 environment:
   sdk: ^3.5.4
@@ -137,7 +137,6 @@ dependencies:
   audioplayers: ^6.7.1
   record: ^6.2.1
   open_file: ^3.5.11
-  firebase_crashlytics: ^4.3.10
 
 
 
@@ -212,5 +211,5 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: "assets/icons/GPS Workforce Logo2.png"
+  image_path: "assets/images/newlogo.png"
   remove_alpha_ios: true  # Add this line
