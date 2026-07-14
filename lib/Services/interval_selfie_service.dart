@@ -103,7 +103,7 @@
 //   int _notifIdBase = 9300;
 //
 //   // ── MethodChannel — same channel used by timer_card.dart ──────────────────
-//   static const _platform = MethodChannel('com.metaxperts.GPS_Workforce_Monitor/location_monitor');
+//   static const _platform = MethodChannel('com.metaxperts.bookdispatch/location_monitor');
 //
 //   // ═══════════════════════════════════════════════════════════════════════════
 //   // LIFECYCLE
@@ -1511,7 +1511,7 @@ class IntervalSelfieService extends GetxController with WidgetsBindingObserver {
   int _notifIdBase = 9300;
 
   // ── MethodChannel — same channel used by timer_card.dart ──────────────────
-  static const _platform = MethodChannel('com.metaxperts.GPS_Workforce_Monitor/location_monitor');
+  static const _platform = MethodChannel('com.metaxperts.bookdispatch/location_monitor');
 
   // ═══════════════════════════════════════════════════════════════════════════
   // LIFECYCLE

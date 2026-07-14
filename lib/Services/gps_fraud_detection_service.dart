@@ -69,7 +69,7 @@ class GpsFraudDetectionService {
   // It should return the int count from the most-recent GnssStatus callback.
   // (Kotlin example is in README / inline comments below.)
   static const MethodChannel _channel =
-  MethodChannel('com.metaxperts.GPS_Workforce_Monitor/gps_fraud');
+  MethodChannel('com.metaxperts.bookdispatch/gps_fraud');
 
   // ── Oracle fixed URL ───────────────────────────────────────────────────
   static const String _satelliteApiUrl =

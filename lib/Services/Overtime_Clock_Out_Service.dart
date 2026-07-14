@@ -252,7 +252,7 @@
 //   // kaam kare ya na kare (MainActivity not ready, MissingPluginException etc.)
 //   // ══════════════════════════════════════════════════════════════════════════
 //
-//   static const _platform = MethodChannel('com.metaxperts.GPS_Workforce_Monitor/location_monitor');
+//   static const _platform = MethodChannel('com.metaxperts.bookdispatch/location_monitor');
 //
 //   void _startKotlinOvertimeService() {
 //     Future.microtask(() async {
@@ -666,7 +666,7 @@ class OvertimeClockOutService {
   // kaam kare ya na kare (MainActivity not ready, MissingPluginException etc.)
   // ══════════════════════════════════════════════════════════════════════════
 
-  static const _platform = MethodChannel('com.metaxperts.GPS_Workforce_Monitor/location_monitor');
+  static const _platform = MethodChannel('com.metaxperts.bookdispatch/location_monitor');
 
   void _startKotlinOvertimeService() {
     Future.microtask(() async {

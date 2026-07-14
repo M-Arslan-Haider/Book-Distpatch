@@ -1113,7 +1113,8 @@
 //   });
 // }
 
-import 'package:GPS_Workforce_Monitor/Screens/TimeKeeper/wagers_terminate_screen.dart';
+
+import 'package:book_dispatch/Screens/TimeKeeper/wagers_terminate_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';

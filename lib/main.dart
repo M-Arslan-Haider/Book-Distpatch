@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'Database/db_helper.dart';
 import 'Repositories/LoginRepositories/login_repository.dart';
@@ -29,11 +28,9 @@ import 'Services/play_integrity_service.dart';
 import 'Services/power_off_service.dart';
 import 'Services/exit_reason_service.dart';
 import 'Services/battery_sync.dart';
-import 'Services/crash_log_service.dart'; // ✅ NEW
+import 'Services/crash_log_service.dart';
 import 'constants.dart';
 
-// ✅ FIX: void main (not async) + runZonedGuarded wraps everything
-// — solves "Zone mismatch" warning from Flutter bindings
 void main() {
   runZonedGuarded(() async {
 
@@ -43,17 +40,16 @@ void main() {
     await Firebase.initializeApp();
     debugPrint("🔥 Firebase initialized");
 
-    // ✅ Crashlytics + Oracle error handlers
+    // ✅ Error handlers - Only Oracle crash logging (no Firebase Crashlytics)
     FlutterError.onError = (errorDetails) {
-      FirebaseCrashlytics.instance.recordFlutterFatalError(errorDetails);
       CrashLogService.postCrashToServer(
         error: errorDetails.exception.toString(),
         stack: errorDetails.stack.toString(),
         errorType: 'flutter_error',
       );
     };
+
     PlatformDispatcher.instance.onError = (error, stack) {
-      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
       CrashLogService.postCrashToServer(
         error: error.toString(),
         stack: stack.toString(),
@@ -61,7 +57,7 @@ void main() {
       );
       return true;
     };
-    debugPrint("🛡️ Crashlytics + Oracle crash logging initialized");
+    debugPrint("🛡️ Oracle crash logging initialized");
 
     // ✅ Initialize Remote Config service
     await RemoteConfigService.initialize();
@@ -78,17 +74,15 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
 
-    // ✅ FRESH INSTALL DETECTION - MOVED BEFORE PowerOffService
+    // ✅ FRESH INSTALL DETECTION
     final isAppInstalled = prefs.getBool('app_installed_flag') ?? false;
     if (!isAppInstalled) {
-      await prefs.clear();                              // Wipe stale session
-      await prefs.setBool('app_installed_flag', true);  // Mark as installed
+      await prefs.clear();
+      await prefs.setBool('app_installed_flag', true);
       debugPrint('🆕 Fresh install detected — session cleared');
     }
-    // ✅ END
 
     // ✅ POWER OFF: Check and post any pending power off event
-    // NOTE: Must be BEFORE prefs.clear() — fresh install wipe se pehle post kar do
     await PowerOffService.checkAndPostPowerOffEvent();
 
     // Restore company code on app start
@@ -97,15 +91,6 @@ void main() {
       DBHelper.setCompanyCode(savedCompanyCode);
       debugPrint('🏢 Restored company code: $savedCompanyCode');
     }
-
-    // ✅ FRESH INSTALL DETECTION
-    // final isAppInstalled = prefs.getBool('app_installed_flag') ?? false;
-    if (!isAppInstalled) {
-      await prefs.clear();
-      await prefs.setBool('app_installed_flag', true);
-      debugPrint('🆕 Fresh install detected — session cleared');
-    }
-    // ✅ END
 
     // Register dependencies
     Get.put(LoginRepository(), permanent: true);
@@ -130,16 +115,13 @@ void main() {
       _startBatteryWatcher(prefs);
     }
 
-    // ✅ FORCE-STOP DETECTION: read how the process died last time and, if it was
-    // a deliberate force stop (or OEM kill / crash), post that event to the server.
-    // Additive — reads the OS exit-reason log, dedupes by timestamp, never blocks startup.
+    // ✅ FORCE-STOP DETECTION
     await ExitReasonService.runOnLaunch();
 
     // Start listening for connectivity changes
     FakeGpsLog.startConnectivityListener();
 
-    // ✅ POWER OFF: auto-sync any pending power-off events the moment
-    // internet is restored, not just at app start.
+    // ✅ POWER OFF: auto-sync any pending power-off events
     PowerOffService.startConnectivityListener();
 
     // Sync any records that were saved during offline session
@@ -149,8 +131,7 @@ void main() {
     runApp(const MyApp());
 
   }, (error, stack) {
-    // ✅ Zone-level error catcher — Firebase + Oracle dono
-    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+    // ✅ Zone-level error catcher - Only Oracle logging
     CrashLogService.postCrashToServer(
       error: error.toString(),
       stack: stack.toString(),
@@ -159,10 +140,9 @@ void main() {
   });
 }
 
-// ✅ NEW FUNCTION: Start battery watcher
+// ✅ START BATTERY WATCHER
 void _startBatteryWatcher(SharedPreferences prefs) {
   try {
-    // Get user data from preferences
     final empId = prefs.getInt('emp_id')?.toString() ?? '';
     final empName = prefs.getString(prefUserName) ?? '';
     final companyCode = prefs.getString(prefCompanyCode) ?? '';
@@ -188,10 +168,17 @@ void _startBatteryWatcher(SharedPreferences prefs) {
   } catch (e, st) {
     debugPrint('❌ [MAIN] Error starting battery watcher: $e');
     debugPrint('❌ [MAIN] StackTrace: $st');
+
+    // Report to Oracle server
+    CrashLogService.postCrashToServer(
+      error: e.toString(),
+      stack: st.toString(),
+      errorType: 'battery_watcher_error',
+    );
   }
 }
 
-/// ── ✅ EXACT COPY from rubyform_orderbooking ──
+/// ── ✅ Capture pending shutdown time ──
 Future<void> _capturePendingShutdownTime() async {
   debugPrint('🔍 [ShutdownCapture] Checking for pending shutdown time...');
 
@@ -202,11 +189,11 @@ Future<void> _capturePendingShutdownTime() async {
     final pendingMillis = prefs.getInt('pending_shutdown_time');
 
     if (pendingMillis == null) {
-      debugPrint('ℹ️ [ShutdownCapture] Koi pending shutdown time nahi mila');
+      debugPrint('ℹ️ [ShutdownCapture] No pending shutdown time found');
       return;
     }
 
-    debugPrint('🔍 [ShutdownCapture] Pending millis mila: $pendingMillis');
+    debugPrint('🔍 [ShutdownCapture] Pending millis found: $pendingMillis');
 
     final empId = prefs.getString('flutter.emp_id') ??
         prefs.getString('emp_id') ??
@@ -224,7 +211,7 @@ Future<void> _capturePendingShutdownTime() async {
     debugPrint('🔍 [ShutdownCapture] empId=$empId empName=$empName companyCode=$companyCode');
 
     if (empId.isEmpty) {
-      debugPrint('⚠️ [ShutdownCapture] emp_id khali hai — record discard kar rahe hain');
+      debugPrint('⚠️ [ShutdownCapture] emp_id is empty — discarding record');
       await prefs.remove('pending_shutdown_time');
       return;
     }
@@ -244,7 +231,7 @@ Future<void> _capturePendingShutdownTime() async {
     );
 
     await prefs.remove('pending_shutdown_time');
-    debugPrint('🧹 [ShutdownCapture] pending_shutdown_time key clear kar di');
+    debugPrint('🧹 [ShutdownCapture] pending_shutdown_time key cleared');
 
     debugPrint('📡 [ShutdownCapture] Trying to sync pending power-off event(s)...');
     await PowerOffService.checkAndPostPowerOffEvent();
@@ -252,6 +239,13 @@ Future<void> _capturePendingShutdownTime() async {
   } catch (e, stack) {
     debugPrint('❌ [ShutdownCapture] Error: $e');
     debugPrint('❌ [ShutdownCapture] Stack: $stack');
+
+    // Report to Oracle server
+    CrashLogService.postCrashToServer(
+      error: e.toString(),
+      stack: stack.toString(),
+      errorType: 'shutdown_capture_error',
+    );
   }
 }
 

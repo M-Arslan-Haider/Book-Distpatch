@@ -35,7 +35,7 @@
 //   Timer? _pollTimer;
 //
 //   static const _channel = MethodChannel(
-//       'com.metaxperts.GPS_Workforce_Monitor/location_monitor');
+//       'com.metaxperts.bookdispatch/location_monitor');
 //
 //   @override
 //   void initState() {
@@ -154,7 +154,7 @@
 //     try {
 //       const AndroidIntent(
 //         action: 'android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
-//         data: 'package:com.metaxperts.GPS_Workforce_Monitor',
+//         data: 'package:com.metaxperts.bookdispatch',
 //       ).launch();
 //     } catch (_) {
 //       await openAppSettings();
@@ -498,7 +498,7 @@ class _DeviceHealthWidgetState extends State<DeviceHealthWidget>
   Timer? _pollTimer;
 
   static const _channel = MethodChannel(
-      'com.metaxperts.GPS_Workforce_Monitor/location_monitor');
+      'com.metaxperts.bookdispatch/location_monitor');
 
   @override
   void initState() {
@@ -611,7 +611,7 @@ class _DeviceHealthWidgetState extends State<DeviceHealthWidget>
     try {
       const AndroidIntent(
         action: 'android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
-        data: 'package:com.metaxperts.GPS_Workforce_Monitor',
+        data: 'package:com.metaxperts.bookdispatch',
       ).launch();
     } catch (_) {
       await openAppSettings();

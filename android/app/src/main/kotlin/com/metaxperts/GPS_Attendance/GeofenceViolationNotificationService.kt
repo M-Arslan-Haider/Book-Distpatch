@@ -1,4 +1,4 @@
-package com.metaxperts.GPS_Workforce_Monitor
+package com.metaxperts.bookdispatch
 
 // ════════════════════════════════════════════════════════════════════════════
 //  GeofenceViolationNotificationService.kt
@@ -27,7 +27,7 @@ package com.metaxperts.GPS_Workforce_Monitor
 //      <intent-filter>
 //          <action android:name="android.intent.action.BOOT_COMPLETED" />
 //          <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-//          <action android:name="com.metaxperts.GPS_Workforce_Monitor.GEOFENCE_RESTART" />
+//          <action android:name="com.metaxperts.bookdispatch.GEOFENCE_RESTART" />
 //      </intent-filter>
 //  </receiver>
 //
@@ -96,7 +96,7 @@ class GeofenceViolationNotificationService : Service() {
 
     companion object {
         private const val ACTION_RESTART =
-            "com.metaxperts.GPS_Workforce_Monitor.GEOFENCE_RESTART"
+            "com.metaxperts.bookdispatch.GEOFENCE_RESTART"
         private const val ALARM_REQUEST_CODE = 88
 
         /** Call once from MainActivity to start the service. */

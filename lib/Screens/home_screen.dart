@@ -1,10 +1,9 @@
 
 
-import 'package:GPS_Workforce_Monitor/Screens/schedule_hub_screen.dart';
-import 'package:GPS_Workforce_Monitor/Screens/schedule_screen.dart';
-import 'package:GPS_Workforce_Monitor/Screens/sync_status_card_screen.dart';
-import 'package:GPS_Workforce_Monitor/Screens/task_screen.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+
+import 'package:book_dispatch/Screens/schedule_hub_screen.dart';
+import 'package:book_dispatch/Screens/sync_status_card_screen.dart';
+import 'package:book_dispatch/Screens/task_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -685,7 +684,7 @@ class _HomeScreenState extends State<HomeScreen>
                     child: TextButton.icon(
                       onPressed: () {
                         Navigator.of(ctx).pop();
-                        const MethodChannel('com.metaxperts.GPS_Workforce_Monitor/location_monitor')
+                        const MethodChannel('com.metaxperts.bookdispatch/location_monitor')
                             .invokeMethod('openDeveloperSettings').catchError((_) {});
                       },
                       icon: const Icon(Icons.settings_rounded, color: Colors.white, size: 18),

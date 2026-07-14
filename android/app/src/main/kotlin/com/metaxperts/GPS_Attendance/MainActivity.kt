@@ -1,4 +1,4 @@
-////package com.metaxperts.GPS_Workforce_Monitor
+////package com.metaxperts.bookdispatch
 ////
 ////import android.Manifest
 ////import android.content.Context
@@ -21,12 +21,12 @@
 ////
 ////class MainActivity : FlutterFragmentActivity(), ProviderInstaller.ProviderInstallListener {
 ////
-////    private val LOCATION_CHANNEL        = "com.metaxperts.GPS_Workforce_Monitor/location_monitor"
+////    private val LOCATION_CHANNEL        = "com.metaxperts.bookdispatch/location_monitor"
 ////    private val MQTT_CHANNEL            = "com.example.untitled2/mqtt_service"
 ////    private val SIM_CHANNEL             = "sim_info_channel"
-////    private val AUTO_TIME_CHANNEL       = "com.metaxperts.GPS_Workforce_Monitor/auto_time_check"
+////    private val AUTO_TIME_CHANNEL       = "com.metaxperts.bookdispatch/auto_time_check"
 ////    private val PLAY_INTEGRITY_CHANNEL  = "play_integrity"
-////    private val GPS_FRAUD_CHANNEL = "com.metaxperts.GPS_Workforce_Monitor/gps_fraud"
+////    private val GPS_FRAUD_CHANNEL = "com.metaxperts.bookdispatch/gps_fraud"
 ////
 ////    override fun onCreate(savedInstanceState: Bundle?) {
 ////        super.onCreate(savedInstanceState)
@@ -364,7 +364,7 @@
 ////    }
 ////}
 //
-////package com.metaxperts.GPS_Workforce_Monitor
+////package com.metaxperts.bookdispatch
 ////
 ////import android.Manifest
 ////import android.content.Context
@@ -387,12 +387,12 @@
 ////
 ////class MainActivity : FlutterFragmentActivity(), ProviderInstaller.ProviderInstallListener {
 ////
-////    private val LOCATION_CHANNEL        = "com.metaxperts.GPS_Workforce_Monitor/location_monitor"
+////    private val LOCATION_CHANNEL        = "com.metaxperts.bookdispatch/location_monitor"
 ////    private val MQTT_CHANNEL            = "com.example.untitled2/mqtt_service"
 ////    private val SIM_CHANNEL             = "sim_info_channel"
-////    private val AUTO_TIME_CHANNEL       = "com.metaxperts.GPS_Workforce_Monitor/auto_time_check"
+////    private val AUTO_TIME_CHANNEL       = "com.metaxperts.bookdispatch/auto_time_check"
 ////    private val PLAY_INTEGRITY_CHANNEL  = "play_integrity"
-////    private val GPS_FRAUD_CHANNEL = "com.metaxperts.GPS_Workforce_Monitor/gps_fraud"
+////    private val GPS_FRAUD_CHANNEL = "com.metaxperts.bookdispatch/gps_fraud"
 ////
 ////    override fun onCreate(savedInstanceState: Bundle?) {
 ////        super.onCreate(savedInstanceState)
@@ -729,7 +729,7 @@
 ////    }
 ////}
 //
-//package com.metaxperts.GPS_Workforce_Monitor
+//package com.metaxperts.bookdispatch
 //
 //import android.Manifest
 //import android.content.Context
@@ -752,12 +752,12 @@
 //
 //class MainActivity : FlutterFragmentActivity(), ProviderInstaller.ProviderInstallListener {
 //
-//    private val LOCATION_CHANNEL        = "com.metaxperts.GPS_Workforce_Monitor/location_monitor"
+//    private val LOCATION_CHANNEL        = "com.metaxperts.bookdispatch/location_monitor"
 //    private val MQTT_CHANNEL            = "com.example.untitled2/mqtt_service"
 //    private val SIM_CHANNEL             = "sim_info_channel"
-//    private val AUTO_TIME_CHANNEL       = "com.metaxperts.GPS_Workforce_Monitor/auto_time_check"
+//    private val AUTO_TIME_CHANNEL       = "com.metaxperts.bookdispatch/auto_time_check"
 //    private val PLAY_INTEGRITY_CHANNEL  = "play_integrity"
-//    private val GPS_FRAUD_CHANNEL = "com.metaxperts.GPS_Workforce_Monitor/gps_fraud"
+//    private val GPS_FRAUD_CHANNEL = "com.metaxperts.bookdispatch/gps_fraud"
 //
 //    override fun onCreate(savedInstanceState: Bundle?) {
 //        super.onCreate(savedInstanceState)
@@ -1118,7 +1118,7 @@
 //}
 
 
-package com.metaxperts.GPS_Workforce_Monitor
+package com.metaxperts.bookdispatch
 
 import android.Manifest
 import android.content.Context
@@ -1141,12 +1141,12 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterFragmentActivity(), ProviderInstaller.ProviderInstallListener {
 
-    private val LOCATION_CHANNEL        = "com.metaxperts.GPS_Workforce_Monitor/location_monitor"
+    private val LOCATION_CHANNEL        = "com.metaxperts.bookdispatch/location_monitor"
     private val MQTT_CHANNEL            = "com.example.untitled2/mqtt_service"
     private val SIM_CHANNEL             = "sim_info_channel"
-    private val AUTO_TIME_CHANNEL       = "com.metaxperts.GPS_Workforce_Monitor/auto_time_check"
+    private val AUTO_TIME_CHANNEL       = "com.metaxperts.bookdispatch/auto_time_check"
     private val PLAY_INTEGRITY_CHANNEL  = "play_integrity"
-    private val GPS_FRAUD_CHANNEL = "com.metaxperts.GPS_Workforce_Monitor/gps_fraud"
+    private val GPS_FRAUD_CHANNEL = "com.metaxperts.bookdispatch/gps_fraud"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

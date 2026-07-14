@@ -2566,7 +2566,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     //                       onTap: () {
     //                         Navigator.of(ctx).pop();
     //                         const MethodChannel(
-    //                           'com.metaxperts.GPS_Workforce_Monitor/auto_time_check',
+    //                           'com.metaxperts.bookdispatch/auto_time_check',
     //                         ).invokeMethod('openDateTimeSettings').catchError((_) {});
     //                       },
     //                       child: Container(

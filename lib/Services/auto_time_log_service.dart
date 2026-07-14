@@ -18,7 +18,7 @@ const String _kAutoTimeCheckUrl =
 const String _kPendingQueueKey = 'auto_time_log_pending_queue';
 
 const MethodChannel _autoTimeChannel =
-MethodChannel('com.metaxperts.GPS_Workforce_Monitor/auto_time_check');
+MethodChannel('com.metaxperts.bookdispatch/auto_time_check');
 
 // ════════════════════════════════════════════════════════════════════════════
 // AutoTimeCheckResult  (unchanged)

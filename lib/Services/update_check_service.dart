@@ -7,7 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 class UpdateCheckService {
 
-  static const String _packageName = 'com.metaxperts.GPS_Workforce_Monitor';
+  static const String _packageName = 'com.metaxperts.bookdispatch';
 
   // ✅ Home screen yeh use karta hai
   static String get playStoreUrl =>

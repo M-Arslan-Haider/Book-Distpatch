@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    package="com.metaxperts.GPS_Workforce_Monitor">
+    package="com.metaxperts.bookdispatch">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -44,14 +44,14 @@
 
 
     <application
-        android:label="GPS Workforce Monitor"
+        android:label="Book Dispatch"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:enableOnBackInvokedCallback="true"
         android:usesCleartextTraffic="true">
 
         <service
-            android:name="com.metaxperts.GPS_Workforce_Monitor.UltraLocationService"
+            android:name="com.metaxperts.bookdispatch.UltraLocationService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="location" />
@@ -94,7 +94,7 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-                <action android:name="com.metaxperts.GPS_Workforce_Monitor.GEOFENCE_RESTART" />
+                <action android:name="com.metaxperts.bookdispatch.GEOFENCE_RESTART" />
             </intent-filter>
         </receiver>
 

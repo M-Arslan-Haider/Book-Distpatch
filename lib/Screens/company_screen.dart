@@ -701,7 +701,7 @@
 //
 // }
 
-import 'package:GPS_Workforce_Monitor/Screens/policy_screen.dart';
+import 'package:book_dispatch/Screens/policy_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
