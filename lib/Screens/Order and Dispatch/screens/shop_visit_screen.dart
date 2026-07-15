@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import '../view_models/shop_visit_viewmodel.dart';
 import '../models/visit_model.dart';
+import 'dart:developer' as developer;
 
 class ShopVisitScreen extends StatelessWidget {
   const ShopVisitScreen({super.key});
@@ -41,6 +42,10 @@ class _ShopVisitContentState extends State<_ShopVisitContent> {
     final viewModel = context.watch<ShopVisitViewModel>();
     final model = viewModel.model;
 
+    // Debug log
+    developer.log('🔄 Building ShopVisitScreen', name: 'ShopVisitScreen');
+    developer.log('📊 Form state - Brand: ${model.hasSelectedBrand}, Shop: ${model.hasSelectedShop}, Products: ${model.hasSelectedProducts}, GPS: ${model.gpsEnabled}', name: 'ShopVisitScreen');
+
     if (_notesController.text != (model.notes ?? '')) {
       _notesController.text = model.notes ?? '';
     }
@@ -60,11 +65,43 @@ class _ShopVisitContentState extends State<_ShopVisitContent> {
                 const SizedBox(height: 20),
                 _buildChecklist(viewModel, model),
                 const SizedBox(height: 20),
-                _buildPhotos(),
+                _buildPhotos(viewModel),
                 const SizedBox(height: 20),
                 _buildLocation(viewModel, model),
                 const SizedBox(height: 20),
                 _buildNotes(viewModel, model),
+                if (model.errorMessage != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.red.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.error_outline, color: Colors.red.shade700, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              model.errorMessage!,
+                              style: TextStyle(
+                                color: Colors.red.shade700,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: viewModel.clearError,
+                            child: Icon(Icons.close, color: Colors.red.shade400, size: 18),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -247,42 +284,93 @@ class _ShopVisitContentState extends State<_ShopVisitContent> {
     );
   }
 
-  Widget _buildPhotos() {
+  Widget _buildPhotos(ShopVisitViewModel vm) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const _SectionHeader(icon: Icons.photo_camera_rounded, label: 'Photos'),
         const SizedBox(height: 12),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFD4F0ED), width: 1),
-          ),
-          child: Column(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE5F7F5),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.add_a_photo_rounded,
-                    color: _primary, size: 22),
+        GestureDetector(
+          onTap: () async {
+            developer.log('📸 Photo container tapped', name: 'ShopVisitScreen');
+            final success = await vm.captureShopImage();
+            if (success && mounted) {
+              Get.snackbar(
+                'Success',
+                'Shop photo captured successfully',
+                snackPosition: SnackPosition.BOTTOM,
+                backgroundColor: const Color(0xFF0C6B64),
+                colorText: Colors.white,
+                borderRadius: 14,
+                margin: const EdgeInsets.all(16),
+                duration: const Duration(seconds: 2),
+                icon: const Icon(Icons.check_circle_rounded, color: Colors.white),
+              );
+            } else if (!success && mounted) {
+              Get.snackbar(
+                'Info',
+                'Photo capture cancelled or failed',
+                snackPosition: SnackPosition.BOTTOM,
+                backgroundColor: Colors.orange,
+                colorText: Colors.white,
+                borderRadius: 14,
+                margin: const EdgeInsets.all(16),
+                duration: const Duration(seconds: 2),
+              );
+            }
+          },
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: vm.model.shopImageBase64 != null ? const Color(0xFFE5F7F5) : Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: vm.model.shopImageBase64 != null
+                    ? const Color(0xFF0C6B64)
+                    : const Color(0xFFD4F0ED),
+                width: vm.model.shopImageBase64 != null ? 2 : 1,
               ),
-              const SizedBox(height: 10),
-              const Text(
-                'Take a photo',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF1A2E2C),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: vm.model.shopImageBase64 != null
+                        ? const Color(0xFF0C6B64).withOpacity(0.1)
+                        : const Color(0xFFE5F7F5),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: vm.model.shopImageBase64 != null
+                      ? const Icon(Icons.check_circle_rounded, color: Color(0xFF0C6B64), size: 22)
+                      : const Icon(Icons.add_a_photo_rounded, color: Color(0xFF0C6B64), size: 22),
                 ),
-              ),
-            ],
+                const SizedBox(height: 10),
+                Text(
+                  vm.model.shopImageBase64 != null ? 'Photo captured ✓' : 'Take a photo',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: vm.model.shopImageBase64 != null
+                        ? const Color(0xFF0C6B64)
+                        : const Color(0xFF1A2E2C),
+                  ),
+                ),
+                if (vm.model.shopImageBase64 != null)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Tap to retake',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF6B7280),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ],
@@ -306,14 +394,27 @@ class _ShopVisitContentState extends State<_ShopVisitContent> {
             children: [
               const Icon(Icons.gps_fixed_rounded, color: _primary, size: 22),
               const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  'GPS Enabled',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF1A2E2C),
-                  ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'GPS Enabled',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF1A2E2C),
+                      ),
+                    ),
+                    if (model.latitude != null && model.longitude != null)
+                      Text(
+                        '📍 ${model.latitude!.toStringAsFixed(6)}, ${model.longitude!.toStringAsFixed(6)}',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF6B7280),
+                        ),
+                      ),
+                  ],
                 ),
               ),
               Switch(
@@ -389,7 +490,10 @@ class _ShopVisitContentState extends State<_ShopVisitContent> {
       ],
     );
   }
+
   Widget _buildBottomSheet(ShopVisitViewModel vm) {
+    final isFormComplete = vm.isFormComplete && !vm.isSubmitting;
+
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
       decoration: const BoxDecoration(
@@ -404,30 +508,52 @@ class _ShopVisitContentState extends State<_ShopVisitContent> {
             child: SizedBox(
               height: 52,
               child: ElevatedButton.icon(
-                onPressed: () async {
+                onPressed: isFormComplete ? () async {
+                  developer.log('🔘 Only Visit button pressed', name: 'ShopVisitScreen');
                   HapticFeedback.lightImpact();
                   final success = await vm.submit();
-                  if (success && context.mounted) {
+                  if (success && mounted) {
                     Get.snackbar(
                       'Success',
                       'Shop visit saved successfully',
                       snackPosition: SnackPosition.BOTTOM,
-                      backgroundColor: _primary,
+                      backgroundColor: const Color(0xFF0C6B64),
                       colorText: Colors.white,
                       borderRadius: 14,
                       margin: const EdgeInsets.all(16),
                       duration: const Duration(seconds: 2),
                       icon: const Icon(Icons.check_circle_rounded, color: Colors.white),
                     );
+                  } else if (!success && mounted) {
+                    Get.snackbar(
+                      'Error',
+                      vm.errorMessage ?? 'Failed to save visit',
+                      snackPosition: SnackPosition.BOTTOM,
+                      backgroundColor: const Color(0xFFC0392B),
+                      colorText: Colors.white,
+                      borderRadius: 14,
+                      margin: const EdgeInsets.all(16),
+                      duration: const Duration(seconds: 3),
+                      icon: const Icon(Icons.error_rounded, color: Colors.white),
+                    );
                   }
-                },
-                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 16),
-                label: const Text(
-                  'Only Visit',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                } : null,
+                icon: vm.isSubmitting
+                    ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+                    : const Icon(Icons.arrow_back_ios_new_rounded, size: 16),
+                label: Text(
+                  vm.isSubmitting ? 'Submitting...' : 'Only Visit',
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFC0392B),
+                  backgroundColor: isFormComplete ? const Color(0xFFC0392B) : Colors.grey[400],
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
@@ -442,14 +568,26 @@ class _ShopVisitContentState extends State<_ShopVisitContent> {
             child: SizedBox(
               height: 52,
               child: ElevatedButton.icon(
-                onPressed: () {},
+                onPressed: isFormComplete ? () {
+                  developer.log('🔘 Order Form button pressed', name: 'ShopVisitScreen');
+                  Get.snackbar(
+                    'Info',
+                    'Order Form feature coming soon',
+                    snackPosition: SnackPosition.BOTTOM,
+                    backgroundColor: Colors.blue,
+                    colorText: Colors.white,
+                    borderRadius: 14,
+                    margin: const EdgeInsets.all(16),
+                    duration: const Duration(seconds: 2),
+                  );
+                } : null,
                 icon: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
                 label: const Text(
                   'Order Form',
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: _primary,
+                  backgroundColor: isFormComplete ? const Color(0xFF0C6B64) : Colors.grey[400],
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),

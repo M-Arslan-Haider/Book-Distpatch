@@ -1,5 +1,5 @@
 
-import 'package:book_dispatch/Screens/Order%20and%20Dispatch/shop_visit_screen.dart';
+import 'package:book_dispatch/Screens/Order%20and%20Dispatch/screens/shop_visit_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';

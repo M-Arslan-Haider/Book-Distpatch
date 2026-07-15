@@ -27,8 +27,13 @@ class VisitModel {
   bool planogramUpdated = false;
   bool displayStandards = false;
 
+  // Location
+  double? latitude;
+  double? longitude;
+
   // Additional
   String? notes;
+  String? shopImageBase64; // For base64 encoded image
 
   // Computed
   int get totalQuantity => selectedProducts.fold(0, (sum, p) => sum + p.quantity);
@@ -59,25 +64,27 @@ class VisitModel {
     copy.planogramUpdated = planogramUpdated;
     copy.displayStandards = displayStandards;
     copy.notes = notes;
+    copy.latitude = latitude;
+    copy.longitude = longitude;
+    copy.shopImageBase64 = shopImageBase64;
     return copy;
   }
 
   Map<String, dynamic> toJson() => {
+    'employee_id': employeeId,
+    'employee_name': employeeName,
+    'company_code': companyCode,
     'brand': selectedBrand,
     'shop_id': selectedShopId,
     'shop_name': selectedShopName,
     'shop_address': shopAddress,
     'owner_name': ownerName,
-    'employee_id': employeeId,
-    'employee_name': employeeName,
-    'company_code': companyCode,
-    'products': selectedProducts.map((p) => p.toJson()).toList(),
     'gps_enabled': gpsEnabled,
-    'store_walk_through': storeWalkThrough,
-    'planogram_updated': planogramUpdated,
-    'display_standards': displayStandards,
+    'latitude': latitude ?? 0.0,
+    'longitude': longitude ?? 0.0,
     'notes': notes,
-    'total_quantity': totalQuantity,
+    'shop_image': shopImageBase64,
+    'products': selectedProducts.map((p) => p.toJson()).toList(),
   };
 }
 
