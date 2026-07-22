@@ -1,3 +1,13 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// no_sale_visit_controller.dart
+//
+// GetX controller for the "No Sale of Stock" flow (Select Shop -> Add Stock
+// -> capture photo + GPS -> submit).
+//
+// Uses image_picker + flutter_image_compress + location, same pattern used
+// elsewhere in the app (see ShopVisitViewModel._compressImage).
+// ═══════════════════════════════════════════════════════════════════════════
+
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:typed_data';
@@ -147,48 +157,16 @@ class NoSaleVisitController extends GetxController {
     _refresh();
   }
 
-  void removeStock(String productId) {
-    developer.log('🗑️ Removing stock item: $productId', name: 'NoSaleVisitController');
-    model.lineItems.removeWhere((i) => i.id == productId);
+  // ⚠️ Backend sends a duplicate/non-unique `id` for different products
+  // (e.g. every product in a brand can come back as id="2"), so matching
+  // must be done by product NAME, not id.
+  void removeStock(String productName) {
+    developer.log('🗑️ Removing stock item: $productName', name: 'NoSaleVisitController');
+    model.lineItems.removeWhere(
+          (i) => i.productName.trim().toLowerCase() == productName.trim().toLowerCase(),
+    );
     _refresh();
   }
-
-  // // ============= STOCK LINE ITEMS (add / remove) — quantity only =========
-  // void addOrUpdateStock({
-  //   required StockCatalogProduct product,
-  //   required int quantity,
-  // }) {
-  //   developer.log('➕ Adding stock: ${product.name} qty=$quantity', name: 'NoSaleVisitController');
-  //
-  //   if (quantity <= 0) {
-  //     developer.log('⚠️ Ignored — quantity must be > 0', name: 'NoSaleVisitController');
-  //     return;
-  //   }
-  //
-  //   final existingIndex = model.lineItems.indexWhere((i) => i.id == product.id);
-  //   if (existingIndex != -1) {
-  //     model.lineItems[existingIndex].quantity = quantity;
-  //     developer.log('🔁 Updated existing stock item at index $existingIndex',
-  //         name: 'NoSaleVisitController');
-  //   } else {
-  //     model.lineItems.add(StockLineItem(
-  //       id: product.id,
-  //       productName: product.name,
-  //       brand: product.brand,
-  //       price: product.price,
-  //       quantity: quantity,
-  //     ));
-  //     developer.log('✅ Added new stock item. Total items now: ${model.lineItems.length}',
-  //         name: 'NoSaleVisitController');
-  //   }
-  //   _refresh();
-  // }
-  //
-  // void removeStock(String productId) {
-  //   developer.log('🗑️ Removing stock item: $productId', name: 'NoSaleVisitController');
-  //   model.lineItems.removeWhere((i) => i.id == productId);
-  //   _refresh();
-  // }
 
   // ============= SHOP PHOTO =============
   Future<bool> captureShopPhoto({required bool fromCamera}) async {
@@ -352,7 +330,11 @@ class NoSaleVisitController extends GetxController {
     developer.log('🚀 Submitting No Sale of Stock visit for shop ${model.shopId}...',
         name: 'NoSaleVisitController');
 
-    // Stock items are optional — visit can be submitted with an empty list.
+    if (!model.hasProducts) {
+      model.errorMessage = 'Please add at least one stock item';
+      _refresh();
+      return false;
+    }
 
     if (!model.hasPhoto) {
       model.errorMessage = 'Please capture a shop photo';

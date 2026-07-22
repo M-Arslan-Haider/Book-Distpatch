@@ -1,1472 +1,26 @@
-// import 'dart:convert';
-// import 'package:flutter/material.dart';
-// import 'package:flutter/services.dart';
-// import 'package:get/get.dart';
-// import 'package:http/http.dart' as http;
-// import 'package:geolocator/geolocator.dart';
-// import 'package:shared_preferences/shared_preferences.dart';
-//
-// // ═══════════════════════════════════════════════════════════════════════════════
-// // add_shop_screen.dart  —  Complete integration with login & API (FULL DEBUG)
-// // ═══════════════════════════════════════════════════════════════════════════════
-//
-// class AddShopScreen extends StatefulWidget {
-//   const AddShopScreen({super.key});
-//
-//   @override
-//   State<AddShopScreen> createState() => _AddShopScreenState();
-// }
-//
-// class _AddShopScreenState extends State<AddShopScreen> {
-//   final _formKey = GlobalKey<FormState>();
-//
-//   static const _primary = Color(0xFF0C6B64);
-//   static const _bg      = Color(0xFFE8F5F3);
-//
-//   // ── Controllers ──────────────────────────────────────────────────────────
-//   final _shopNameCtrl    = TextEditingController();
-//   final _ownerNameCtrl   = TextEditingController();
-//   final _contactCtrl     = TextEditingController();
-//   final _addressCtrl     = TextEditingController();
-//   final _shopTypeCtrl    = TextEditingController();
-//   final _notesCtrl       = TextEditingController();
-//
-//   List<String> _cities = [];
-//   String? _selectedCity;
-//   bool _loadingCities = true;
-//
-//   // ── GPS state ────────────────────────────────────────────────────────────
-//   bool _gpsEnabled = false;
-//   bool _fetchingLocation = false;
-//   double? _latitude;
-//   double? _longitude;
-//
-//   // ── Employee Info from SharedPreferences ─────────────────────────────────
-//   String _empId = '';
-//   String _empName = '';
-//   String _companyCode = '';
-//
-//   @override
-//   void initState() {
-//     super.initState();
-//     debugPrint('════════════════════════════════════════════════════════════');
-//     debugPrint('🏪 [AddShop] INIT STATE - Screen Started');
-//     debugPrint('════════════════════════════════════════════════════════════');
-//     _loadEmployeeInfo();
-//     _fetchCities();
-//   }
-//
-//   // ── Load employee info from SharedPreferences ───────────────────────────
-//   Future<void> _loadEmployeeInfo() async {
-//     debugPrint('👤 [AddShop] ===== LOADING EMPLOYEE INFO =====');
-//
-//     final prefs = await SharedPreferences.getInstance();
-//     await prefs.reload();
-//
-//     // Log ALL SharedPreferences keys
-//     debugPrint('📋 [AddShop] All SharedPreferences keys:');
-//     final allKeys = prefs.getKeys();
-//     for (final key in allKeys) {
-//       debugPrint('   $key = ${prefs.get(key)}');
-//     }
-//
-//     // Try multiple possible keys for employee ID
-//     _empId = prefs.getString('userId') ??
-//         prefs.getString('user_id') ??
-//         prefs.getString('emp_id') ??
-//         prefs.getString('empId') ??
-//         prefs.getString('employee_id') ??
-//         prefs.getString('employeeId') ??
-//         '';
-//     debugPrint('🔑 [AddShop] empId loaded: "$_empId"');
-//
-//     // Try multiple possible keys for employee name
-//     _empName = prefs.getString('userName') ??
-//         prefs.getString('user_name') ??
-//         prefs.getString('emp_name') ??
-//         prefs.getString('empName') ??
-//         prefs.getString('name') ??
-//         prefs.getString('full_name') ??
-//         prefs.getString('fullName') ??
-//         '';
-//     debugPrint('👤 [AddShop] empName loaded: "$_empName"');
-//
-//     // Company code
-//     _companyCode = prefs.getString('company_code') ??
-//         prefs.getString('companyCode') ??
-//         '';
-//     debugPrint('🏢 [AddShop] companyCode loaded: "$_companyCode"');
-//
-//     // Check if employee info is complete
-//     if (_empId.isEmpty || _empName.isEmpty) {
-//       debugPrint('⚠️ [AddShop] ⚠️ EMPLOYEE INFO INCOMPLETE!');
-//       debugPrint('   empId: "${_empId}" (${_empId.isEmpty ? "EMPTY ❌" : "OK ✅"})');
-//       debugPrint('   empName: "${_empName}" (${_empName.isEmpty ? "EMPTY ❌" : "OK ✅"})');
-//       debugPrint('   companyCode: "${_companyCode}" (${_companyCode.isEmpty ? "EMPTY ❌" : "OK ✅"})');
-//     } else {
-//       debugPrint('✅ [AddShop] Employee info loaded successfully!');
-//       debugPrint('   ✅ empId: $_empId');
-//       debugPrint('   ✅ empName: $_empName');
-//       debugPrint('   ✅ companyCode: $_companyCode');
-//     }
-//
-//     debugPrint('👤 [AddShop] ===== END LOADING EMPLOYEE INFO =====');
-//     debugPrint('');
-//   }
-//
-//   Future<void> _fetchCities() async {
-//     debugPrint('🌆 [AddShop] ===== FETCHING CITIES =====');
-//     try {
-//       final url = 'http://oracle.metaxperts.net/ords/gps_workforce/city/get/';
-//       debugPrint('🌆 [AddShop] API URL: $url');
-//
-//       final response = await http.get(
-//         Uri.parse(url),
-//       );
-//
-//       debugPrint('🌆 [AddShop] Response Status: ${response.statusCode}');
-//
-//       if (response.statusCode == 200) {
-//         final data = jsonDecode(response.body);
-//         final items = data['items'] as List;
-//         debugPrint('🌆 [AddShop] Items count: ${items.length}');
-//         debugPrint('🌆 [AddShop] Raw items: $items');
-//
-//         setState(() {
-//           _cities = items.map((e) => e['city'].toString()).toList();
-//           _loadingCities = false;
-//         });
-//         debugPrint('🌆 [AddShop] ✅ Cities loaded: ${_cities.length} cities');
-//         debugPrint('🌆 [AddShop] Cities list: $_cities');
-//       } else {
-//         debugPrint('🌆 [AddShop] ❌ Non-200 response: ${response.statusCode}');
-//         debugPrint('🌆 [AddShop] Response body: ${response.body}');
-//         setState(() => _loadingCities = false);
-//       }
-//     } catch (e) {
-//       debugPrint('🌆 [AddShop] ❌ Error fetching cities: $e');
-//       debugPrint('🌆 [AddShop] Stack trace: ${StackTrace.current}');
-//       setState(() => _loadingCities = false);
-//     }
-//     debugPrint('🌆 [AddShop] ===== END FETCHING CITIES =====');
-//     debugPrint('');
-//   }
-//
-//   // ── GPS toggle handler ──────────────────────────────────────────────────
-//   Future<void> _onGpsToggle(bool value) async {
-//     debugPrint('📍 [AddShop] ===== GPS TOGGLE =====');
-//     debugPrint('📍 [AddShop] New value: $value');
-//
-//     if (!value) {
-//       debugPrint('📍 [AddShop] GPS disabled - clearing location');
-//       setState(() {
-//         _gpsEnabled = false;
-//         _latitude   = null;
-//         _longitude  = null;
-//       });
-//       debugPrint('📍 [AddShop] ===== GPS TOGGLE END =====');
-//       debugPrint('');
-//       return;
-//     }
-//
-//     debugPrint('📍 [AddShop] GPS enabled - fetching location...');
-//     setState(() {
-//       _gpsEnabled       = true;
-//       _fetchingLocation = true;
-//     });
-//
-//     try {
-//       // Check if location services are on
-//       debugPrint('📍 [AddShop] Checking location services...');
-//       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-//       debugPrint('📍 [AddShop] Location services enabled: $serviceEnabled');
-//
-//       if (!serviceEnabled) {
-//         debugPrint('📍 [AddShop] ❌ Location services disabled');
-//         _showError('Please enable location services (GPS) on your device');
-//         setState(() {
-//           _gpsEnabled       = false;
-//           _fetchingLocation = false;
-//         });
-//         return;
-//       }
-//
-//       // Check / request permission
-//       debugPrint('📍 [AddShop] Checking location permission...');
-//       LocationPermission permission = await Geolocator.checkPermission();
-//       debugPrint('📍 [AddShop] Current permission: $permission');
-//
-//       if (permission == LocationPermission.denied) {
-//         debugPrint('📍 [AddShop] Permission denied - requesting...');
-//         permission = await Geolocator.requestPermission();
-//         debugPrint('📍 [AddShop] Permission after request: $permission');
-//         if (permission == LocationPermission.denied) {
-//           debugPrint('📍 [AddShop] ❌ Permission denied by user');
-//           _showError('Location permission denied');
-//           setState(() {
-//             _gpsEnabled       = false;
-//             _fetchingLocation = false;
-//           });
-//           return;
-//         }
-//       }
-//
-//       if (permission == LocationPermission.deniedForever) {
-//         debugPrint('📍 [AddShop] ❌ Permission permanently denied');
-//         _showError('Location permission permanently denied. Enable it from app settings.');
-//         setState(() {
-//           _gpsEnabled       = false;
-//           _fetchingLocation = false;
-//         });
-//         return;
-//       }
-//
-//       // Get current position
-//       debugPrint('📍 [AddShop] Getting current position...');
-//       final position = await Geolocator.getCurrentPosition(
-//         desiredAccuracy: LocationAccuracy.high,
-//       );
-//
-//       debugPrint('📍 [AddShop] ✅ Position captured!');
-//       debugPrint('📍 [AddShop] Latitude: ${position.latitude}');
-//       debugPrint('📍 [AddShop] Longitude: ${position.longitude}');
-//       debugPrint('📍 [AddShop] Accuracy: ${position.accuracy}');
-//       debugPrint('📍 [AddShop] Altitude: ${position.altitude}');
-//
-//       setState(() {
-//         _latitude         = position.latitude;
-//         _longitude        = position.longitude;
-//         _fetchingLocation = false;
-//       });
-//
-//       HapticFeedback.lightImpact();
-//       Get.snackbar(
-//         'Location Captured',
-//         'Lat: ${position.latitude.toStringAsFixed(5)}, Lng: ${position.longitude.toStringAsFixed(5)}',
-//         snackPosition:   SnackPosition.BOTTOM,
-//         backgroundColor: _primary,
-//         colorText:       Colors.white,
-//         borderRadius:    14,
-//         margin:          const EdgeInsets.all(16),
-//         duration:        const Duration(seconds: 2),
-//         icon: const Icon(Icons.check_circle_rounded, color: Colors.white),
-//       );
-//
-//       debugPrint('📍 [AddShop] ===== GPS TOGGLE END (SUCCESS) =====');
-//       debugPrint('');
-//     } catch (e) {
-//       debugPrint('📍 [AddShop] ❌ Error getting location: $e');
-//       debugPrint('📍 [AddShop] Stack trace: ${StackTrace.current}');
-//       setState(() {
-//         _gpsEnabled       = false;
-//         _fetchingLocation = false;
-//       });
-//       _showError('Failed to get location: $e');
-//       debugPrint('📍 [AddShop] ===== GPS TOGGLE END (ERROR) =====');
-//       debugPrint('');
-//     }
-//   }
-//
-//   void _showError(String msg) {
-//     debugPrint('❌ [AddShop] ERROR: $msg');
-//     Get.snackbar(
-//       'Error',
-//       msg,
-//       snackPosition:   SnackPosition.BOTTOM,
-//       backgroundColor: const Color(0xFFC0392B),
-//       colorText:       Colors.white,
-//       borderRadius:    14,
-//       margin:          const EdgeInsets.all(16),
-//       duration:        const Duration(seconds: 3),
-//       icon: const Icon(Icons.error_outline_rounded, color: Colors.white),
-//     );
-//   }
-//
-//   @override
-//   void dispose() {
-//     debugPrint('🧹 [AddShop] Disposing controllers...');
-//     _shopNameCtrl.dispose();
-//     _ownerNameCtrl.dispose();
-//     _contactCtrl.dispose();
-//     _addressCtrl.dispose();
-//     _shopTypeCtrl.dispose();
-//     _notesCtrl.dispose();
-//     debugPrint('🧹 [AddShop] Controllers disposed');
-//     super.dispose();
-//   }
-//
-//   // ── Submit ───────────────────────────────────────────────────────────────
-//   Future<void> _submit() async {
-//     debugPrint('');
-//     debugPrint('════════════════════════════════════════════════════════════');
-//     debugPrint('🏪 [AddShop] ===== SUBMIT STARTED =====');
-//     debugPrint('════════════════════════════════════════════════════════════');
-//
-//     // Validate employee info first
-//     debugPrint('👤 [AddShop] Step 1: Validating employee info...');
-//     debugPrint('   empId: "$_empId"');
-//     debugPrint('   empName: "$_empName"');
-//
-//     if (_empId.isEmpty || _empName.isEmpty) {
-//       debugPrint('⚠️ [AddShop] Employee info missing! Trying to reload...');
-//       await _loadEmployeeInfo(); // Try to reload
-//       if (_empId.isEmpty || _empName.isEmpty) {
-//         debugPrint('❌ [AddShop] Employee info still missing after reload!');
-//         Get.snackbar(
-//           '⚠️ Employee Info Missing',
-//           'Could not load your profile. Please log out and log in again.',
-//           snackPosition: SnackPosition.TOP,
-//           backgroundColor: const Color(0xFFC0392B),
-//           colorText: Colors.white,
-//           duration: const Duration(seconds: 4),
-//           icon: const Icon(Icons.error_outline_rounded, color: Colors.white),
-//         );
-//         debugPrint('🏪 [AddShop] ===== SUBMIT ENDED (FAILED - EMPLOYEE INFO) =====');
-//         debugPrint('');
-//         return;
-//       }
-//     }
-//     debugPrint('✅ [AddShop] Employee info valid');
-//
-//     // Validate city
-//     debugPrint('🏙️ [AddShop] Step 2: Validating city...');
-//     debugPrint('   Selected city: "$_selectedCity"');
-//     if (_selectedCity == null || _selectedCity!.isEmpty) {
-//       debugPrint('❌ [AddShop] No city selected!');
-//       Get.snackbar(
-//         'Required',
-//         'Please select a city',
-//         snackPosition:   SnackPosition.BOTTOM,
-//         backgroundColor: const Color(0xFFC0392B),
-//         colorText:       Colors.white,
-//         borderRadius:    14,
-//         margin:          const EdgeInsets.all(16),
-//         duration:        const Duration(seconds: 2),
-//         icon: const Icon(Icons.error_outline_rounded, color: Colors.white),
-//       );
-//       debugPrint('🏪 [AddShop] ===== SUBMIT ENDED (FAILED - NO CITY) =====');
-//       debugPrint('');
-//       return;
-//     }
-//     debugPrint('✅ [AddShop] City selected: $_selectedCity');
-//
-//     // Validate GPS
-//     debugPrint('📍 [AddShop] Step 3: Validating GPS...');
-//     debugPrint('   GPS Enabled: $_gpsEnabled');
-//     debugPrint('   Latitude: $_latitude');
-//     debugPrint('   Longitude: $_longitude');
-//
-//     if (_gpsEnabled && (_latitude == null || _longitude == null)) {
-//       debugPrint('❌ [AddShop] GPS enabled but no location captured!');
-//       Get.snackbar(
-//         'Required',
-//         'Please wait for GPS location to be captured, or disable GPS',
-//         snackPosition:   SnackPosition.BOTTOM,
-//         backgroundColor: const Color(0xFFC0392B),
-//         colorText:       Colors.white,
-//         borderRadius:    14,
-//         margin:          const EdgeInsets.all(16),
-//         duration:        const Duration(seconds: 2),
-//         icon: const Icon(Icons.error_outline_rounded, color: Colors.white),
-//       );
-//       debugPrint('🏪 [AddShop] ===== SUBMIT ENDED (FAILED - GPS NOT CAPTURED) =====');
-//       debugPrint('');
-//       return;
-//     }
-//     debugPrint('✅ [AddShop] GPS validation passed');
-//
-//     // Validate form
-//     debugPrint('📝 [AddShop] Step 4: Validating form...');
-//     final formValid = _formKey.currentState?.validate() ?? false;
-//     debugPrint('   Form valid: $formValid');
-//
-//     if (!formValid) {
-//       debugPrint('❌ [AddShop] Form validation failed!');
-//       debugPrint('🏪 [AddShop] ===== SUBMIT ENDED (FAILED - FORM INVALID) =====');
-//       debugPrint('');
-//       return;
-//     }
-//     debugPrint('✅ [AddShop] Form validation passed');
-//
-//     HapticFeedback.lightImpact();
-//
-//     // ── Build payload ──────────────────────────────────────────────────────
-//     debugPrint('📦 [AddShop] Step 5: Building payload...');
-//
-//     final payload = {
-//       'shop_name':  _shopNameCtrl.text.trim(),
-//       'shop_type':  _shopTypeCtrl.text.trim(),
-//       'owner_name': _ownerNameCtrl.text.trim(),
-//       'contact_number': _contactCtrl.text.trim(),
-//       'city':       _selectedCity,
-//       'address':    _addressCtrl.text.trim(),
-//       'notes':      _notesCtrl.text.trim(),
-//       'emp_id':     _empId,
-//       'emp_name':   _empName,
-//       'company_code': _companyCode,
-//       'latitude':   _latitude,
-//       'longitude':  _longitude,
-//     };
-//
-//     debugPrint('📦 [AddShop] Payload details:');
-//     debugPrint('   shop_name: "${payload['shop_name']}"');
-//     debugPrint('   shop_type: "${payload['shop_type']}"');
-//     debugPrint('   owner_name: "${payload['owner_name']}"');
-//     debugPrint('   contact_number: "${payload['contact_number']}"');
-//     debugPrint('   city: "${payload['city']}"');
-//     debugPrint('   address: "${payload['address']}"');
-//     debugPrint('   notes: "${payload['notes']}"');
-//     debugPrint('   emp_id: "${payload['emp_id']}"');
-//     debugPrint('   emp_name: "${payload['emp_name']}"');
-//     debugPrint('   company_code: "${payload['company_code']}"');
-//     debugPrint('   latitude: ${payload['latitude']}');
-//     debugPrint('   longitude: ${payload['longitude']}');
-//
-//     final jsonPayload = jsonEncode(payload);
-//     debugPrint('📦 [AddShop] Full JSON payload:');
-//     debugPrint(jsonPayload);
-//     debugPrint('📦 [AddShop] Payload size: ${jsonPayload.length} bytes');
-//
-//     // ── Send to API ────────────────────────────────────────────────────────
-//     debugPrint('');
-//     debugPrint('📡 [AddShop] Step 6: Sending to API...');
-//
-//     final String apiUrl = 'http://oracle.metaxperts.net/ords/gps_workforce/addshop/post/';
-//     debugPrint('📡 [AddShop] API URL: $apiUrl');
-//     debugPrint('📡 [AddShop] Method: POST');
-//     debugPrint('📡 [AddShop] Content-Type: application/json');
-//
-//     try {
-//       final stopwatch = Stopwatch()..start();
-//       debugPrint('⏱️ [AddShop] Request started at: ${DateTime.now()}');
-//
-//       final response = await http.post(
-//         Uri.parse(apiUrl),
-//         headers: {'Content-Type': 'application/json'},
-//         body: jsonPayload,
-//       ).timeout(const Duration(seconds: 30));
-//
-//       stopwatch.stop();
-//       debugPrint('⏱️ [AddShop] Request completed in ${stopwatch.elapsedMilliseconds}ms');
-//
-//       debugPrint('📡 [AddShop] Response Status: ${response.statusCode}');
-//       debugPrint('📡 [AddShop] Response Headers: ${response.headers}');
-//       debugPrint('📡 [AddShop] Response Body: ${response.body}');
-//
-//       if (response.statusCode == 200 || response.statusCode == 201) {
-//         debugPrint('✅ [AddShop] SUCCESS! Shop added successfully!');
-//
-//         // Try to parse response
-//         try {
-//           final responseData = jsonDecode(response.body);
-//           debugPrint('📦 [AddShop] Parsed response: $responseData');
-//         } catch (_) {}
-//
-//         Get.snackbar(
-//           '✅ Success',
-//           'Shop added successfully!',
-//           snackPosition:   SnackPosition.BOTTOM,
-//           backgroundColor: _primary,
-//           colorText:       Colors.white,
-//           borderRadius:    14,
-//           margin:          const EdgeInsets.all(16),
-//           duration:        const Duration(seconds: 2),
-//           icon: const Icon(Icons.check_circle_rounded, color: Colors.white),
-//         );
-//
-//         // Clear form after success
-//         debugPrint('🧹 [AddShop] Clearing form fields...');
-//         _shopNameCtrl.clear();
-//         _shopTypeCtrl.clear();
-//         _ownerNameCtrl.clear();
-//         _contactCtrl.clear();
-//         _addressCtrl.clear();
-//         _notesCtrl.clear();
-//         setState(() {
-//           _selectedCity = null;
-//           _latitude = null;
-//           _longitude = null;
-//           _gpsEnabled = false;
-//         });
-//         debugPrint('✅ [AddShop] Form cleared');
-//
-//         // Navigate back after delay
-//         debugPrint('⏱️ [AddShop] Navigating back in 1 second...');
-//         Future.delayed(const Duration(seconds: 1), () {
-//           debugPrint('🏪 [AddShop] Navigating back to previous screen');
-//           Get.back();
-//         });
-//       } else {
-//         // Try to parse error message from response
-//         debugPrint('❌ [AddShop] API returned error status: ${response.statusCode}');
-//         String errorMsg = 'Failed to add shop. Please try again.';
-//         try {
-//           final errorData = jsonDecode(response.body);
-//           debugPrint('📦 [AddShop] Error response body: $errorData');
-//           if (errorData['message'] != null) {
-//             errorMsg = errorData['message'];
-//           } else if (errorData['error'] != null) {
-//             errorMsg = errorData['error'];
-//           } else if (errorData['exception'] != null) {
-//             errorMsg = errorData['exception'];
-//           }
-//           debugPrint('📦 [AddShop] Extracted error message: "$errorMsg"');
-//         } catch (e) {
-//           debugPrint('⚠️ [AddShop] Could not parse error response: $e');
-//         }
-//
-//         Get.snackbar(
-//           '❌ Error',
-//           errorMsg,
-//           snackPosition:   SnackPosition.BOTTOM,
-//           backgroundColor: const Color(0xFFC0392B),
-//           colorText:       Colors.white,
-//           borderRadius:    14,
-//           margin:          const EdgeInsets.all(16),
-//           duration:        const Duration(seconds: 3),
-//           icon: const Icon(Icons.error_outline_rounded, color: Colors.white),
-//         );
-//       }
-//     } catch (e) {
-//       debugPrint('❌ [AddShop] Network error: $e');
-//       debugPrint('❌ [AddShop] Stack trace: ${StackTrace.current}');
-//
-//       String errorMsg = 'Could not connect to server. Please check your internet connection.';
-//       if (e.toString().contains('timeout')) {
-//         errorMsg = 'Request timed out. Server is taking too long to respond.';
-//       } else if (e.toString().contains('SocketException')) {
-//         errorMsg = 'No internet connection. Please check your network.';
-//       }
-//       debugPrint('📦 [AddShop] User-friendly error: "$errorMsg"');
-//
-//       Get.snackbar(
-//         'Network Error',
-//         errorMsg,
-//         snackPosition:   SnackPosition.BOTTOM,
-//         backgroundColor: const Color(0xFFC0392B),
-//         colorText:       Colors.white,
-//         borderRadius:    14,
-//         margin:          const EdgeInsets.all(16),
-//         duration:        const Duration(seconds: 3),
-//         icon: const Icon(Icons.wifi_off_rounded, color: Colors.white),
-//       );
-//     }
-//
-//     debugPrint('════════════════════════════════════════════════════════════');
-//     debugPrint('🏪 [AddShop] ===== SUBMIT ENDED =====');
-//     debugPrint('════════════════════════════════════════════════════════════');
-//     debugPrint('');
-//   }
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     debugPrint('🏗️ [AddShop] BUILD called');
-//
-//     return Scaffold(
-//       backgroundColor: _bg,
-//       body: Column(
-//         children: [
-//
-//           // ── Gradient Header ────────────────────────────────────────────
-//           Container(
-//             decoration: const BoxDecoration(
-//               gradient: LinearGradient(
-//                 colors: [Color(0xFF0C6B64), Color(0xFF1AAD9E)],
-//                 begin:  Alignment.topLeft,
-//                 end:    Alignment.bottomRight,
-//               ),
-//               borderRadius: BorderRadius.only(
-//                 bottomLeft:  Radius.circular(28),
-//                 bottomRight: Radius.circular(28),
-//               ),
-//             ),
-//             child: SafeArea(
-//               bottom: false,
-//               child: Padding(
-//                 padding: const EdgeInsets.fromLTRB(8, 8, 8, 20),
-//                 child: Row(
-//                   children: [
-//                     GestureDetector(
-//                       onTap: () {
-//                         debugPrint('🏪 [AddShop] Back button pressed');
-//                         Get.back();
-//                       },
-//                       child: Container(
-//                         width: 42, height: 42,
-//                         decoration: BoxDecoration(
-//                           color: Colors.white.withOpacity(0.2),
-//                           borderRadius: BorderRadius.circular(13),
-//                         ),
-//                         child: const Icon(Icons.arrow_back_ios_new_rounded,
-//                             color: Colors.white, size: 18),
-//                       ),
-//                     ),
-//                     const SizedBox(width: 12),
-//                     const Expanded(
-//                       child: Column(
-//                         crossAxisAlignment: CrossAxisAlignment.start,
-//                         children: [
-//                           Text('Add Shop',
-//                               style: TextStyle(fontSize: 22,
-//                                   fontWeight: FontWeight.w700, color: Colors.white)),
-//                           SizedBox(height: 2),
-//                           Text('Register a new shop',
-//                               style: TextStyle(fontSize: 13, color: Colors.white70)),
-//                         ],
-//                       ),
-//                     ),
-//                     Container(
-//                       width: 42, height: 42,
-//                       decoration: BoxDecoration(
-//                         color: Colors.white.withOpacity(0.2),
-//                         borderRadius: BorderRadius.circular(13),
-//                       ),
-//                       child: const Icon(Icons.add_business_rounded,
-//                           color: Colors.white, size: 20),
-//                     ),
-//                   ],
-//                 ),
-//               ),
-//             ),
-//           ),
-//
-//           // ── Form ──────────────────────────────────────────────────────
-//           Expanded(
-//             child: Form(
-//               key: _formKey,
-//               child: ListView(
-//                 padding: const EdgeInsets.fromLTRB(16, 20, 16, 120),
-//                 children: [
-//
-//                   // ── Employee Info Badge ──────────────────────────────────
-//                   Container(
-//                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-//                     decoration: BoxDecoration(
-//                       color: Colors.white,
-//                       borderRadius: BorderRadius.circular(14),
-//                       border: Border.all(color: const Color(0xFFD4F0ED), width: 1),
-//                     ),
-//                     child: Row(
-//                       children: [
-//                         Container(
-//                           width: 38, height: 38,
-//                           decoration: BoxDecoration(
-//                             color: const Color(0xFFE5F7F5),
-//                             borderRadius: BorderRadius.circular(10),
-//                           ),
-//                           child: const Icon(Icons.badge_rounded,
-//                               color: _primary, size: 20),
-//                         ),
-//                         const SizedBox(width: 12),
-//                         Expanded(
-//                           child: Column(
-//                             crossAxisAlignment: CrossAxisAlignment.start,
-//                             mainAxisSize: MainAxisSize.min,
-//                             children: [
-//                               Text(
-//                                 _empName.isNotEmpty ? _empName : 'Loading...',
-//                                 style: const TextStyle(
-//                                   fontSize: 14, fontWeight: FontWeight.w600,
-//                                   color: Color(0xFF1A2E2C),
-//                                 ),
-//                               ),
-//                               Text(
-//                                 _empId.isNotEmpty ? 'ID: $_empId' : 'Please login first',
-//                                 style: const TextStyle(
-//                                   fontSize: 12, fontWeight: FontWeight.w400,
-//                                   color: Color(0xFF6B7280),
-//                                 ),
-//                               ),
-//                             ],
-//                           ),
-//                         ),
-//                         if (_companyCode.isNotEmpty)
-//                           Container(
-//                             padding: const EdgeInsets.symmetric(
-//                                 horizontal: 8, vertical: 4),
-//                             decoration: BoxDecoration(
-//                               color: const Color(0xFFE5F7F5),
-//                               borderRadius: BorderRadius.circular(6),
-//                             ),
-//                             child: Text(
-//                               _companyCode,
-//                               style: const TextStyle(
-//                                 fontSize: 10, fontWeight: FontWeight.w600,
-//                                 color: _primary,
-//                               ),
-//                             ),
-//                           ),
-//                       ],
-//                     ),
-//                   ),
-//                   const SizedBox(height: 20),
-//
-//                   // ── Shop Info ──────────────────────────────────────────
-//                   const _SectionHeader(icon: Icons.storefront_rounded, label: 'Shop Info'),
-//                   const SizedBox(height: 12),
-//
-//                   _FieldCard(
-//                     label:      'Shop Name',
-//                     controller: _shopNameCtrl,
-//                     icon:       Icons.store_rounded,
-//                     hint:       'Enter shop name',
-//                     validator:  (v) {
-//                       final isValid = (v != null && v.trim().isNotEmpty);
-//                       debugPrint('🔍 [AddShop] Validating shop_name: "$v" -> $isValid');
-//                       return isValid ? null : 'Required';
-//                     },
-//                   ),
-//                   const SizedBox(height: 10),
-//
-//                   _FieldCard(
-//                     label:      'Shop Type',
-//                     controller: _shopTypeCtrl,
-//                     icon:       Icons.category_rounded,
-//                     hint:       'e.g. Retail, Wholesale',
-//                     isOptional: true,
-//                     validator:  null,
-//                   ),
-//
-//                   const SizedBox(height: 20),
-//
-//                   // ── Owner Info ───────────────────────────────────────────
-//                   const _SectionHeader(icon: Icons.person_rounded, label: 'Owner Info'),
-//                   const SizedBox(height: 12),
-//
-//                   _FieldCard(
-//                     label:      'Owner Name',
-//                     controller: _ownerNameCtrl,
-//                     icon:       Icons.person_rounded,
-//                     hint:       "Owner's full name",
-//                     validator:  (v) {
-//                       final isValid = (v != null && v.trim().isNotEmpty);
-//                       debugPrint('🔍 [AddShop] Validating owner_name: "$v" -> $isValid');
-//                       return isValid ? null : 'Required';
-//                     },
-//                   ),
-//                   const SizedBox(height: 10),
-//
-//                   _FieldCard(
-//                     label:           'Contact Number',
-//                     controller:      _contactCtrl,
-//                     icon:            Icons.phone_rounded,
-//                     hint:            '03XX-XXXXXXX',
-//                     keyboardType:    TextInputType.phone,
-//                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-//                     validator:       (v) {
-//                       final isValid = (v != null && v.isNotEmpty);
-//                       debugPrint('🔍 [AddShop] Validating contact: "$v" -> $isValid');
-//                       return isValid ? null : 'Required';
-//                     },
-//                   ),
-//
-//                   const SizedBox(height: 20),
-//
-//                   // ── Location Info ────────────────────────────────────────
-//                   const _SectionHeader(icon: Icons.location_on_rounded, label: 'Location Info'),
-//                   const SizedBox(height: 12),
-//
-//                   _CityDropdownCard(
-//                     value: _selectedCity,
-//                     items: _cities,
-//                     isLoading: _loadingCities,
-//                     onChanged: (v) {
-//                       debugPrint('🏙️ [AddShop] City selected: "$v"');
-//                       setState(() => _selectedCity = v);
-//                     },
-//                   ),
-//                   const SizedBox(height: 10),
-//
-//                   _FieldCard(
-//                     label:      'Address',
-//                     controller: _addressCtrl,
-//                     icon:       Icons.home_rounded,
-//                     hint:       'Full shop address',
-//                     maxLines:   2,
-//                     validator:  (v) {
-//                       final isValid = (v != null && v.trim().isNotEmpty);
-//                       debugPrint('🔍 [AddShop] Validating address: "$v" -> $isValid');
-//                       return isValid ? null : 'Required';
-//                     },
-//                   ),
-//                   const SizedBox(height: 10),
-//
-//                   // ── GPS Toggle Card ──────────────────────────────────────
-//                   _GpsToggleCard(
-//                     enabled:     _gpsEnabled,
-//                     fetching:    _fetchingLocation,
-//                     latitude:    _latitude,
-//                     longitude:   _longitude,
-//                     onChanged:   _onGpsToggle,
-//                     onRefresh:   () {
-//                       debugPrint('🔄 [AddShop] GPS refresh button pressed');
-//                       _onGpsToggle(true);
-//                     },
-//                   ),
-//
-//                   const SizedBox(height: 20),
-//
-//                   // ── Additional Info ──────────────────────────────────────
-//                   const _SectionHeader(icon: Icons.notes_rounded, label: 'Additional Info'),
-//                   const SizedBox(height: 12),
-//
-//                   _FieldCard(
-//                     label:      'Notes',
-//                     controller: _notesCtrl,
-//                     icon:       Icons.sticky_note_2_rounded,
-//                     hint:       'Any extra remarks',
-//                     maxLines:   3,
-//                     isOptional: true,
-//                     validator:  null,
-//                   ),
-//                 ],
-//               ),
-//             ),
-//           ),
-//         ],
-//       ),
-//
-//       // ── Submit Button ───────────────────────────────────────────────────
-//       bottomSheet: Container(
-//         padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-//         decoration: const BoxDecoration(
-//           color: Colors.white,
-//           boxShadow: [
-//             BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -2)),
-//           ],
-//         ),
-//         child: SizedBox(
-//           width: double.infinity,
-//           height: 52,
-//           child: ElevatedButton(
-//             onPressed: _submit,
-//             style: ElevatedButton.styleFrom(
-//               backgroundColor: _primary,
-//               shape: RoundedRectangleBorder(
-//                 borderRadius: BorderRadius.circular(16),
-//               ),
-//               elevation: 0,
-//             ),
-//             child: const Text(
-//               'Save Shop',
-//               style: TextStyle(
-//                 fontSize:   16,
-//                 fontWeight: FontWeight.w700,
-//                 color:      Colors.white,
-//               ),
-//             ),
-//           ),
-//         ),
-//       ),
-//     );
-//   }
-// }
-//
-// // ─────────────────────────────────────────────────────────────────────────────
-// // Section Header
-// // ─────────────────────────────────────────────────────────────────────────────
-// class _SectionHeader extends StatelessWidget {
-//   final IconData icon;
-//   final String   label;
-//
-//   static const _primary = Color(0xFF0C6B64);
-//
-//   const _SectionHeader({required this.icon, required this.label});
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return Row(
-//       children: [
-//         Icon(icon, color: _primary, size: 18),
-//         const SizedBox(width: 8),
-//         Text(
-//           label,
-//           style: const TextStyle(
-//             fontSize:   13,
-//             fontWeight: FontWeight.w700,
-//             color:      _primary,
-//             letterSpacing: 0.3,
-//           ),
-//         ),
-//       ],
-//     );
-//   }
-// }
-//
-// // ─────────────────────────────────────────────────────────────────────────────
-// // GPS Toggle Card
-// // ─────────────────────────────────────────────────────────────────────────────
-// class _GpsToggleCard extends StatelessWidget {
-//   final bool                enabled;
-//   final bool                fetching;
-//   final double?             latitude;
-//   final double?             longitude;
-//   final ValueChanged<bool>  onChanged;
-//   final VoidCallback        onRefresh;
-//
-//   static const _primary = Color(0xFF0C6B64);
-//
-//   const _GpsToggleCard({
-//     required this.enabled,
-//     required this.fetching,
-//     required this.latitude,
-//     required this.longitude,
-//     required this.onChanged,
-//     required this.onRefresh,
-//   });
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return Container(
-//       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-//       decoration: BoxDecoration(
-//         color: Colors.white,
-//         borderRadius: BorderRadius.circular(14),
-//         border: Border.all(color: const Color(0xFFD4F0ED), width: 1),
-//       ),
-//       child: Column(
-//         children: [
-//           Row(
-//             crossAxisAlignment: CrossAxisAlignment.center,
-//             children: [
-//               Container(
-//                 width: 38, height: 38,
-//                 decoration: BoxDecoration(
-//                   color: const Color(0xFFE5F7F5),
-//                   borderRadius: BorderRadius.circular(10),
-//                 ),
-//                 child: Icon(
-//                   Icons.gps_fixed_rounded,
-//                   color: enabled ? _primary : const Color(0xFFB0BAC7),
-//                   size: 20,
-//                 ),
-//               ),
-//               const SizedBox(width: 12),
-//               Expanded(
-//                 child: Column(
-//                   crossAxisAlignment: CrossAxisAlignment.start,
-//                   mainAxisSize: MainAxisSize.min,
-//                   children: [
-//                     const Text(
-//                       'Use Current Location (GPS)',
-//                       style: TextStyle(
-//                         fontSize: 14, fontWeight: FontWeight.w600,
-//                         color: Color(0xFF1A2E2C),
-//                       ),
-//                     ),
-//                     const SizedBox(height: 2),
-//                     Text(
-//                       fetching
-//                           ? 'Fetching location...'
-//                           : enabled
-//                           ? 'Location will be saved with shop'
-//                           : 'Enable to auto-capture lat/long',
-//                       style: const TextStyle(
-//                         fontSize: 12, fontWeight: FontWeight.w400,
-//                         color: Color(0xFF6B7280),
-//                       ),
-//                     ),
-//                   ],
-//                 ),
-//               ),
-//               const SizedBox(width: 8),
-//               fetching
-//                   ? const SizedBox(
-//                 height: 22, width: 22,
-//                 child: CircularProgressIndicator(
-//                   strokeWidth: 2,
-//                   color: _primary,
-//                 ),
-//               )
-//                   : Switch(
-//                 value: enabled,
-//                 onChanged: onChanged,
-//                 activeColor: Colors.white,
-//                 activeTrackColor: _primary,
-//                 inactiveTrackColor: const Color(0xFFE5E9E8),
-//                 inactiveThumbColor: Colors.white,
-//               ),
-//             ],
-//           ),
-//
-//           if (enabled && latitude != null && longitude != null) ...[
-//             const SizedBox(height: 10),
-//             const Divider(height: 1, color: Color(0xFFF0F4F3)),
-//             const SizedBox(height: 10),
-//             Row(
-//               children: [
-//                 const Icon(Icons.place_rounded, color: _primary, size: 16),
-//                 const SizedBox(width: 6),
-//                 Expanded(
-//                   child: Text(
-//                     'Lat: ${latitude!.toStringAsFixed(5)}, Lng: ${longitude!.toStringAsFixed(5)}',
-//                     style: const TextStyle(
-//                       fontSize: 12.5, fontWeight: FontWeight.w600,
-//                       color: Color(0xFF1A6E59),
-//                     ),
-//                   ),
-//                 ),
-//                 GestureDetector(
-//                   onTap: onRefresh,
-//                   child: Container(
-//                     padding: const EdgeInsets.all(6),
-//                     decoration: BoxDecoration(
-//                       color: const Color(0xFFE5F7F5),
-//                       borderRadius: BorderRadius.circular(8),
-//                     ),
-//                     child: const Icon(Icons.refresh_rounded,
-//                         color: _primary, size: 16),
-//                   ),
-//                 ),
-//               ],
-//             ),
-//           ],
-//         ],
-//       ),
-//     );
-//   }
-// }
-//
-// // ─────────────────────────────────────────────────────────────────────────────
-// // Field Card
-// // ─────────────────────────────────────────────────────────────────────────────
-// class _FieldCard extends StatelessWidget {
-//   final String                        label;
-//   final TextEditingController         controller;
-//   final IconData                      icon;
-//   final String                        hint;
-//   final TextInputType?                keyboardType;
-//   final List<TextInputFormatter>?     inputFormatters;
-//   final String? Function(String?)?    validator;
-//   final int                           maxLines;
-//   final bool                          readOnly;
-//   final VoidCallback?                 onTap;
-//   final bool                          showArrow;
-//   final bool                          showLock;
-//   final bool                          isOptional;
-//
-//   static const _primary  = Color(0xFF0C6B64);
-//   static const _textDark = Color(0xFF1A2E2C);
-//
-//   const _FieldCard({
-//     required this.label,
-//     required this.controller,
-//     required this.icon,
-//     required this.hint,
-//     this.keyboardType,
-//     this.inputFormatters,
-//     this.validator,
-//     this.maxLines   = 1,
-//     this.readOnly   = false,
-//     this.onTap,
-//     this.showArrow  = false,
-//     this.showLock   = false,
-//     this.isOptional = false,
-//   });
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return Container(
-//       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-//       decoration: BoxDecoration(
-//         color: readOnly && showLock
-//             ? const Color(0xFFF5FFFE)
-//             : Colors.white,
-//         borderRadius: BorderRadius.circular(14),
-//         border: Border.all(color: const Color(0xFFD4F0ED), width: 1),
-//       ),
-//       child: Row(
-//         crossAxisAlignment: CrossAxisAlignment.center,
-//         children: [
-//           Icon(icon, color: _primary, size: 22),
-//           const SizedBox(width: 12),
-//           Expanded(
-//             child: Column(
-//               crossAxisAlignment: CrossAxisAlignment.start,
-//               mainAxisSize: MainAxisSize.min,
-//               children: [
-//                 Row(children: [
-//                   Flexible(
-//                     child: Text(
-//                       label,
-//                       overflow: TextOverflow.ellipsis,
-//                       style: const TextStyle(
-//                         fontSize: 12, fontWeight: FontWeight.w500,
-//                         color: Color(0xFF6B7280),
-//                       ),
-//                     ),
-//                   ),
-//                   if (isOptional) ...[
-//                     const SizedBox(width: 4),
-//                     Container(
-//                       padding: const EdgeInsets.symmetric(
-//                           horizontal: 5, vertical: 1),
-//                       decoration: BoxDecoration(
-//                         color: const Color(0xFFE5F7F5),
-//                         borderRadius: BorderRadius.circular(4),
-//                       ),
-//                       child: const Text('Optional',
-//                           style: TextStyle(
-//                             fontSize: 9, color: Color(0xFF1A6E59),
-//                             fontWeight: FontWeight.w500,
-//                           )),
-//                     ),
-//                   ],
-//                 ]),
-//                 const SizedBox(height: 2),
-//                 TextFormField(
-//                   controller:      controller,
-//                   keyboardType:    keyboardType,
-//                   inputFormatters: inputFormatters,
-//                   validator:       validator,
-//                   maxLines:        maxLines,
-//                   readOnly:        readOnly,
-//                   onTap:           onTap,
-//                   style: TextStyle(
-//                     fontSize: 15, fontWeight: FontWeight.w600,
-//                     color: readOnly && showLock
-//                         ? const Color(0xFF1A6E59)
-//                         : _textDark,
-//                   ),
-//                   decoration: InputDecoration(
-//                     hintText:  hint,
-//                     hintStyle: const TextStyle(
-//                       fontSize: 15, fontWeight: FontWeight.w400,
-//                       color: Color(0xFFB0BAC7),
-//                     ),
-//                     isDense: true,
-//                     border:  InputBorder.none,
-//                     contentPadding: EdgeInsets.zero,
-//                     errorStyle: const TextStyle(fontSize: 11),
-//                   ),
-//                 ),
-//               ],
-//             ),
-//           ),
-//           if (showArrow)
-//             const Icon(Icons.chevron_right_rounded,
-//                 color: Color(0xFFB0BAC7), size: 22)
-//           else if (showLock)
-//             const Icon(Icons.lock_rounded,
-//                 color: Color(0xFF1A6E59), size: 16)
-//           else
-//             const Icon(Icons.lock_outline_rounded,
-//                 color: Color(0xFFCDD5DC), size: 18),
-//         ],
-//       ),
-//     );
-//   }
-// }
-//
-// // ─────────────────────────────────────────────────────────────────────────────
-// // City Dropdown Card  —  tappable field that opens a searchable picker
-// // ─────────────────────────────────────────────────────────────────────────────
-// class _CityDropdownCard extends StatelessWidget {
-//   final String?           value;
-//   final List<String>      items;
-//   final bool               isLoading;
-//   final Function(String?) onChanged;
-//
-//   static const _primary  = Color(0xFF0C6B64);
-//   static const _textDark = Color(0xFF1A2E2C);
-//
-//   const _CityDropdownCard({
-//     required this.value,
-//     required this.items,
-//     required this.isLoading,
-//     required this.onChanged,
-//   });
-//
-//   Future<void> _openPicker(BuildContext context) async {
-//     if (isLoading) return;
-//     final selected = await showModalBottomSheet<String>(
-//       context: context,
-//       isScrollControlled: true,
-//       backgroundColor: Colors.transparent,
-//       builder: (_) => _CitySearchSheet(items: items, initialValue: value),
-//     );
-//     if (selected != null) onChanged(selected);
-//   }
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return GestureDetector(
-//       onTap: () => _openPicker(context),
-//       child: Container(
-//         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-//         decoration: BoxDecoration(
-//           color: Colors.white,
-//           borderRadius: BorderRadius.circular(14),
-//           border: Border.all(color: const Color(0xFFD4F0ED), width: 1),
-//         ),
-//         child: Row(
-//           crossAxisAlignment: CrossAxisAlignment.center,
-//           children: [
-//             Container(
-//               width: 38, height: 38,
-//               decoration: BoxDecoration(
-//                 color: const Color(0xFFE5F7F5),
-//                 borderRadius: BorderRadius.circular(10),
-//               ),
-//               child: const Icon(Icons.location_city_rounded,
-//                   color: _primary, size: 20),
-//             ),
-//             const SizedBox(width: 12),
-//             Expanded(
-//               child: Column(
-//                 crossAxisAlignment: CrossAxisAlignment.start,
-//                 mainAxisSize: MainAxisSize.min,
-//                 children: [
-//                   const Text(
-//                     'City',
-//                     style: TextStyle(
-//                       fontSize: 12, fontWeight: FontWeight.w500,
-//                       color: Color(0xFF6B7280),
-//                     ),
-//                   ),
-//                   const SizedBox(height: 2),
-//                   isLoading
-//                       ? const Row(
-//                     children: [
-//                       SizedBox(
-//                         height: 14, width: 14,
-//                         child: CircularProgressIndicator(
-//                           strokeWidth: 2,
-//                           color: _primary,
-//                         ),
-//                       ),
-//                       const SizedBox(width: 8),
-//                       Text(
-//                         'Loading cities...',
-//                         style: TextStyle(
-//                           fontSize: 14, fontWeight: FontWeight.w500,
-//                           color: Color(0xFFB0BAC7),
-//                         ),
-//                       ),
-//                     ],
-//                   )
-//                       : Text(
-//                     (value == null || value!.isEmpty)
-//                         ? 'Select city'
-//                         : value!,
-//                     style: TextStyle(
-//                       fontSize: 15, fontWeight: FontWeight.w600,
-//                       color: (value == null || value!.isEmpty)
-//                           ? const Color(0xFFB0BAC7)
-//                           : _textDark,
-//                     ),
-//                   ),
-//                 ],
-//               ),
-//             ),
-//             const Icon(Icons.keyboard_arrow_down_rounded,
-//                 color: Color(0xFFB0BAC7), size: 22),
-//           ],
-//         ),
-//       ),
-//     );
-//   }
-// }
-//
-// // ─────────────────────────────────────────────────────────────────────────────
-// // City Search Sheet — bottom sheet with search filter + list
-// // ─────────────────────────────────────────────────────────────────────────────
-// class _CitySearchSheet extends StatefulWidget {
-//   final List<String> items;
-//   final String?       initialValue;
-//
-//   const _CitySearchSheet({required this.items, required this.initialValue});
-//
-//   @override
-//   State<_CitySearchSheet> createState() => _CitySearchSheetState();
-// }
-//
-// class _CitySearchSheetState extends State<_CitySearchSheet> {
-//   static const _primary = Color(0xFF0C6B64);
-//
-//   late List<String> _filtered;
-//   final _searchCtrl = TextEditingController();
-//
-//   @override
-//   void initState() {
-//     super.initState();
-//     _filtered = widget.items;
-//   }
-//
-//   @override
-//   void dispose() {
-//     _searchCtrl.dispose();
-//     super.dispose();
-//   }
-//
-//   void _filter(String query) {
-//     setState(() {
-//       _filtered = widget.items
-//           .where((c) => c.toLowerCase().contains(query.toLowerCase()))
-//           .toList();
-//     });
-//   }
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return DraggableScrollableSheet(
-//       initialChildSize: 0.75,
-//       minChildSize: 0.4,
-//       maxChildSize: 0.9,
-//       expand: false,
-//       builder: (context, scrollController) {
-//         return Container(
-//           decoration: const BoxDecoration(
-//             color: Colors.white,
-//             borderRadius: BorderRadius.only(
-//               topLeft:  Radius.circular(24),
-//               topRight: Radius.circular(24),
-//             ),
-//           ),
-//           child: Column(
-//             children: [
-//               const SizedBox(height: 10),
-//               Container(
-//                 width: 40, height: 4,
-//                 decoration: BoxDecoration(
-//                   color: const Color(0xFFD4F0ED),
-//                   borderRadius: BorderRadius.circular(2),
-//                 ),
-//               ),
-//               Padding(
-//                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-//                 child: Row(
-//                   children: [
-//                     const Icon(Icons.location_city_rounded,
-//                         color: _primary, size: 20),
-//                     const SizedBox(width: 8),
-//                     const Text(
-//                       'Select City',
-//                       style: TextStyle(
-//                         fontSize: 17, fontWeight: FontWeight.w700,
-//                         color: Color(0xFF1A2E2C),
-//                       ),
-//                     ),
-//                     const Spacer(),
-//                     GestureDetector(
-//                       onTap: () => Navigator.pop(context),
-//                       child: Container(
-//                         padding: const EdgeInsets.all(4),
-//                         decoration: BoxDecoration(
-//                           color: const Color(0xFFF0F4F3),
-//                           borderRadius: BorderRadius.circular(8),
-//                         ),
-//                         child: const Icon(Icons.close_rounded,
-//                             size: 18, color: Color(0xFF6B7280)),
-//                       ),
-//                     ),
-//                   ],
-//                 ),
-//               ),
-//
-//               // ── Search bar ──────────────────────────────────────────────
-//               Padding(
-//                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-//                 child: Container(
-//                   decoration: BoxDecoration(
-//                     color: const Color(0xFFF5FFFE),
-//                     borderRadius: BorderRadius.circular(12),
-//                     border: Border.all(color: const Color(0xFFD4F0ED), width: 1),
-//                   ),
-//                   child: TextField(
-//                     controller: _searchCtrl,
-//                     autofocus: true,
-//                     onChanged: _filter,
-//                     style: const TextStyle(
-//                       fontSize: 15, fontWeight: FontWeight.w500,
-//                       color: Color(0xFF1A2E2C),
-//                     ),
-//                     decoration: InputDecoration(
-//                       hintText: 'Search city...',
-//                       hintStyle: const TextStyle(
-//                         fontSize: 15, fontWeight: FontWeight.w400,
-//                         color: Color(0xFFB0BAC7),
-//                       ),
-//                       prefixIcon: const Icon(Icons.search_rounded,
-//                           color: _primary, size: 20),
-//                       suffixIcon: _searchCtrl.text.isEmpty
-//                           ? null
-//                           : GestureDetector(
-//                         onTap: () {
-//                           _searchCtrl.clear();
-//                           _filter('');
-//                         },
-//                         child: const Icon(Icons.clear_rounded,
-//                             color: Color(0xFFB0BAC7), size: 18),
-//                       ),
-//                       isDense: true,
-//                       border: InputBorder.none,
-//                       contentPadding: const EdgeInsets.symmetric(vertical: 14),
-//                     ),
-//                   ),
-//                 ),
-//               ),
-//
-//               const Divider(height: 1, color: Color(0xFFEFF3F2)),
-//
-//               // ── City list ────────────────────────────────────────────────
-//               Expanded(
-//                 child: _filtered.isEmpty
-//                     ? const Center(
-//                   child: Text(
-//                     'No cities found',
-//                     style: TextStyle(
-//                       fontSize: 14, fontWeight: FontWeight.w500,
-//                       color: Color(0xFFB0BAC7),
-//                     ),
-//                   ),
-//                 )
-//                     : ListView.separated(
-//                   controller: scrollController,
-//                   padding: const EdgeInsets.symmetric(vertical: 8),
-//                   itemCount: _filtered.length,
-//                   separatorBuilder: (_, __) => const Divider(
-//                     height: 1, color: Color(0xFFF0F4F3), indent: 20, endIndent: 20,
-//                   ),
-//                   itemBuilder: (context, index) {
-//                     final city = _filtered[index];
-//                     final isSelected = city == widget.initialValue;
-//                     return ListTile(
-//                       onTap: () => Navigator.pop(context, city),
-//                       title: Text(
-//                         city,
-//                         style: TextStyle(
-//                           fontSize: 15,
-//                           fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-//                           color: isSelected ? _primary : const Color(0xFF1A2E2C),
-//                         ),
-//                       ),
-//                       trailing: isSelected
-//                           ? const Icon(Icons.check_circle_rounded,
-//                           color: _primary, size: 20)
-//                           : null,
-//                     );
-//                   },
-//                 ),
-//               ),
-//             ],
-//           ),
-//         );
-//       },
-//     );
-//   }
-// }
-
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import '../../AppColors.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
+import '../../ViewModels/login_view_model.dart';
+import '../HomeScreenComponents/navbar.dart';
+import '../HomeScreenComponents/sidebar_drawer.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// add_shop_screen.dart  —  Complete integration with login & API (FULL DEBUG)
+// add_shop_screen.dart — "New Shop" form (Pending approval flow)
+// Fields kept exactly as before: Shop Name, Owner Name, Contact, City,
+// Address, Notes(optional), Shop Type(optional) — plus:
+//   • WhatsApp number (new, next to Contact)
+//   • CNIC number + Date of Birth (new)
+//   • Area (new, free text next to CNIC/Address section)
+//   • Shop Photo / Shopkeeper Photo (GPS-stamped field photos) — optional
 // ═══════════════════════════════════════════════════════════════════════════════
 
 class AddShopScreen extends StatefulWidget {
@@ -1478,14 +32,19 @@ class AddShopScreen extends StatefulWidget {
 
 class _AddShopScreenState extends State<AddShopScreen> {
   final _formKey = GlobalKey<FormState>();
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  static const _primary = Color(0xFF0C6B64);
-  static const _bg      = Color(0xFFE8F5F3);
+  static const _primary = AppColors.tealDark;
+  static const _bg      = AppColors.surface;
 
   // ── Controllers ──────────────────────────────────────────────────────────
   final _shopNameCtrl    = TextEditingController();
   final _ownerNameCtrl   = TextEditingController();
+  final _cnicCtrl        = TextEditingController();
+  final _dobCtrl         = TextEditingController();
   final _contactCtrl     = TextEditingController();
+  final _whatsappCtrl    = TextEditingController();
+  final _areaCtrl        = TextEditingController();
   final _addressCtrl     = TextEditingController();
   final _shopTypeCtrl    = TextEditingController();
   final _notesCtrl       = TextEditingController();
@@ -1500,6 +59,12 @@ class _AddShopScreenState extends State<AddShopScreen> {
   double? _latitude;
   double? _longitude;
 
+  // ── Photos — all optional ───────────────────────────────────────────────
+  File? _shopPhotoImage;
+  File? _shopkeeperPhotoImage;
+
+  bool _submitting = false;
+
   // ── Employee Info from SharedPreferences ─────────────────────────────────
   String _empId = '';
   String _empName = '';
@@ -1508,28 +73,30 @@ class _AddShopScreenState extends State<AddShopScreen> {
   @override
   void initState() {
     super.initState();
-    debugPrint('════════════════════════════════════════════════════════════');
-    debugPrint('🏪 [AddShop] INIT STATE - Screen Started');
-    debugPrint('════════════════════════════════════════════════════════════');
     _loadEmployeeInfo();
     _fetchCities();
   }
 
+  @override
+  void dispose() {
+    _shopNameCtrl.dispose();
+    _ownerNameCtrl.dispose();
+    _cnicCtrl.dispose();
+    _dobCtrl.dispose();
+    _contactCtrl.dispose();
+    _whatsappCtrl.dispose();
+    _areaCtrl.dispose();
+    _addressCtrl.dispose();
+    _shopTypeCtrl.dispose();
+    _notesCtrl.dispose();
+    super.dispose();
+  }
+
   // ── Load employee info from SharedPreferences ───────────────────────────
   Future<void> _loadEmployeeInfo() async {
-    debugPrint('👤 [AddShop] ===== LOADING EMPLOYEE INFO =====');
-
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
 
-    // Log ALL SharedPreferences keys
-    debugPrint('📋 [AddShop] All SharedPreferences keys:');
-    final allKeys = prefs.getKeys();
-    for (final key in allKeys) {
-      debugPrint('   $key = ${prefs.get(key)}');
-    }
-
-    // Try multiple possible keys for employee ID
     _empId = prefs.getString('userId') ??
         prefs.getString('user_id') ??
         prefs.getString('emp_id') ??
@@ -1537,9 +104,7 @@ class _AddShopScreenState extends State<AddShopScreen> {
         prefs.getString('employee_id') ??
         prefs.getString('employeeId') ??
         '';
-    debugPrint('🔑 [AddShop] empId loaded: "$_empId"');
 
-    // Try multiple possible keys for employee name
     _empName = prefs.getString('userName') ??
         prefs.getString('user_name') ??
         prefs.getString('emp_name') ??
@@ -1548,100 +113,53 @@ class _AddShopScreenState extends State<AddShopScreen> {
         prefs.getString('full_name') ??
         prefs.getString('fullName') ??
         '';
-    debugPrint('👤 [AddShop] empName loaded: "$_empName"');
 
-    // Company code
     _companyCode = prefs.getString('company_code') ??
         prefs.getString('companyCode') ??
         '';
-    debugPrint('🏢 [AddShop] companyCode loaded: "$_companyCode"');
 
-    // Check if employee info is complete
-    if (_empId.isEmpty || _empName.isEmpty) {
-      debugPrint('⚠️ [AddShop] ⚠️ EMPLOYEE INFO INCOMPLETE!');
-      debugPrint('   empId: "${_empId}" (${_empId.isEmpty ? "EMPTY ❌" : "OK ✅"})');
-      debugPrint('   empName: "${_empName}" (${_empName.isEmpty ? "EMPTY ❌" : "OK ✅"})');
-      debugPrint('   companyCode: "${_companyCode}" (${_companyCode.isEmpty ? "EMPTY ❌" : "OK ✅"})');
-    } else {
-      debugPrint('✅ [AddShop] Employee info loaded successfully!');
-      debugPrint('   ✅ empId: $_empId');
-      debugPrint('   ✅ empName: $_empName');
-      debugPrint('   ✅ companyCode: $_companyCode');
-    }
-
-    debugPrint('👤 [AddShop] ===== END LOADING EMPLOYEE INFO =====');
-    debugPrint('');
+    if (mounted) setState(() {});
   }
 
   Future<void> _fetchCities() async {
-    debugPrint('🌆 [AddShop] ===== FETCHING CITIES =====');
     try {
       final url = 'http://oracle.metaxperts.net/ords/gps_workforce/city/get/';
-      debugPrint('🌆 [AddShop] API URL: $url');
-
-      final response = await http.get(
-        Uri.parse(url),
-      );
-
-      debugPrint('🌆 [AddShop] Response Status: ${response.statusCode}');
+      final response = await http.get(Uri.parse(url));
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final items = data['items'] as List;
-        debugPrint('🌆 [AddShop] Items count: ${items.length}');
-        debugPrint('🌆 [AddShop] Raw items: $items');
-
+        final data  = jsonDecode(response.body);
+        final items = data['items'] as List? ?? [];
         setState(() {
-          _cities = items.map((e) => e['city'].toString()).toList();
+          _cities        = items.map((e) => e['city'].toString()).toList();
           _loadingCities = false;
         });
-        debugPrint('🌆 [AddShop] ✅ Cities loaded: ${_cities.length} cities');
-        debugPrint('🌆 [AddShop] Cities list: $_cities');
       } else {
-        debugPrint('🌆 [AddShop] ❌ Non-200 response: ${response.statusCode}');
-        debugPrint('🌆 [AddShop] Response body: ${response.body}');
         setState(() => _loadingCities = false);
       }
     } catch (e) {
-      debugPrint('🌆 [AddShop] ❌ Error fetching cities: $e');
-      debugPrint('🌆 [AddShop] Stack trace: ${StackTrace.current}');
       setState(() => _loadingCities = false);
     }
-    debugPrint('🌆 [AddShop] ===== END FETCHING CITIES =====');
-    debugPrint('');
   }
 
   // ── GPS toggle handler ──────────────────────────────────────────────────
   Future<void> _onGpsToggle(bool value) async {
-    debugPrint('📍 [AddShop] ===== GPS TOGGLE =====');
-    debugPrint('📍 [AddShop] New value: $value');
-
     if (!value) {
-      debugPrint('📍 [AddShop] GPS disabled - clearing location');
       setState(() {
         _gpsEnabled = false;
         _latitude   = null;
         _longitude  = null;
       });
-      debugPrint('📍 [AddShop] ===== GPS TOGGLE END =====');
-      debugPrint('');
       return;
     }
 
-    debugPrint('📍 [AddShop] GPS enabled - fetching location...');
     setState(() {
       _gpsEnabled       = true;
       _fetchingLocation = true;
     });
 
     try {
-      // Check if location services are on
-      debugPrint('📍 [AddShop] Checking location services...');
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      debugPrint('📍 [AddShop] Location services enabled: $serviceEnabled');
-
       if (!serviceEnabled) {
-        debugPrint('📍 [AddShop] ❌ Location services disabled');
         _showError('Please enable location services (GPS) on your device');
         setState(() {
           _gpsEnabled       = false;
@@ -1650,17 +168,10 @@ class _AddShopScreenState extends State<AddShopScreen> {
         return;
       }
 
-      // Check / request permission
-      debugPrint('📍 [AddShop] Checking location permission...');
       LocationPermission permission = await Geolocator.checkPermission();
-      debugPrint('📍 [AddShop] Current permission: $permission');
-
       if (permission == LocationPermission.denied) {
-        debugPrint('📍 [AddShop] Permission denied - requesting...');
         permission = await Geolocator.requestPermission();
-        debugPrint('📍 [AddShop] Permission after request: $permission');
         if (permission == LocationPermission.denied) {
-          debugPrint('📍 [AddShop] ❌ Permission denied by user');
           _showError('Location permission denied');
           setState(() {
             _gpsEnabled       = false;
@@ -1671,7 +182,6 @@ class _AddShopScreenState extends State<AddShopScreen> {
       }
 
       if (permission == LocationPermission.deniedForever) {
-        debugPrint('📍 [AddShop] ❌ Permission permanently denied');
         _showError('Location permission permanently denied. Enable it from app settings.');
         setState(() {
           _gpsEnabled       = false;
@@ -1680,56 +190,27 @@ class _AddShopScreenState extends State<AddShopScreen> {
         return;
       }
 
-      // Get current position
-      debugPrint('📍 [AddShop] Getting current position...');
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
 
-      debugPrint('📍 [AddShop] ✅ Position captured!');
-      debugPrint('📍 [AddShop] Latitude: ${position.latitude}');
-      debugPrint('📍 [AddShop] Longitude: ${position.longitude}');
-      debugPrint('📍 [AddShop] Accuracy: ${position.accuracy}');
-      debugPrint('📍 [AddShop] Altitude: ${position.altitude}');
-
       setState(() {
-        _latitude         = position.latitude;
-        _longitude        = position.longitude;
-        _fetchingLocation = false;
+        _latitude          = position.latitude;
+        _longitude         = position.longitude;
+        _fetchingLocation  = false;
       });
-
-      HapticFeedback.lightImpact();
-      Get.snackbar(
-        'Location Captured',
-        'Lat: ${position.latitude.toStringAsFixed(5)}, Lng: ${position.longitude.toStringAsFixed(5)}',
-        snackPosition:   SnackPosition.BOTTOM,
-        backgroundColor: _primary,
-        colorText:       Colors.white,
-        borderRadius:    14,
-        margin:          const EdgeInsets.all(16),
-        duration:        const Duration(seconds: 2),
-        icon: const Icon(Icons.check_circle_rounded, color: Colors.white),
-      );
-
-      debugPrint('📍 [AddShop] ===== GPS TOGGLE END (SUCCESS) =====');
-      debugPrint('');
     } catch (e) {
-      debugPrint('📍 [AddShop] ❌ Error getting location: $e');
-      debugPrint('📍 [AddShop] Stack trace: ${StackTrace.current}');
+      _showError('Could not fetch location. Try again.');
       setState(() {
         _gpsEnabled       = false;
         _fetchingLocation = false;
       });
-      _showError('Failed to get location: $e');
-      debugPrint('📍 [AddShop] ===== GPS TOGGLE END (ERROR) =====');
-      debugPrint('');
     }
   }
 
   void _showError(String msg) {
-    debugPrint('❌ [AddShop] ERROR: $msg');
     Get.snackbar(
-      'Error',
+      'Notice',
       msg,
       snackPosition:   SnackPosition.BOTTOM,
       backgroundColor: const Color(0xFFC0392B),
@@ -1741,200 +222,141 @@ class _AddShopScreenState extends State<AddShopScreen> {
     );
   }
 
-  @override
-  void dispose() {
-    debugPrint('🧹 [AddShop] Disposing controllers...');
-    _shopNameCtrl.dispose();
-    _ownerNameCtrl.dispose();
-    _contactCtrl.dispose();
-    _addressCtrl.dispose();
-    _shopTypeCtrl.dispose();
-    _notesCtrl.dispose();
-    debugPrint('🧹 [AddShop] Controllers disposed');
-    super.dispose();
+  // ── Date of Birth picker ─────────────────────────────────────────────────
+  Future<void> _pickDob() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context:     context,
+      initialDate: DateTime(now.year - 25),
+      firstDate:   DateTime(1930),
+      lastDate:    now,
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: Theme.of(context).colorScheme.copyWith(primary: _primary),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked != null) {
+      _dobCtrl.text = DateFormat('MM/dd/yyyy').format(picked);
+    }
   }
 
-  // ── Generate unique Shop ID ─────────────────────────────────────────────
+  // ── Image pickers (all optional) ─────────────────────────────────────────
+  Future<void> _pickImage(_PhotoSlot slot, {bool fromCamera = true}) async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source:      fromCamera ? ImageSource.camera : ImageSource.gallery,
+      imageQuality: 75,
+    );
+    if (picked == null) return;
+
+    setState(() {
+      final file = File(picked.path);
+      switch (slot) {
+        case _PhotoSlot.shopPhoto:
+          _shopPhotoImage = file;
+          break;
+        case _PhotoSlot.shopkeeperPhoto:
+          _shopkeeperPhotoImage = file;
+          break;
+      }
+    });
+  }
+
+  void _removeImage(_PhotoSlot slot) {
+    setState(() {
+      switch (slot) {
+        case _PhotoSlot.shopPhoto:
+          _shopPhotoImage = null;
+          break;
+        case _PhotoSlot.shopkeeperPhoto:
+          _shopkeeperPhotoImage = null;
+          break;
+      }
+    });
+  }
+
+  // ── Shop ID generator (unchanged pattern from before) ────────────────────
   String _generateShopId() {
-    final now = DateTime.now();
-    final timestamp = now.millisecondsSinceEpoch;
-    final shopId = 'SHOP-$_empId-$timestamp';
-    debugPrint('🆔 [AddShop] Generated shop_id: $shopId');
-    return shopId;
+    final now  = DateTime.now();
+    final day  = DateFormat('dd').format(now);
+    final month = DateFormat('MMM').format(now).toUpperCase();
+    final empPart = _empId.isNotEmpty ? _empId : '0';
+    final timePart =
+        '${DateFormat('HHmmss').format(now)}${now.millisecond.toString().padLeft(3, '0')}';
+
+    if (_companyCode.isNotEmpty) {
+      return '$_companyCode-SHOP-EMP-$empPart-$day-$month-$timePart';
+    }
+    return 'SHOP-EMP-$empPart-$day-$month-$timePart';
   }
 
   // ── Submit ───────────────────────────────────────────────────────────────
   Future<void> _submit() async {
-    debugPrint('');
-    debugPrint('════════════════════════════════════════════════════════════');
-    debugPrint('🏪 [AddShop] ===== SUBMIT STARTED =====');
-    debugPrint('════════════════════════════════════════════════════════════');
-
-    // Validate employee info first
-    debugPrint('👤 [AddShop] Step 1: Validating employee info...');
-    debugPrint('   empId: "$_empId"');
-    debugPrint('   empName: "$_empName"');
-
     if (_empId.isEmpty || _empName.isEmpty) {
-      debugPrint('⚠️ [AddShop] Employee info missing! Trying to reload...');
-      await _loadEmployeeInfo(); // Try to reload
+      await _loadEmployeeInfo();
       if (_empId.isEmpty || _empName.isEmpty) {
-        debugPrint('❌ [AddShop] Employee info still missing after reload!');
-        Get.snackbar(
-          '⚠️ Employee Info Missing',
-          'Could not load your profile. Please log out and log in again.',
-          snackPosition: SnackPosition.TOP,
-          backgroundColor: const Color(0xFFC0392B),
-          colorText: Colors.white,
-          duration: const Duration(seconds: 4),
-          icon: const Icon(Icons.error_outline_rounded, color: Colors.white),
-        );
-        debugPrint('🏪 [AddShop] ===== SUBMIT ENDED (FAILED - EMPLOYEE INFO) =====');
-        debugPrint('');
+        _showError('Could not load your profile. Please log out and log in again.');
         return;
       }
     }
-    debugPrint('✅ [AddShop] Employee info valid');
 
-    // Validate city
-    debugPrint('🏙️ [AddShop] Step 2: Validating city...');
-    debugPrint('   Selected city: "$_selectedCity"');
     if (_selectedCity == null || _selectedCity!.isEmpty) {
-      debugPrint('❌ [AddShop] No city selected!');
-      Get.snackbar(
-        'Required',
-        'Please select a city',
-        snackPosition:   SnackPosition.BOTTOM,
-        backgroundColor: const Color(0xFFC0392B),
-        colorText:       Colors.white,
-        borderRadius:    14,
-        margin:          const EdgeInsets.all(16),
-        duration:        const Duration(seconds: 2),
-        icon: const Icon(Icons.error_outline_rounded, color: Colors.white),
-      );
-      debugPrint('🏪 [AddShop] ===== SUBMIT ENDED (FAILED - NO CITY) =====');
-      debugPrint('');
+      _showError('Please select a city');
       return;
     }
-    debugPrint('✅ [AddShop] City selected: $_selectedCity');
-
-    // Validate GPS
-    debugPrint('📍 [AddShop] Step 3: Validating GPS...');
-    debugPrint('   GPS Enabled: $_gpsEnabled');
-    debugPrint('   Latitude: $_latitude');
-    debugPrint('   Longitude: $_longitude');
 
     if (_gpsEnabled && (_latitude == null || _longitude == null)) {
-      debugPrint('❌ [AddShop] GPS enabled but no location captured!');
-      Get.snackbar(
-        'Required',
-        'Please wait for GPS location to be captured, or disable GPS',
-        snackPosition:   SnackPosition.BOTTOM,
-        backgroundColor: const Color(0xFFC0392B),
-        colorText:       Colors.white,
-        borderRadius:    14,
-        margin:          const EdgeInsets.all(16),
-        duration:        const Duration(seconds: 2),
-        icon: const Icon(Icons.error_outline_rounded, color: Colors.white),
-      );
-      debugPrint('🏪 [AddShop] ===== SUBMIT ENDED (FAILED - GPS NOT CAPTURED) =====');
-      debugPrint('');
+      _showError('Please wait for GPS location to be captured, or disable GPS');
       return;
     }
-    debugPrint('✅ [AddShop] GPS validation passed');
 
-    // Validate form
-    debugPrint('📝 [AddShop] Step 4: Validating form...');
     final formValid = _formKey.currentState?.validate() ?? false;
-    debugPrint('   Form valid: $formValid');
-
-    if (!formValid) {
-      debugPrint('❌ [AddShop] Form validation failed!');
-      debugPrint('🏪 [AddShop] ===== SUBMIT ENDED (FAILED - FORM INVALID) =====');
-      debugPrint('');
-      return;
-    }
-    debugPrint('✅ [AddShop] Form validation passed');
+    if (!formValid) return;
 
     HapticFeedback.lightImpact();
+    setState(() => _submitting = true);
 
-    // ── Build payload ──────────────────────────────────────────────────────
-    debugPrint('📦 [AddShop] Step 5: Building payload...');
-
+    // NOTE: photo uploads (shop photo, shopkeeper photo) are
+    // optional and are attached here as local file paths for now. Wire up
+    // multipart/base64 upload to the backend once the media endpoint is confirmed.
     final payload = {
-      'shop_name':  _shopNameCtrl.text.trim(),
-      'shop_type':  _shopTypeCtrl.text.trim(),
-      'owner_name': _ownerNameCtrl.text.trim(),
-      'contact_number': _contactCtrl.text.trim(),
-      'city':       _selectedCity,
-      'address':    _addressCtrl.text.trim(),
-      'notes':      _notesCtrl.text.trim(),
-      'emp_id':     _empId,
-      'emp_name':   _empName,
-      'company_code': _companyCode,
-      'latitude':   _latitude,
-      'longitude':  _longitude,
-      'shop_id':    _generateShopId(),
+      'shop_name':       _shopNameCtrl.text.trim(),
+      'shop_type':       _shopTypeCtrl.text.trim(),
+      'owner_name':      _ownerNameCtrl.text.trim(),
+      'cnic':            _cnicCtrl.text.trim(),
+      'date_of_birth':   _dobCtrl.text.trim(),
+      'contact_number':  _contactCtrl.text.trim(),
+      'whatsapp_number': _whatsappCtrl.text.trim(),
+      'area':            _areaCtrl.text.trim(),
+      'city':            _selectedCity,
+      'address':         _addressCtrl.text.trim(),
+      'notes':           _notesCtrl.text.trim(),
+      'emp_id':          _empId,
+      'emp_name':        _empName,
+      'company_code':    _companyCode,
+      'latitude':        _latitude,
+      'longitude':       _longitude,
+      'shop_id':         _generateShopId(),
+      'shop_photo_path':      _shopPhotoImage?.path,
+      'shopkeeper_photo_path': _shopkeeperPhotoImage?.path,
     };
 
-    debugPrint('📦 [AddShop] Payload details:');
-    debugPrint('   shop_name: "${payload['shop_name']}"');
-    debugPrint('   shop_type: "${payload['shop_type']}"');
-    debugPrint('   owner_name: "${payload['owner_name']}"');
-    debugPrint('   contact_number: "${payload['contact_number']}"');
-    debugPrint('   city: "${payload['city']}"');
-    debugPrint('   address: "${payload['address']}"');
-    debugPrint('   notes: "${payload['notes']}"');
-    debugPrint('   emp_id: "${payload['emp_id']}"');
-    debugPrint('   emp_name: "${payload['emp_name']}"');
-    debugPrint('   company_code: "${payload['company_code']}"');
-    debugPrint('   latitude: ${payload['latitude']}');
-    debugPrint('   longitude: ${payload['longitude']}');
-    debugPrint('   shop_id: "${payload['shop_id']}"');
-
     final jsonPayload = jsonEncode(payload);
-    debugPrint('📦 [AddShop] Full JSON payload:');
-    debugPrint(jsonPayload);
-    debugPrint('📦 [AddShop] Payload size: ${jsonPayload.length} bytes');
-
-    // ── Send to API ────────────────────────────────────────────────────────
-    debugPrint('');
-    debugPrint('📡 [AddShop] Step 6: Sending to API...');
-
-    final String apiUrl = 'http://oracle.metaxperts.net/ords/gps_workforce/addshop/post/';
-    debugPrint('📡 [AddShop] API URL: $apiUrl');
-    debugPrint('📡 [AddShop] Method: POST');
-    debugPrint('📡 [AddShop] Content-Type: application/json');
+    const apiUrl = 'http://oracle.metaxperts.net/ords/gps_workforce/addshop/post/';
 
     try {
-      final stopwatch = Stopwatch()..start();
-      debugPrint('⏱️ [AddShop] Request started at: ${DateTime.now()}');
-
       final response = await http.post(
         Uri.parse(apiUrl),
         headers: {'Content-Type': 'application/json'},
         body: jsonPayload,
       ).timeout(const Duration(seconds: 30));
 
-      stopwatch.stop();
-      debugPrint('⏱️ [AddShop] Request completed in ${stopwatch.elapsedMilliseconds}ms');
-
-      debugPrint('📡 [AddShop] Response Status: ${response.statusCode}');
-      debugPrint('📡 [AddShop] Response Headers: ${response.headers}');
-      debugPrint('📡 [AddShop] Response Body: ${response.body}');
-
       if (response.statusCode == 200 || response.statusCode == 201) {
-        debugPrint('✅ [AddShop] SUCCESS! Shop added successfully!');
-
-        // Try to parse response
-        try {
-          final responseData = jsonDecode(response.body);
-          debugPrint('📦 [AddShop] Parsed response: $responseData');
-        } catch (_) {}
-
         Get.snackbar(
-          '✅ Success',
-          'Shop added successfully!',
+          '✅ Saved',
+          'Shop saved as pending approval — bookable on hold.',
           snackPosition:   SnackPosition.BOTTOM,
           backgroundColor: _primary,
           colorText:       Colors.white,
@@ -1944,584 +366,402 @@ class _AddShopScreenState extends State<AddShopScreen> {
           icon: const Icon(Icons.check_circle_rounded, color: Colors.white),
         );
 
-        // Clear form after success
-        debugPrint('🧹 [AddShop] Clearing form fields...');
         _shopNameCtrl.clear();
         _shopTypeCtrl.clear();
         _ownerNameCtrl.clear();
+        _cnicCtrl.clear();
+        _dobCtrl.clear();
         _contactCtrl.clear();
+        _whatsappCtrl.clear();
+        _areaCtrl.clear();
         _addressCtrl.clear();
         _notesCtrl.clear();
         setState(() {
-          _selectedCity = null;
-          _latitude = null;
-          _longitude = null;
-          _gpsEnabled = false;
+          _selectedCity          = null;
+          _latitude              = null;
+          _longitude             = null;
+          _gpsEnabled            = false;
+          _shopPhotoImage        = null;
+          _shopkeeperPhotoImage  = null;
         });
-        debugPrint('✅ [AddShop] Form cleared');
 
-        // Navigate back after delay
-        debugPrint('⏱️ [AddShop] Navigating back in 1 second...');
-        Future.delayed(const Duration(seconds: 1), () {
-          debugPrint('🏪 [AddShop] Navigating back to previous screen');
-          Get.back();
-        });
+        Future.delayed(const Duration(seconds: 1), () => Get.back());
       } else {
-        // Try to parse error message from response
-        debugPrint('❌ [AddShop] API returned error status: ${response.statusCode}');
-        String errorMsg = 'Failed to add shop. Please try again.';
+        String errorMsg = 'Failed to save shop. Please try again.';
         try {
           final errorData = jsonDecode(response.body);
-          debugPrint('📦 [AddShop] Error response body: $errorData');
-          if (errorData['message'] != null) {
-            errorMsg = errorData['message'];
-          } else if (errorData['error'] != null) {
-            errorMsg = errorData['error'];
-          } else if (errorData['exception'] != null) {
-            errorMsg = errorData['exception'];
-          }
-          debugPrint('📦 [AddShop] Extracted error message: "$errorMsg"');
-        } catch (e) {
-          debugPrint('⚠️ [AddShop] Could not parse error response: $e');
-        }
-
-        Get.snackbar(
-          '❌ Error',
-          errorMsg,
-          snackPosition:   SnackPosition.BOTTOM,
-          backgroundColor: const Color(0xFFC0392B),
-          colorText:       Colors.white,
-          borderRadius:    14,
-          margin:          const EdgeInsets.all(16),
-          duration:        const Duration(seconds: 3),
-          icon: const Icon(Icons.error_outline_rounded, color: Colors.white),
-        );
+          errorMsg = errorData['message'] ?? errorData['error'] ?? errorData['exception'] ?? errorMsg;
+        } catch (_) {}
+        _showError(errorMsg);
       }
     } catch (e) {
-      debugPrint('❌ [AddShop] Network error: $e');
-      debugPrint('❌ [AddShop] Stack trace: ${StackTrace.current}');
-
       String errorMsg = 'Could not connect to server. Please check your internet connection.';
       if (e.toString().contains('timeout')) {
         errorMsg = 'Request timed out. Server is taking too long to respond.';
       } else if (e.toString().contains('SocketException')) {
         errorMsg = 'No internet connection. Please check your network.';
       }
-      debugPrint('📦 [AddShop] User-friendly error: "$errorMsg"');
-
-      Get.snackbar(
-        'Network Error',
-        errorMsg,
-        snackPosition:   SnackPosition.BOTTOM,
-        backgroundColor: const Color(0xFFC0392B),
-        colorText:       Colors.white,
-        borderRadius:    14,
-        margin:          const EdgeInsets.all(16),
-        duration:        const Duration(seconds: 3),
-        icon: const Icon(Icons.wifi_off_rounded, color: Colors.white),
-      );
+      _showError(errorMsg);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
     }
-
-    debugPrint('════════════════════════════════════════════════════════════');
-    debugPrint('🏪 [AddShop] ===== SUBMIT ENDED =====');
-    debugPrint('════════════════════════════════════════════════════════════');
-    debugPrint('');
   }
 
   @override
   Widget build(BuildContext context) {
-    debugPrint('🏗️ [AddShop] BUILD called');
+    final loginVM = Get.find<LoginViewModel>();
+    final name    = loginVM.currentUser.value?.emp_name ?? 'User';
+
+    final parts    = name.trim().split(' ');
+    final initials = parts.length >= 2
+        ? '${parts[0][0]}${parts[1][0]}'.toUpperCase()
+        : name.isNotEmpty ? name[0].toUpperCase() : 'U';
 
     return Scaffold(
+      key:             _scaffoldKey,
       backgroundColor: _bg,
-      body: Column(
-        children: [
+      appBar: Navbar(
+        userName:     name,
+        userInitials: initials,
+        scaffoldKey:  _scaffoldKey,
+      ),
+      drawer: AppDrawer(),
+      body: SafeArea(
+        child: Form(
+          key: _formKey,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 110),
+            children: [
+              // ── Back button ──────────────────────────────────────────
+              GestureDetector(
+                onTap: () => Get.back(),
+                child: Container(
+                  width:  36,
+                  height: 36,
+                  alignment: Alignment.topLeft,
+                  child: const Icon(Icons.arrow_back_rounded,
+                      color: Colors.black, size: 22),
+                ),
+              ),
+              const SizedBox(height: 6),
 
-          // ── Gradient Header ────────────────────────────────────────────
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFF0C6B64), Color(0xFF1AAD9E)],
-                begin:  Alignment.topLeft,
-                end:    Alignment.bottomRight,
+              // ── Title + pending-approval subtitle ────────────────────
+              const Text(
+                'New Shop',
+                style: TextStyle(
+                  fontSize:   24,
+                  fontWeight: FontWeight.w800,
+                  color:      Colors.black,
+                ),
               ),
-              borderRadius: BorderRadius.only(
-                bottomLeft:  Radius.circular(28),
-                bottomRight: Radius.circular(28),
-              ),
-            ),
-            child: SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(8, 8, 8, 20),
-                child: Row(
+              const SizedBox(height: 4),
+              RichText(
+                text: const TextSpan(
+                  style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
                   children: [
-                    GestureDetector(
-                      onTap: () {
-                        debugPrint('🏪 [AddShop] Back button pressed');
-                        Get.back();
-                      },
-                      child: Container(
-                        width: 42, height: 42,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(13),
-                        ),
-                        child: const Icon(Icons.arrow_back_ios_new_rounded,
-                            color: Colors.white, size: 18),
-                      ),
+                    TextSpan(
+                      text: 'Saved as ',
                     ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Add Shop',
-                              style: TextStyle(fontSize: 22,
-                                  fontWeight: FontWeight.w700, color: Colors.white)),
-                          SizedBox(height: 2),
-                          Text('Register a new shop',
-                              style: TextStyle(fontSize: 13, color: Colors.white70)),
-                        ],
-                      ),
+                    TextSpan(
+                      text: 'Pending approval',
+                      style: TextStyle(color: _primary, fontWeight: FontWeight.w700),
                     ),
-                    Container(
-                      width: 42, height: 42,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(13),
-                      ),
-                      child: const Icon(Icons.add_business_rounded,
-                          color: Colors.white, size: 20),
+                    TextSpan(text: ' — bookable on '),
+                    TextSpan(
+                      text: 'hold',
+                      style: TextStyle(color: _primary, fontWeight: FontWeight.w700),
                     ),
+                    TextSpan(text: '.'),
                   ],
                 ),
               ),
-            ),
-          ),
 
-          // ── Form ──────────────────────────────────────────────────────
-          Expanded(
-            child: Form(
-              key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 20, 16, 120),
+              const SizedBox(height: 22),
+
+              // ── Shop / Owner name ─────────────────────────────────────
+              const _FormLabel(text: 'Customer / Shop Name', required: true),
+              _SoftField(
+                controller: _shopNameCtrl,
+                hint:       'e.g. Madina Karyana Store',
+                validator:  (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+              ),
+              const SizedBox(height: 16),
+
+              const _FormLabel(text: 'Owner Name', required: true),
+              _SoftField(
+                controller: _ownerNameCtrl,
+                hint:       'Owner full name',
+                validator:  (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+              ),
+              const SizedBox(height: 16),
+
+              // ── CNIC + DOB ────────────────────────────────────────────
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-
-                  // ── Employee Info Badge ──────────────────────────────────
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFFD4F0ED), width: 1),
-                    ),
-                    child: Row(
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Container(
-                          width: 38, height: 38,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE5F7F5),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: const Icon(Icons.badge_rounded,
-                              color: _primary, size: 20),
+                        const _FormLabel(text: 'CNIC', required: true),
+                        _SoftField(
+                          controller:      _cnicCtrl,
+                          hint:            '35202-123456',
+                          keyboardType:    TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(13),
+                          ],
+                          validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                _empName.isNotEmpty ? _empName : 'Loading...',
-                                style: const TextStyle(
-                                  fontSize: 14, fontWeight: FontWeight.w600,
-                                  color: Color(0xFF1A2E2C),
-                                ),
-                              ),
-                              Text(
-                                _empId.isNotEmpty ? 'ID: $_empId' : 'Please login first',
-                                style: const TextStyle(
-                                  fontSize: 12, fontWeight: FontWeight.w400,
-                                  color: Color(0xFF6B7280),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (_companyCode.isNotEmpty)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE5F7F5),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              _companyCode,
-                              style: const TextStyle(
-                                fontSize: 10, fontWeight: FontWeight.w600,
-                                color: _primary,
-                              ),
-                            ),
-                          ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 20),
-
-                  // ── Shop Info ──────────────────────────────────────────
-                  const _SectionHeader(icon: Icons.storefront_rounded, label: 'Shop Info'),
-                  const SizedBox(height: 12),
-
-                  _FieldCard(
-                    label:      'Shop Name',
-                    controller: _shopNameCtrl,
-                    icon:       Icons.store_rounded,
-                    hint:       'Enter shop name',
-                    validator:  (v) {
-                      final isValid = (v != null && v.trim().isNotEmpty);
-                      debugPrint('🔍 [AddShop] Validating shop_name: "$v" -> $isValid');
-                      return isValid ? null : 'Required';
-                    },
-                  ),
-                  const SizedBox(height: 10),
-
-                  _FieldCard(
-                    label:      'Shop Type',
-                    controller: _shopTypeCtrl,
-                    icon:       Icons.category_rounded,
-                    hint:       'e.g. Retail, Wholesale',
-                    isOptional: true,
-                    validator:  null,
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // ── Owner Info ───────────────────────────────────────────
-                  const _SectionHeader(icon: Icons.person_rounded, label: 'Owner Info'),
-                  const SizedBox(height: 12),
-
-                  _FieldCard(
-                    label:      'Owner Name',
-                    controller: _ownerNameCtrl,
-                    icon:       Icons.person_rounded,
-                    hint:       "Owner's full name",
-                    validator:  (v) {
-                      final isValid = (v != null && v.trim().isNotEmpty);
-                      debugPrint('🔍 [AddShop] Validating owner_name: "$v" -> $isValid');
-                      return isValid ? null : 'Required';
-                    },
-                  ),
-                  const SizedBox(height: 10),
-
-                  _FieldCard(
-                    label:           'Contact Number',
-                    controller:      _contactCtrl,
-                    icon:            Icons.phone_rounded,
-                    hint:            '03XX-XXXXXXX',
-                    keyboardType:    TextInputType.phone,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    validator:       (v) {
-                      final isValid = (v != null && v.isNotEmpty);
-                      debugPrint('🔍 [AddShop] Validating contact: "$v" -> $isValid');
-                      return isValid ? null : 'Required';
-                    },
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // ── Location Info ────────────────────────────────────────
-                  const _SectionHeader(icon: Icons.location_on_rounded, label: 'Location Info'),
-                  const SizedBox(height: 12),
-
-                  _CityDropdownCard(
-                    value: _selectedCity,
-                    items: _cities,
-                    isLoading: _loadingCities,
-                    onChanged: (v) {
-                      debugPrint('🏙️ [AddShop] City selected: "$v"');
-                      setState(() => _selectedCity = v);
-                    },
-                  ),
-                  const SizedBox(height: 10),
-
-                  _FieldCard(
-                    label:      'Address',
-                    controller: _addressCtrl,
-                    icon:       Icons.home_rounded,
-                    hint:       'Full shop address',
-                    maxLines:   2,
-                    validator:  (v) {
-                      final isValid = (v != null && v.trim().isNotEmpty);
-                      debugPrint('🔍 [AddShop] Validating address: "$v" -> $isValid');
-                      return isValid ? null : 'Required';
-                    },
-                  ),
-                  const SizedBox(height: 10),
-
-                  // ── GPS Toggle Card ──────────────────────────────────────
-                  _GpsToggleCard(
-                    enabled:     _gpsEnabled,
-                    fetching:    _fetchingLocation,
-                    latitude:    _latitude,
-                    longitude:   _longitude,
-                    onChanged:   _onGpsToggle,
-                    onRefresh:   () {
-                      debugPrint('🔄 [AddShop] GPS refresh button pressed');
-                      _onGpsToggle(true);
-                    },
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // ── Additional Info ──────────────────────────────────────
-                  const _SectionHeader(icon: Icons.notes_rounded, label: 'Additional Info'),
-                  const SizedBox(height: 12),
-
-                  _FieldCard(
-                    label:      'Notes',
-                    controller: _notesCtrl,
-                    icon:       Icons.sticky_note_2_rounded,
-                    hint:       'Any extra remarks',
-                    maxLines:   3,
-                    isOptional: true,
-                    validator:  null,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const _FormLabel(text: 'Date of Birth', required: false),
+                        _SoftField(
+                          controller: _dobCtrl,
+                          hint:       'mm/dd/yyyy',
+                          readOnly:   true,
+                          onTap:      _pickDob,
+                          suffixIcon: Icons.calendar_today_rounded,
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
-            ),
+              const SizedBox(height: 16),
+
+              // ── Contact + WhatsApp ────────────────────────────────────
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const _FormLabel(text: 'Contact', required: true),
+                        _SoftField(
+                          controller:   _contactCtrl,
+                          hint:         '+923..',
+                          keyboardType: TextInputType.phone,
+                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                          validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const _FormLabel(text: 'WhatsApp', required: false),
+                        _SoftField(
+                          controller:   _whatsappCtrl,
+                          hint:         '+923..',
+                          keyboardType: TextInputType.phone,
+                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // ── Area ──────────────────────────────────────────────────
+              const _FormLabel(text: 'Area', required: false),
+              _SoftField(
+                controller: _areaCtrl,
+                hint:       'e.g. Gulberg',
+              ),
+              const SizedBox(height: 16),
+
+              // ── Shop Address ──────────────────────────────────────────
+              const _FormLabel(text: 'Shop Address', required: true),
+              _SoftField(
+                controller: _addressCtrl,
+                hint:       'Full shop address',
+                maxLines:   3,
+                validator:  (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+              ),
+              const SizedBox(height: 16),
+
+              // ── City ──────────────────────────────────────────────────
+              const _FormLabel(text: 'City', required: true),
+              _CityField(
+                value:     _selectedCity,
+                items:     _cities,
+                isLoading: _loadingCities,
+                onChanged: (v) => setState(() => _selectedCity = v),
+              ),
+              const SizedBox(height: 16),
+
+              // ── Shop Type (optional, kept from original) ─────────────
+              const _FormLabel(text: 'Shop Type', required: false),
+              _SoftField(
+                controller: _shopTypeCtrl,
+                hint:       'e.g. Retail, Wholesale',
+              ),
+              const SizedBox(height: 16),
+
+              // ── GPS toggle (kept from original) ──────────────────────
+              _GpsToggleRow(
+                enabled:   _gpsEnabled,
+                fetching:  _fetchingLocation,
+                latitude:  _latitude,
+                longitude: _longitude,
+                onChanged: _onGpsToggle,
+              ),
+              const SizedBox(height: 16),
+
+              // ── Notes (optional, kept from original) ─────────────────
+              const _FormLabel(text: 'Notes', required: false),
+              _SoftField(
+                controller: _notesCtrl,
+                hint:       'Any extra remarks',
+                maxLines:   2,
+              ),
+
+              const SizedBox(height: 24),
+
+              // ── Field Photos — optional, GPS stamped ──────────────────
+              const Text(
+                'FIELD PHOTOS (GPS STAMPED)',
+                style: TextStyle(
+                  fontSize:      12,
+                  fontWeight:    FontWeight.w700,
+                  color:         Colors.black87,
+                  letterSpacing: 0.6,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: _PhotoTile(
+                      label: 'Shop Photo',
+                      icon:  Icons.storefront_rounded,
+                      image: _shopPhotoImage,
+                      onTap: () => _pickImage(_PhotoSlot.shopPhoto),
+                      onRemove: () => _removeImage(_PhotoSlot.shopPhoto),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _PhotoTile(
+                      label: 'Shopkeeper Photo',
+                      icon:  Icons.person_rounded,
+                      image: _shopkeeperPhotoImage,
+                      onTap: () => _pickImage(_PhotoSlot.shopkeeperPhoto),
+                      onRemove: () => _removeImage(_PhotoSlot.shopkeeperPhoto),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-        ],
+        ),
       ),
 
-      // ── Submit Button ───────────────────────────────────────────────────
+      // ── Save button ─────────────────────────────────────────────────────
       bottomSheet: Container(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -2)),
-          ],
-        ),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        decoration: const BoxDecoration(color: Colors.transparent),
         child: SizedBox(
-          width: double.infinity,
-          height: 52,
+          width:  double.infinity,
+          height: 54,
           child: ElevatedButton(
-            onPressed: _submit,
+            onPressed: _submitting ? null : _submit,
             style: ElevatedButton.styleFrom(
               backgroundColor: _primary,
+              disabledBackgroundColor: _primary.withOpacity(0.6),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
               elevation: 0,
             ),
-            child: const Text(
-              'Save Shop',
-              style: TextStyle(
-                fontSize:   16,
-                fontWeight: FontWeight.w700,
-                color:      Colors.white,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Section Header
-// ─────────────────────────────────────────────────────────────────────────────
-class _SectionHeader extends StatelessWidget {
-  final IconData icon;
-  final String   label;
-
-  static const _primary = Color(0xFF0C6B64);
-
-  const _SectionHeader({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, color: _primary, size: 18),
-        const SizedBox(width: 8),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize:   13,
-            fontWeight: FontWeight.w700,
-            color:      _primary,
-            letterSpacing: 0.3,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// GPS Toggle Card
-// ─────────────────────────────────────────────────────────────────────────────
-class _GpsToggleCard extends StatelessWidget {
-  final bool                enabled;
-  final bool                fetching;
-  final double?             latitude;
-  final double?             longitude;
-  final ValueChanged<bool>  onChanged;
-  final VoidCallback        onRefresh;
-
-  static const _primary = Color(0xFF0C6B64);
-
-  const _GpsToggleCard({
-    required this.enabled,
-    required this.fetching,
-    required this.latitude,
-    required this.longitude,
-    required this.onChanged,
-    required this.onRefresh,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFD4F0ED), width: 1),
-      ),
-      child: Column(
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Container(
-                width: 38, height: 38,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE5F7F5),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  Icons.gps_fixed_rounded,
-                  color: enabled ? _primary : const Color(0xFFB0BAC7),
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      'Use Current Location (GPS)',
-                      style: TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w600,
-                        color: Color(0xFF1A2E2C),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      fetching
-                          ? 'Fetching location...'
-                          : enabled
-                          ? 'Location will be saved with shop'
-                          : 'Enable to auto-capture lat/long',
-                      style: const TextStyle(
-                        fontSize: 12, fontWeight: FontWeight.w400,
-                        color: Color(0xFF6B7280),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              fetching
-                  ? const SizedBox(
-                height: 22, width: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: _primary,
-                ),
-              )
-                  : Switch(
-                value: enabled,
-                onChanged: onChanged,
-                activeColor: Colors.white,
-                activeTrackColor: _primary,
-                inactiveTrackColor: const Color(0xFFE5E9E8),
-                inactiveThumbColor: Colors.white,
-              ),
-            ],
-          ),
-
-          if (enabled && latitude != null && longitude != null) ...[
-            const SizedBox(height: 10),
-            const Divider(height: 1, color: Color(0xFFF0F4F3)),
-            const SizedBox(height: 10),
-            Row(
+            child: _submitting
+                ? const SizedBox(
+              width: 22, height: 22,
+              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.4),
+            )
+                : const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.place_rounded, color: _primary, size: 16),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    'Lat: ${latitude!.toStringAsFixed(5)}, Lng: ${longitude!.toStringAsFixed(5)}',
-                    style: const TextStyle(
-                      fontSize: 12.5, fontWeight: FontWeight.w600,
-                      color: Color(0xFF1A6E59),
-                    ),
-                  ),
-                ),
-                GestureDetector(
-                  onTap: onRefresh,
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE5F7F5),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(Icons.refresh_rounded,
-                        color: _primary, size: 16),
+                Icon(Icons.save_rounded, color: Colors.white, size: 20),
+                SizedBox(width: 8),
+                Text(
+                  'Save Shop & Start Booking',
+                  style: TextStyle(
+                    fontSize:   15,
+                    fontWeight: FontWeight.w700,
+                    color:      Colors.white,
                   ),
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+enum _PhotoSlot { shopPhoto, shopkeeperPhoto }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Form field label with optional required-asterisk
+// ─────────────────────────────────────────────────────────────────────────────
+class _FormLabel extends StatelessWidget {
+  final String text;
+  final bool   required;
+  const _FormLabel({required this.text, required this.required});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6, left: 2),
+      child: RichText(
+        text: TextSpan(
+          style: const TextStyle(
+            fontSize:   13,
+            fontWeight: FontWeight.w700,
+            color:      AppColors.tealDark,
+          ),
+          children: [
+            TextSpan(text: text),
+            if (required)
+              const TextSpan(text: ' *', style: TextStyle(color: Color(0xFFD97706))),
           ],
-        ],
+        ),
       ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Field Card
+// Soft cream input field — matches the screenshot's rounded pill inputs
 // ─────────────────────────────────────────────────────────────────────────────
-class _FieldCard extends StatelessWidget {
-  final String                        label;
-  final TextEditingController         controller;
-  final IconData                      icon;
-  final String                        hint;
-  final TextInputType?                keyboardType;
-  final List<TextInputFormatter>?     inputFormatters;
-  final String? Function(String?)?    validator;
-  final int                           maxLines;
-  final bool                          readOnly;
-  final VoidCallback?                 onTap;
-  final bool                          showArrow;
-  final bool                          showLock;
-  final bool                          isOptional;
+class _SoftField extends StatelessWidget {
+  final TextEditingController      controller;
+  final String                     hint;
+  final TextInputType?             keyboardType;
+  final List<TextInputFormatter>?  inputFormatters;
+  final String? Function(String?)? validator;
+  final int                        maxLines;
+  final bool                       readOnly;
+  final VoidCallback?              onTap;
+  final IconData?                  suffixIcon;
 
-  static const _primary  = Color(0xFF0C6B64);
-  static const _textDark = Color(0xFF1A2E2C);
-
-  const _FieldCard({
-    required this.label,
+  const _SoftField({
     required this.controller,
-    required this.icon,
     required this.hint,
     this.keyboardType,
     this.inputFormatters,
@@ -2529,118 +769,72 @@ class _FieldCard extends StatelessWidget {
     this.maxLines   = 1,
     this.readOnly   = false,
     this.onTap,
-    this.showArrow  = false,
-    this.showLock   = false,
-    this.isOptional = false,
+    this.suffixIcon,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: readOnly && showLock
-            ? const Color(0xFFF5FFFE)
-            : Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFD4F0ED), width: 1),
+    return TextFormField(
+      controller:      controller,
+      keyboardType:    keyboardType,
+      inputFormatters: inputFormatters,
+      validator:       validator,
+      maxLines:        maxLines,
+      readOnly:        readOnly,
+      onTap:           onTap,
+      style: const TextStyle(
+        fontSize:   14,
+        fontWeight: FontWeight.w500,
+        color:      Colors.black,
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Icon(icon, color: _primary, size: 22),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(children: [
-                  Flexible(
-                    child: Text(
-                      label,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12, fontWeight: FontWeight.w500,
-                        color: Color(0xFF6B7280),
-                      ),
-                    ),
-                  ),
-                  if (isOptional) ...[
-                    const SizedBox(width: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 5, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE5F7F5),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Text('Optional',
-                          style: TextStyle(
-                            fontSize: 9, color: Color(0xFF1A6E59),
-                            fontWeight: FontWeight.w500,
-                          )),
-                    ),
-                  ],
-                ]),
-                const SizedBox(height: 2),
-                TextFormField(
-                  controller:      controller,
-                  keyboardType:    keyboardType,
-                  inputFormatters: inputFormatters,
-                  validator:       validator,
-                  maxLines:        maxLines,
-                  readOnly:        readOnly,
-                  onTap:           onTap,
-                  style: TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.w600,
-                    color: readOnly && showLock
-                        ? const Color(0xFF1A6E59)
-                        : _textDark,
-                  ),
-                  decoration: InputDecoration(
-                    hintText:  hint,
-                    hintStyle: const TextStyle(
-                      fontSize: 15, fontWeight: FontWeight.w400,
-                      color: Color(0xFFB0BAC7),
-                    ),
-                    isDense: true,
-                    border:  InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
-                    errorStyle: const TextStyle(fontSize: 11),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (showArrow)
-            const Icon(Icons.chevron_right_rounded,
-                color: Color(0xFFB0BAC7), size: 22)
-          else if (showLock)
-            const Icon(Icons.lock_rounded,
-                color: Color(0xFF1A6E59), size: 16)
-          else
-            const Icon(Icons.lock_outline_rounded,
-                color: Color(0xFFCDD5DC), size: 18),
-        ],
+      decoration: InputDecoration(
+        hintText:  hint,
+        hintStyle: const TextStyle(
+          fontSize:   14,
+          fontWeight: FontWeight.w400,
+          color:      Colors.black45,
+        ),
+        suffixIcon: suffixIcon != null
+            ? Icon(suffixIcon, size: 18, color: Colors.black87)
+            : null,
+        filled:     true,
+        fillColor:  Colors.white,
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: maxLines > 1 ? 14 : 15,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide:   const BorderSide(color: AppColors.divider),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide:   const BorderSide(color: AppColors.divider),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide:   const BorderSide(color: AppColors.tealDark, width: 1.4),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide:   const BorderSide(color: Color(0xFFC0392B)),
+        ),
+        errorStyle: const TextStyle(fontSize: 11),
       ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// City Dropdown Card  —  tappable field that opens a searchable picker
+// City field — tappable, opens the searchable city sheet
 // ─────────────────────────────────────────────────────────────────────────────
-class _CityDropdownCard extends StatelessWidget {
-  final String?           value;
-  final List<String>      items;
-  final bool               isLoading;
-  final Function(String?) onChanged;
+class _CityField extends StatelessWidget {
+  final String?               value;
+  final List<String>          items;
+  final bool                  isLoading;
+  final ValueChanged<String?> onChanged;
 
-  static const _primary  = Color(0xFF0C6B64);
-  static const _textDark = Color(0xFF1A2E2C);
-
-  const _CityDropdownCard({
+  const _CityField({
     required this.value,
     required this.items,
     required this.isLoading,
@@ -2649,13 +843,13 @@ class _CityDropdownCard extends StatelessWidget {
 
   Future<void> _openPicker(BuildContext context) async {
     if (isLoading) return;
-    final selected = await showModalBottomSheet<String>(
-      context: context,
+    final result = await showModalBottomSheet<String>(
+      context:            context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor:    Colors.transparent,
       builder: (_) => _CitySearchSheet(items: items, initialValue: value),
     );
-    if (selected != null) onChanged(selected);
+    if (result != null) onChanged(result);
   }
 
   @override
@@ -2663,74 +857,31 @@ class _CityDropdownCard extends StatelessWidget {
     return GestureDetector(
       onTap: () => _openPicker(context),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color:        Colors.white,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFD4F0ED), width: 1),
+          border:       Border.all(color: AppColors.divider),
         ),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Container(
-              width: 38, height: 38,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE5F7F5),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(Icons.location_city_rounded,
-                  color: _primary, size: 20),
-            ),
-            const SizedBox(width: 12),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'City',
-                    style: TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.w500,
-                      color: Color(0xFF6B7280),
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  isLoading
-                      ? const Row(
-                    children: [
-                      SizedBox(
-                        height: 14, width: 14,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: _primary,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Loading cities...',
-                        style: TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.w500,
-                          color: Color(0xFFB0BAC7),
-                        ),
-                      ),
-                    ],
-                  )
-                      : Text(
-                    (value == null || value!.isEmpty)
-                        ? 'Select city'
-                        : value!,
-                    style: TextStyle(
-                      fontSize: 15, fontWeight: FontWeight.w600,
-                      color: (value == null || value!.isEmpty)
-                          ? const Color(0xFFB0BAC7)
-                          : _textDark,
-                    ),
-                  ),
-                ],
+              child: Text(
+                isLoading ? 'Loading cities...' : (value ?? 'Select city'),
+                style: TextStyle(
+                  fontSize:   14,
+                  fontWeight: value == null ? FontWeight.w400 : FontWeight.w600,
+                  color: value == null ? Colors.black45 : Colors.black,
+                ),
               ),
             ),
-            const Icon(Icons.keyboard_arrow_down_rounded,
-                color: Color(0xFFB0BAC7), size: 22),
+            isLoading
+                ? const SizedBox(
+              width: 16, height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.tealDark),
+            )
+                : const Icon(Icons.keyboard_arrow_down_rounded,
+                color: Colors.black87, size: 22),
           ],
         ),
       ),
@@ -2738,13 +889,9 @@ class _CityDropdownCard extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// City Search Sheet — bottom sheet with search filter + list
-// ─────────────────────────────────────────────────────────────────────────────
 class _CitySearchSheet extends StatefulWidget {
   final List<String> items;
   final String?       initialValue;
-
   const _CitySearchSheet({required this.items, required this.initialValue});
 
   @override
@@ -2752,8 +899,7 @@ class _CitySearchSheet extends StatefulWidget {
 }
 
 class _CitySearchSheetState extends State<_CitySearchSheet> {
-  static const _primary = Color(0xFF0C6B64);
-
+  static const _primary = AppColors.tealDark;
   late List<String> _filtered;
   final _searchCtrl = TextEditingController();
 
@@ -2780,10 +926,10 @@ class _CitySearchSheetState extends State<_CitySearchSheet> {
   @override
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
-      initialChildSize: 0.75,
-      minChildSize: 0.4,
-      maxChildSize: 0.9,
-      expand: false,
+      initialChildSize: 0.7,
+      minChildSize:      0.4,
+      maxChildSize:      0.9,
+      expand:            false,
       builder: (context, scrollController) {
         return Container(
           decoration: const BoxDecoration(
@@ -2799,7 +945,7 @@ class _CitySearchSheetState extends State<_CitySearchSheet> {
               Container(
                 width: 40, height: 4,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFD4F0ED),
+                  color: AppColors.divider,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -2807,96 +953,61 @@ class _CitySearchSheetState extends State<_CitySearchSheet> {
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
                 child: Row(
                   children: [
-                    const Icon(Icons.location_city_rounded,
-                        color: _primary, size: 20),
+                    const Icon(Icons.location_city_rounded, color: _primary, size: 20),
                     const SizedBox(width: 8),
-                    const Text(
-                      'Select City',
-                      style: TextStyle(
-                        fontSize: 17, fontWeight: FontWeight.w700,
-                        color: Color(0xFF1A2E2C),
-                      ),
-                    ),
+                    const Text('Select City',
+                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Colors.black)),
                     const Spacer(),
                     GestureDetector(
                       onTap: () => Navigator.pop(context),
                       child: Container(
-                        padding: const EdgeInsets.all(4),
+                        padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF0F4F3),
-                          borderRadius: BorderRadius.circular(8),
+                          color: const Color(0xFFF3F4F6),
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Icon(Icons.close_rounded,
-                            size: 18, color: Color(0xFF6B7280)),
+                        child: const Icon(Icons.close_rounded, size: 18, color: AppColors.textSecondary),
                       ),
                     ),
                   ],
                 ),
               ),
-
-              // ── Search bar ──────────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF5FFFE),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFD4F0ED), width: 1),
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppColors.divider),
                   ),
                   child: TextField(
                     controller: _searchCtrl,
-                    autofocus: true,
-                    onChanged: _filter,
-                    style: const TextStyle(
-                      fontSize: 15, fontWeight: FontWeight.w500,
-                      color: Color(0xFF1A2E2C),
-                    ),
+                    autofocus:  true,
+                    onChanged:  _filter,
+                    style: const TextStyle(fontSize: 15, color: Colors.black),
                     decoration: InputDecoration(
-                      hintText: 'Search city...',
-                      hintStyle: const TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w400,
-                        color: Color(0xFFB0BAC7),
-                      ),
-                      prefixIcon: const Icon(Icons.search_rounded,
-                          color: _primary, size: 20),
-                      suffixIcon: _searchCtrl.text.isEmpty
-                          ? null
-                          : GestureDetector(
-                        onTap: () {
-                          _searchCtrl.clear();
-                          _filter('');
-                        },
-                        child: const Icon(Icons.clear_rounded,
-                            color: Color(0xFFB0BAC7), size: 18),
-                      ),
+                      hintText:  'Search city...',
+                      hintStyle: const TextStyle(fontSize: 15, color: AppColors.textSecondary),
+                      prefixIcon: const Icon(Icons.search_rounded, color: _primary, size: 20),
                       isDense: true,
-                      border: InputBorder.none,
+                      border:  InputBorder.none,
                       contentPadding: const EdgeInsets.symmetric(vertical: 14),
                     ),
                   ),
                 ),
               ),
-
-              const Divider(height: 1, color: Color(0xFFEFF3F2)),
-
-              // ── City list ────────────────────────────────────────────────
+              const Divider(height: 1, color: AppColors.divider),
               Expanded(
                 child: _filtered.isEmpty
                     ? const Center(
-                  child: Text(
-                    'No cities found',
-                    style: TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w500,
-                      color: Color(0xFFB0BAC7),
-                    ),
-                  ),
-                )
+                    child: Text('No cities found',
+                        style: TextStyle(fontSize: 14, color: AppColors.textSecondary)))
                     : ListView.separated(
                   controller: scrollController,
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: _filtered.length,
+                  padding:    const EdgeInsets.symmetric(vertical: 8),
+                  itemCount:  _filtered.length,
                   separatorBuilder: (_, __) => const Divider(
-                    height: 1, color: Color(0xFFF0F4F3), indent: 20, endIndent: 20,
+                    height: 1, color: AppColors.divider, indent: 20, endIndent: 20,
                   ),
                   itemBuilder: (context, index) {
                     final city = _filtered[index];
@@ -2906,14 +1017,13 @@ class _CitySearchSheetState extends State<_CitySearchSheet> {
                       title: Text(
                         city,
                         style: TextStyle(
-                          fontSize: 15,
+                          fontSize:   15,
                           fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                          color: isSelected ? _primary : const Color(0xFF1A2E2C),
+                          color:      isSelected ? _primary : Colors.black,
                         ),
                       ),
                       trailing: isSelected
-                          ? const Icon(Icons.check_circle_rounded,
-                          color: _primary, size: 20)
+                          ? const Icon(Icons.check_circle_rounded, color: _primary, size: 20)
                           : null,
                     );
                   },
@@ -2923,6 +1033,158 @@ class _CitySearchSheetState extends State<_CitySearchSheet> {
           ),
         );
       },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GPS toggle row (kept from the original screen, simplified visually)
+// ─────────────────────────────────────────────────────────────────────────────
+class _GpsToggleRow extends StatelessWidget {
+  final bool                    enabled;
+  final bool                    fetching;
+  final double?                 latitude;
+  final double?                 longitude;
+  final ValueChanged<bool>      onChanged;
+
+  const _GpsToggleRow({
+    required this.enabled,
+    required this.fetching,
+    required this.latitude,
+    required this.longitude,
+    required this.onChanged,
+  });
+
+  static const _primary = AppColors.tealDark;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color:        Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border:       Border.all(color: AppColors.divider),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36, height: 36,
+            decoration: BoxDecoration(
+              color:        AppColors.iconBgTeal,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.my_location_rounded, color: _primary, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Capture GPS Location',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.black)),
+                const SizedBox(height: 2),
+                Text(
+                  fetching
+                      ? 'Fetching location...'
+                      : (enabled && latitude != null
+                      ? '${latitude!.toStringAsFixed(5)}, ${longitude!.toStringAsFixed(5)}'
+                      : 'Optional — tag this shop\'s location'),
+                  style: const TextStyle(fontSize: 11, color: Colors.black87),
+                ),
+              ],
+            ),
+          ),
+          fetching
+              ? const SizedBox(
+            width: 20, height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2, color: _primary),
+          )
+              : Switch(
+            value: enabled,
+            onChanged: onChanged,
+            activeColor: _primary,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Photo tile — dashed-style optional upload slot (field photos)
+// ─────────────────────────────────────────────────────────────────────────────
+class _PhotoTile extends StatelessWidget {
+  final String       label;
+  final IconData     icon;
+  final File?        image;
+  final VoidCallback onTap;
+  final VoidCallback onRemove;
+
+  const _PhotoTile({
+    required this.label,
+    required this.icon,
+    required this.image,
+    required this.onTap,
+    required this.onRemove,
+  });
+
+  static const _primary = AppColors.tealDark;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap:    image == null ? onTap : null,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        height: 96,
+        decoration: BoxDecoration(
+          color:        Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: AppColors.divider,
+            width: 1.2,
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: image != null
+            ? Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.file(image!, fit: BoxFit.cover),
+            Positioned(
+              top: 6, right: 6,
+              child: GestureDetector(
+                onTap: onRemove,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                    color: Colors.black54,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.close_rounded, size: 14, color: Colors.white),
+                ),
+              ),
+            ),
+          ],
+        )
+            : Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: _primary, size: 24),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize:   12,
+                fontWeight: FontWeight.w600,
+                color:      _primary,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

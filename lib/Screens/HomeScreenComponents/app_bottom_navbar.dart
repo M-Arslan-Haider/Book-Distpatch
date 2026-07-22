@@ -672,7 +672,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import '../Order and Dispatch/order_screen.dart';
+import '../Order and Dispatch/screens/booking_screen.dart';
 import '../TimeKeeper/time_keeper.dart';
 import '../actions_screen.dart';
 import '../break_screen.dart';
@@ -723,7 +723,7 @@ class _AppBottomNavBarState extends State<AppBottomNavBar>
     _NavTab(icon: Icons.checklist_outlined,      activeIcon: Icons.checklist_rounded,    label: 'Tasks'),
     _NavTab(icon: Icons.coffee_outlined,         activeIcon: Icons.coffee_rounded,       label: 'Breaks'),
     _NavTab(icon: Icons.business_outlined,       activeIcon: Icons.business_rounded,     label: 'Company'),
-    _NavTab(icon: Icons.shopping_bag_outlined,   activeIcon: Icons.shopping_bag_rounded, label: 'Order'),
+    _NavTab(icon: Icons.shopping_bag_outlined,   activeIcon: Icons.shopping_bag_rounded, label: 'Booking'),
     _NavTab(icon: Icons.timer_outlined,          activeIcon: Icons.timer_rounded,        label: 'TimeKeeper', isTimekeeper: true),
   ];
 
@@ -1027,7 +1027,7 @@ class _AppBottomNavBarState extends State<AppBottomNavBar>
       Navigator.push(
         context,
         PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) => OrderScreen(
+          pageBuilder: (context, animation, secondaryAnimation) => BookingScreen(
             currentIndex: 6,
             chatBadgeCount: widget.chatBadgeCount,
             onNavTap: (i) {

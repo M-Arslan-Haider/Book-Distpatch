@@ -8,6 +8,10 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'Database/db_helper.dart';
 import 'Repositories/LoginRepositories/login_repository.dart';
+import 'Screens/Order and Dispatch/screens/no_sale_stock_screen.dart';
+import 'Screens/Order and Dispatch/screens/shop_closed_screen.dart';
+import 'Screens/Order and Dispatch/screens/shop_closed_select_screen.dart';
+import 'Screens/Order and Dispatch/screens/shop_visit_shop.dart';
 import 'Screens/PermissionScreens/camera_screen.dart';
 import 'Screens/PermissionScreens/location_screen.dart';
 import 'Screens/PermissionScreens/notification_screen.dart';
@@ -273,6 +277,27 @@ class MyApp extends StatelessWidget {
             page: () => const NotificationScreen()),
         GetPage(name: routeLogin, page: () => const LoginScreen()),
         GetPage(name: routeHome, page: () => const HomeScreen()),
+
+        // ✅ No Sale of Stock Routes
+        GetPage(
+          name: '/NoSaleShopSelectScreen',
+          page: () => const NoSaleShopSelectScreen(),
+        ),
+        GetPage(
+          name: '/NoSaleStockScreen',
+          page: () => NoSaleStockScreen(controllerTag: Get.parameters['tag'] ?? ''),
+        ),
+
+        // ✅ Shop Closed Routes
+        GetPage(
+          name: '/ShopClosedSelectScreen',
+          page: () => const ShopClosedSelectScreen(),
+        ),
+        GetPage(
+          name: '/ShopClosedScreen',
+          page: () => ShopClosedScreen(controllerTag: Get.parameters['tag'] ?? ''),
+        ),
+
       ],
       navigatorObservers: [AppLifecycleObserver()],
     );
