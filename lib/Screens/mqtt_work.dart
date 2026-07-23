@@ -10,7 +10,8 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import 'package:connectivity_plus/connectivity_plus.dart';
 
-const String _mqttHost  = '119.153.102.7';
+const String _mqttHost  = '103.149.33.102.7';
+// const String _mqttHost  = '119.153.102.7';
 const int    _mqttPort  = 1883;
 // MethodChannel to control Kotlin background service
 const _serviceChannel = MethodChannel('com.example.untitled2/mqtt_service');

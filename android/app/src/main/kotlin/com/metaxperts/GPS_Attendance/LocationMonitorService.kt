@@ -73,8 +73,8 @@ class LocationMonitorService : Service() {
     // ✅ FIX #1: Increased capture interval from 1s → 10s to reduce polyline noise
     private val BULK_CAPTURE_MS = 10_000L   // was 1_000L
     private val BULK_POST_MS    = 30_000L   // was 10_000L — less network spam
-    //    private val BULK_POST_URL   = "http://103.149.33.102:8001/location/bulk"
-    private val BULK_POST_URL   = "http://119.153.102.7:8001/location/bulk"
+        private val BULK_POST_URL   = "http://103.149.33.102:8001/location/bulk"
+//    private val BULK_POST_URL   = "http://119.153.102.7:8001/location/bulk"
 
     // ✅ FIX #3: Accuracy filter — skip poor GPS readings
     private val MIN_ACCURACY_METERS  = 50f    // skip if GPS accuracy worse than 50m
@@ -85,8 +85,8 @@ class LocationMonitorService : Service() {
     // ✅ FIX #5: Offline persistence file name
     private val OFFLINE_BUFFER_FILE = "bulk_location_offline.json"
 
-    //    private val MQTT_HOST = "103.149.33.102"
-    private val MQTT_HOST = "119.153.102.7"
+        private val MQTT_HOST = "103.149.33.102"
+//    private val MQTT_HOST = "119.153.102.7"
     private val MQTT_PORT = 1883
 
     private val mqttTopic get() = "gps/$companyCode/$deviceId"
@@ -154,6 +154,10 @@ class LocationMonitorService : Service() {
     private var empImage    = ""
 
     private val bulkLocationBuffer = mutableListOf<JSONObject>()
+
+    // ✅ NEW: guards the native drain of the Flutter SQLite bulk queue so the
+    // 30s loop and onTaskRemoved can never overlap into a double-drain.
+    private val isSqliteDraining = java.util.concurrent.atomic.AtomicBoolean(false)
 
     private val FAKE_GPS_API         = "http://oracle.metaxperts.net/ords/gps_workforce/fakegps/post/"
     private var lastFakeGpsReportTime: Long = 0
@@ -509,6 +513,11 @@ class LocationMonitorService : Service() {
                 val clocked = p.getBoolean(KEY_IS_CLOCKED_IN, false)
                 if (clocked && isNetworkAvailable()) {
                     postBulkLocationToApi()
+                    // ✅ NEW: when app is background/killed, also drain the Flutter
+                    // SQLite queue (foreground → Flutter owns it; the method self-
+                    // guards on isFlutterAppForeground()). This is what makes bulk
+                    // sync as reliable as the 3-min log across kill/force-stop/boot.
+                    drainFlutterSqliteBulk("bulkPostRunnable")
                 }
                 if (!isDestroyed) handler.postDelayed(this, BULK_POST_MS)
             }
@@ -747,6 +756,171 @@ class LocationMonitorService : Service() {
         } catch (e: Exception) {
             android.util.Log.e("LocationMonitor", "❌ [BULK] postBulkLocationToApi error: ${e.message}")
         }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // ✅ NEW: NATIVE DRAIN OF THE FLUTTER SQLite BULK QUEUE
+    //
+    // The always-on foreground service (the reason 3-min sync never fails) now
+    // also drains the SAME SQLite queue that the Flutter side writes to
+    // (employee_portal.db → location_tracking, posted=0). This is what makes
+    // bulk sync survive app-kill / force-stop / process-death / reboot, exactly
+    // like the 3-min log.
+    //
+    // OWNERSHIP RULE (no double-drain): this only runs when the Flutter app is
+    // NOT in the foreground. While the app is foreground, Flutter owns the drain.
+    // sqflite opens the DB in WAL mode, so this native read/write is safe
+    // alongside Flutter. Server MUST upsert on locationtracking_id (idempotency)
+    // to absorb the rare transition-moment overlap.
+    // ══════════════════════════════════════════════════════════════════════════
+    private fun drainFlutterSqliteBulk(triggerReason: String) {
+        // Foreground → Flutter owns the drain. Skip here.
+        if (isFlutterAppForeground()) return
+        if (!isNetworkAvailable()) return
+        // Prevent overlapping native drains.
+        if (!isSqliteDraining.compareAndSet(false, true)) return
+
+        Thread {
+            var db: android.database.sqlite.SQLiteDatabase? = null
+            try {
+                val dbFile = applicationContext.getDatabasePath("employee_portal.db")
+                if (!dbFile.exists()) {
+                    android.util.Log.d("LocationMonitor",
+                        "ℹ️ [BULK-SQLITE] DB not found yet — nothing to drain ($triggerReason)")
+                    return@Thread
+                }
+
+                db = android.database.sqlite.SQLiteDatabase.openDatabase(
+                    dbFile.absolutePath, null,
+                    android.database.sqlite.SQLiteDatabase.OPEN_READWRITE
+                )
+
+                var totalSynced = 0
+
+                while (true) {
+                    val sendable = ArrayList<Pair<Int, JSONObject>>()
+                    val zeroIds  = ArrayList<Int>()
+
+                    val cursor = db.rawQuery(
+                        "SELECT id, locationtracking_id, locationtracking_date, " +
+                                "locationtracking_time, user_id, company_code, lat_in, lng_in, " +
+                                "booker_name, designation " +
+                                "FROM location_tracking WHERE posted = 0 " +
+                                "ORDER BY created_at ASC LIMIT 500",
+                        null
+                    )
+
+                    cursor.use { c ->
+                        while (c.moveToNext()) {
+                            val id  = c.getInt(0)
+                            val lat = c.getDouble(6)
+                            val lng = c.getDouble(7)
+
+                            // Zero-coord rows can never be posted — mark them posted
+                            // directly so they never block the queue forever.
+                            if (lat == 0.0 && lng == 0.0) {
+                                zeroIds.add(id)
+                                continue
+                            }
+
+                            val obj = JSONObject().apply {
+                                put("locationtracking_id",   c.getString(1) ?: "")
+                                put("locationtracking_date", c.getString(2) ?: "")
+                                put("locationtracking_time", c.getString(3) ?: "")
+                                put("user_id",               c.getString(4) ?: "")
+                                put("company_code",          c.getString(5) ?: "")
+                                put("lat_in",                lat)
+                                put("lng_in",                lng)
+                                put("booker_name",           c.getString(8) ?: "")
+                                put("designation",           c.getString(9) ?: "GPS")
+                                put("posted",                true)
+                            }
+                            sendable.add(Pair(id, obj))
+                        }
+                    }
+
+                    val batchCount = sendable.size + zeroIds.size
+                    if (batchCount == 0) {
+                        android.util.Log.d("LocationMonitor",
+                            "🏁 [BULK-SQLITE] queue empty — total=$totalSynced ($triggerReason)")
+                        break
+                    }
+
+                    if (zeroIds.isNotEmpty()) {
+                        markSqlitePosted(db, zeroIds)
+                        android.util.Log.w("LocationMonitor",
+                            "⚠️ [BULK-SQLITE] marked ${zeroIds.size} zero-coord rows posted ($triggerReason)")
+                    }
+
+                    if (sendable.isEmpty()) {
+                        if (batchCount < 500) break else continue
+                    }
+
+                    // Build payload — identical shape to postBulkLocationToApi
+                    val arr = JSONArray()
+                    sendable.forEach { arr.put(it.second) }
+                    val body = JSONObject().apply { put("records", arr) }.toString()
+
+                    var ok = false
+                    try {
+                        val conn = (URL(BULK_POST_URL).openConnection() as HttpURLConnection).apply {
+                            requestMethod  = "POST"
+                            setRequestProperty("Content-Type", "application/json")
+                            setRequestProperty("Accept",       "application/json")
+                            doOutput       = true
+                            connectTimeout = 15000
+                            readTimeout    = 15000
+                        }
+                        OutputStreamWriter(conn.outputStream).use { it.write(body) }
+                        val code = conn.responseCode
+                        conn.disconnect()
+                        ok = code in 200..299
+                        android.util.Log.d("LocationMonitor",
+                            "📥 [BULK-SQLITE] RESPONSE code=$code sent=${sendable.size} ($triggerReason)")
+                    } catch (e: Exception) {
+                        android.util.Log.e("LocationMonitor",
+                            "❌ [BULK-SQLITE] POST error: ${e.message} — rows stay posted=0")
+                        ok = false
+                    }
+
+                    if (ok) {
+                        markSqlitePosted(db, sendable.map { it.first })
+                        totalSynced += sendable.size
+                        android.util.Log.d("LocationMonitor",
+                            "✅ [BULK-SQLITE] drained ${sendable.size} rows (total=$totalSynced) via $triggerReason")
+                        if (batchCount < 500) break
+                    } else {
+                        // Stop — data stays safe (posted=0), retried next cycle.
+                        break
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("LocationMonitor", "❌ [BULK-SQLITE] drain error: ${e.message}")
+            } finally {
+                try { db?.close() } catch (_: Exception) {}
+                isSqliteDraining.set(false)
+            }
+        }.start()
+    }
+
+    /** Marks the given SQLite row ids posted=1, with a small lock-retry. */
+    private fun markSqlitePosted(db: android.database.sqlite.SQLiteDatabase, ids: List<Int>) {
+        if (ids.isEmpty()) return
+        val inList = ids.joinToString(",")   // ids are our own Ints — no injection risk
+        var attempt = 0
+        while (attempt < 3) {
+            try {
+                db.execSQL("UPDATE location_tracking SET posted = 1 WHERE id IN ($inList)")
+                return
+            } catch (e: android.database.sqlite.SQLiteDatabaseLockedException) {
+                attempt++
+                try { Thread.sleep(150) } catch (_: InterruptedException) {}
+            } catch (e: Exception) {
+                android.util.Log.e("LocationMonitor", "❌ [BULK-SQLITE] mark posted error: ${e.message}")
+                return
+            }
+        }
+        android.util.Log.w("LocationMonitor", "⚠️ [BULK-SQLITE] mark posted gave up after lock retries")
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -1957,6 +2131,11 @@ class LocationMonitorService : Service() {
             android.util.Log.d("LocationMonitor",
                 "💾 [BULK] onTaskRemoved — persisted ${snapshot.size} records to disk")
         }
+
+        // ✅ NEW: user swiped the app away → app is now background/killed. Drain
+        // the Flutter SQLite bulk queue promptly instead of waiting for the 30s
+        // loop. Self-guards on foreground + network + concurrency.
+        drainFlutterSqliteBulk("onTaskRemoved")
 
         if (clocked && !frozen) {
             // ✅ BACKGROUND ALARM FIX: Check shift end time

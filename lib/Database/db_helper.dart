@@ -914,4 +914,74 @@ class DBHelper {
       whereArgs: [id],
     );
   }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SYNC STATUS — Unposted counts for all tables (used by SyncStatusCard)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Returns a map of label → unsynced count for every table that has pending
+  /// items.  Used by SyncController to show real-time local DB pending data.
+  Future<Map<String, int>> getUnpostedCountsFromDB() async {
+    final db = await database;
+    final Map<String, int> counts = {};
+
+    // Helper: tables that use posted = 0 as "not yet synced"
+    Future<int> countPosted(String table) async {
+      try {
+        final hasCompany = _currentCompanyCode != null;
+        final where = hasCompany
+            ? 'posted = 0 AND company_code = ?'
+            : 'posted = 0';
+        final args = hasCompany ? [_currentCompanyCode] : null;
+        final r = await db.rawQuery(
+          'SELECT COUNT(*) as c FROM $table WHERE $where',
+          args,
+        );
+        return r.first['c'] as int? ?? 0;
+      } catch (_) {
+        return 0;
+      }
+    }
+
+    // Helper: tables that use synced = 0 as "not yet synced"
+    Future<int> countSynced(String table) async {
+      try {
+        final hasCompany = _currentCompanyCode != null;
+        final where = hasCompany
+            ? 'synced = 0 AND company_code = ?'
+            : 'synced = 0';
+        final args = hasCompany ? [_currentCompanyCode] : null;
+        final r = await db.rawQuery(
+          'SELECT COUNT(*) as c FROM $table WHERE $where',
+          args,
+        );
+        return r.first['c'] as int? ?? 0;
+      } catch (_) {
+        return 0;
+      }
+    }
+
+    final clockIn  = await countPosted(attendanceTable);
+    final clockOut = await countPosted(attendanceOutTable);
+    final location = await countPosted(locationTable);
+    final leave    = await countPosted(leaveTable);
+    final gpsTrack = await countPosted(locationTrackingTable);
+    final selfie   = await countPosted(selfieLogTable);
+    final fakeGps  = await countPosted(fakeGpsTable);
+    final battery  = await countSynced(batteryEventsTable);
+    final powerOff = await countSynced(powerOffEventsTable);
+
+    if (clockIn  > 0) counts['Clock In']  = clockIn;
+    if (clockOut > 0) counts['Clock Out'] = clockOut;
+    if (location > 0) counts['Location']  = location;
+    if (leave    > 0) counts['Leave']     = leave;
+    if (gpsTrack > 0) counts['GPS Track'] = gpsTrack;
+    if (selfie   > 0) counts['Selfie']    = selfie;
+    if (fakeGps  > 0) counts['Fake GPS']  = fakeGps;
+    if (battery  > 0) counts['Battery']   = battery;
+    if (powerOff > 0) counts['Power Off'] = powerOff;
+
+    debugPrint('📊 [DB] Unsynced counts: $counts');
+    return counts;
+  }
 }

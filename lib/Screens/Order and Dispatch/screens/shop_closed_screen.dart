@@ -1,9 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════════════
-// shop_closed_screen.dart
-//
-// "Shop Closed" flow screen — capture shop photo + GPS location, then
-// submit with visit_type='Shop Closed'. No products/quantity involved.
-// ═══════════════════════════════════════════════════════════════════════════
 
 import 'dart:convert';
 import 'dart:developer' as developer;
@@ -17,7 +11,6 @@ import '../../../ViewModels/login_view_model.dart';
 import '../../HomeScreenComponents/navbar.dart';
 import '../../HomeScreenComponents/sidebar_drawer.dart';
 import '../view_models/shop_closed_viewmodel.dart';
-
 
 class ShopClosedScreen extends StatefulWidget {
   final String controllerTag;
@@ -69,15 +62,12 @@ class _ShopClosedScreenState extends State<ShopClosedScreen> {
             'Shop Closed visit for ${_controller.model.shopName} was saved successfully.',
             style: const TextStyle(fontSize: 13.5),
           ),
-          // In shop_closed_screen.dart, find the "Done" button and change to:
-
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.of(ctx).pop(); // close dialog
-                // ✅ SAME AS NO SALE OF STOCK
-                Get.back(); // Close ShopClosedScreen
-                Get.back(); // Close ShopClosedSelectScreen
+                Navigator.of(ctx).pop();
+                Get.back();
+                Get.back();
               },
               child: const Text('Done', style: TextStyle(color: _tealDark, fontWeight: FontWeight.w700)),
             ),
@@ -149,7 +139,6 @@ class _ShopClosedScreenState extends State<ShopClosedScreen> {
 
                       const SizedBox(height: 20),
 
-                      // ── Shop Photo ─────────────────────────────────────
                       Text('SHOP PHOTO', style: _labelStyle),
                       const SizedBox(height: 8),
                       GestureDetector(
@@ -209,7 +198,6 @@ class _ShopClosedScreenState extends State<ShopClosedScreen> {
 
                       const SizedBox(height: 20),
 
-                      // ── Location ───────────────────────────────────────
                       Text('LOCATION', style: _labelStyle),
                       const SizedBox(height: 8),
                       Container(
@@ -286,7 +274,6 @@ class _ShopClosedScreenState extends State<ShopClosedScreen> {
                 ),
               ),
 
-              // ── Submit bar ─────────────────────────────────────────────
               Container(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                 decoration: const BoxDecoration(

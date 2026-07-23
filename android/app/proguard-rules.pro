@@ -35,9 +35,9 @@
 -dontwarn io.flutter.**
 
 # ── Your app's native service & receiver ────────────────────
--keep class com.metaxperts.GPS_Workforce_Monitor.LocationMonitorService { *; }
--keep class com.metaxperts.GPS_Workforce_Monitor.BootCompletedReceiver { *; }
--keep class com.metaxperts.GPS_Workforce_Monitor.MainActivity { *; }
+-keep class com.metaxperts.bookdispatch.LocationMonitorService { *; }
+-keep class com.metaxperts.bookdispatch.BootCompletedReceiver { *; }
+-keep class com.metaxperts.bookdispatch.MainActivity { *; }
 
 # ── Google Play Services / Security Provider ────────────────
 -keep class com.google.android.gms.** { *; }

@@ -1,3 +1,6 @@
+
+
+
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -5,24 +8,8 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../AppColors.dart';
 import '../add_shop_screen.dart';
+import '../../../Services/data_preload_service.dart';
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// select_shop.dart
-// Bottom sheet shown when "New Booking" is tapped on the Booking screen.
-// Fetches the employee's shops directly from:
-//   GET http://oracle.metaxperts.net/ords/gps_workforce/addshopget/get/:emp_id
-//   (optionally ?company_code=...)
-// Lets the user search shops, or tap "Add New Shop" to jump to AddShopScreen.
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/// Call this to open the sheet, e.g. from the "New Booking" button:
-///
-/// ```dart
-/// final selectedShop = await showSelectShopSheet(context);
-/// if (selectedShop != null) {
-///   // proceed to new booking flow with selectedShop
-/// }
-/// ```
 Future<ShopModel?> showSelectShopSheet(BuildContext context) {
   return showModalBottomSheet<ShopModel>(
     context:            context,
@@ -80,7 +67,6 @@ class _SelectShopSheetState extends State<SelectShopSheet> {
     });
   }
 
-  // ── Load emp info (same pattern used across the app) then fetch shops ───
   Future<void> _loadEmployeeInfoAndFetchShops() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
@@ -100,8 +86,9 @@ class _SelectShopSheetState extends State<SelectShopSheet> {
     await _fetchShops();
   }
 
-  // ── Fetch shops directly from the API ────────────────────────────────────
-  // GET /addshopget/get/:emp_id?company_code=...
+  // ═══════════════════════════════════════════════════════════════════════
+  // UPDATED: _fetchShops - Pehle cache se load, phir background refresh
+  // ═══════════════════════════════════════════════════════════════════════
   Future<void> _fetchShops() async {
     setState(() {
       _loading = true;
@@ -109,6 +96,26 @@ class _SelectShopSheetState extends State<SelectShopSheet> {
     });
 
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedKey = '${DataPreloadService.KEY_SHOPS_PREFIX}$_empId';
+      final cachedData = prefs.getString(cachedKey);
+
+      // ✅ Pehle cache se load karo
+      if (cachedData != null && cachedData.isNotEmpty) {
+        final List<dynamic> items = jsonDecode(cachedData);
+        setState(() {
+          _shops = items.map((e) => ShopModel.fromJson(e as Map<String, dynamic>)).toList();
+          _filtered = _shops;
+          _loading = false;
+        });
+        debugPrint('📦 [SelectShop] Loaded ${_shops.length} shops from cache');
+
+        // Background refresh
+        _refreshShopsInBackground();
+        return;
+      }
+
+      // Cache nahi hai toh API call karo
       var endpoint = '/addshopget/get/$_empId';
       if (_companyCode.isNotEmpty) {
         endpoint += '?company_code=${Uri.encodeQueryComponent(_companyCode)}';
@@ -117,14 +124,18 @@ class _SelectShopSheetState extends State<SelectShopSheet> {
       final response = await http.get(Uri.parse('$_baseUrl$endpoint'));
 
       if (response.statusCode == 200) {
-        final data  = jsonDecode(response.body);
-        final items = (data['items'] as List?) ?? [];
+        final data = jsonDecode(response.body);
+        final items = data['items'] as List? ?? [];
+
+        // Cache for next time
+        await prefs.setString(cachedKey, jsonEncode(items));
 
         setState(() {
-          _shops    = items.map((e) => ShopModel.fromJson(e as Map<String, dynamic>)).toList();
+          _shops = items.map((e) => ShopModel.fromJson(e as Map<String, dynamic>)).toList();
           _filtered = _shops;
-          _loading  = false;
+          _loading = false;
         });
+        debugPrint('✅ [SelectShop] Fetched ${_shops.length} shops from API');
       } else {
         setState(() {
           _error   = 'Could not load shops (${response.statusCode})';
@@ -132,15 +143,49 @@ class _SelectShopSheetState extends State<SelectShopSheet> {
         });
       }
     } catch (e) {
-      setState(() {
-        _error   = 'Could not load shops. Check your connection.';
-        _loading = false;
-      });
+      // Agar cache hai toh error show mat karo
+      final prefs = await SharedPreferences.getInstance();
+      final cachedKey = '${DataPreloadService.KEY_SHOPS_PREFIX}$_empId';
+      final cachedData = prefs.getString(cachedKey);
+
+      if (cachedData != null && cachedData.isNotEmpty) {
+        final List<dynamic> items = jsonDecode(cachedData);
+        setState(() {
+          _shops = items.map((e) => ShopModel.fromJson(e as Map<String, dynamic>)).toList();
+          _filtered = _shops;
+          _loading = false;
+        });
+        debugPrint('📦 [SelectShop] Fallback to cached shops (${_shops.length})');
+      } else {
+        setState(() {
+          _error   = 'Could not load shops. Check your connection.';
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _refreshShopsInBackground() async {
+    try {
+      var endpoint = '/addshopget/get/$_empId';
+      if (_companyCode.isNotEmpty) {
+        endpoint += '?company_code=${Uri.encodeQueryComponent(_companyCode)}';
+      }
+      final response = await http.get(Uri.parse('$_baseUrl$endpoint'));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final items = data['items'] as List? ?? [];
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('${DataPreloadService.KEY_SHOPS_PREFIX}$_empId', jsonEncode(items));
+        debugPrint('🔄 [SelectShop] Shops refreshed in background');
+      }
+    } catch (e) {
+      // ignore
     }
   }
 
   void _goToAddShop() {
-    Navigator.pop(context); // close sheet first
+    Navigator.pop(context);
     Get.to(() => const AddShopScreen());
   }
 
@@ -175,7 +220,6 @@ class _SelectShopSheetState extends State<SelectShopSheet> {
                 ),
               ),
 
-              // ── Header ────────────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
                 child: Row(
@@ -205,7 +249,6 @@ class _SelectShopSheetState extends State<SelectShopSheet> {
                 ),
               ),
 
-              // ── Search bar ────────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
                 child: Container(
@@ -237,7 +280,6 @@ class _SelectShopSheetState extends State<SelectShopSheet> {
                 ),
               ),
 
-              // ── Add New Shop button ───────────────────────────────────
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                 child: GestureDetector(
@@ -271,7 +313,6 @@ class _SelectShopSheetState extends State<SelectShopSheet> {
 
               const Divider(height: 1, color: AppColors.divider),
 
-              // ── Shops list ─────────────────────────────────────────────
               Expanded(child: _buildBody(scrollController)),
             ],
           ),
@@ -332,9 +373,6 @@ class _SelectShopSheetState extends State<SelectShopSheet> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Shop tile row
-// ─────────────────────────────────────────────────────────────────────────────
 class _ShopTile extends StatelessWidget {
   final ShopModel shop;
   final VoidCallback onTap;
@@ -397,9 +435,6 @@ class _ShopTile extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Shop model — mapped straight from the ADD_SHOP API response
-// ─────────────────────────────────────────────────────────────────────────────
 class ShopModel {
   final String id;
   final String empId;
@@ -463,4 +498,23 @@ class ShopModel {
       createdTime:   json['created_time']?.toString(),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'emp_id': empId,
+    'emp_name': empName,
+    'company_code': companyCode,
+    'shop_name': shopName,
+    'shop_id': shopId,
+    'shop_type': shopType,
+    'owner_name': ownerName,
+    'contact_number': contactNumber,
+    'city': city,
+    'address': address,
+    'notes': notes,
+    'latitude': latitude,
+    'longitude': longitude,
+    'created_date': createdDate,
+    'created_time': createdTime,
+  };
 }

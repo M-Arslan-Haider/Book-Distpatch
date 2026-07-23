@@ -705,14 +705,14 @@ class _HomeScreenState extends State<HomeScreen>
       _lastSyncTime = 'Just now';
     });
 
-    Get.showSnackbar(GetSnackBar(
-      message: 'Syncing data...',
-      duration: const Duration(seconds: 2),
-      backgroundColor: AppColors.cyan,
-      icon: const Icon(Icons.sync, color: Colors.white),
-      borderRadius: 10,
-      margin: const EdgeInsets.all(12),
-    ));
+    // Get.showSnackbar(GetSnackBar(
+    //   message: 'Syncing data...',
+    //   duration: const Duration(seconds: 2),
+    //   backgroundColor: AppColors.cyan,
+    //   icon: const Icon(Icons.sync, color: Colors.white),
+    //   borderRadius: 10,
+    //   margin: const EdgeInsets.all(12),
+    // ));
 
     await attendanceViewModel.syncUnposted();
     await attendanceOutViewModel.syncUnposted();

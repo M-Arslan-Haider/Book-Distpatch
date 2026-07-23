@@ -72,7 +72,7 @@ class DeveloperOptionsCheckService {
 
   // ✅ Oracle ORDS endpoint
   static const String _apiUrl =
-      'http://oracle.metaxperts.net/ords/gps_workforce/empdevsetting/post/';
+      'http://oracle.metaxperts.net/ords/gps_workforce/empdevsetting1/post/';
 
   // ── Offline queue key ─────────────────────────────────────────────────────
   static const String _kPendingQueueKey = 'dev_options_log_pending_queue';

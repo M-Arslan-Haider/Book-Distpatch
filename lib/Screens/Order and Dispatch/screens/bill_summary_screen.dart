@@ -1,11 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════════════
-// bill_summary_screen.dart
-//
-// Opens after "Review Bill" on AddProductsScreen. Shows the itemized bill
-// (item / pcs / rate / amount), subtotal, GST, grand total, an over-limit
-// warning banner (matches screenshot), PDF + Share(WhatsApp) actions, and
-// "Confirm Booking" which moves to BookingConfirmedScreen.
-// ═══════════════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
 import '../../../AppColors.dart';

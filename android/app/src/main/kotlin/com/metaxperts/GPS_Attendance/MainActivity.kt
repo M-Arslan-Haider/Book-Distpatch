@@ -1127,7 +1127,9 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.PowerManager
+import android.os.StatFs
 import android.provider.Settings
 import android.telephony.SubscriptionManager
 import androidx.core.content.ContextCompat
@@ -1147,6 +1149,7 @@ class MainActivity : FlutterFragmentActivity(), ProviderInstaller.ProviderInstal
     private val AUTO_TIME_CHANNEL       = "com.metaxperts.bookdispatch/auto_time_check"
     private val PLAY_INTEGRITY_CHANNEL  = "play_integrity"
     private val GPS_FRAUD_CHANNEL = "com.metaxperts.bookdispatch/gps_fraud"
+    private val STORAGE_INFO_CHANNEL    = "metaxperts/storage_info"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -1496,6 +1499,69 @@ class MainActivity : FlutterFragmentActivity(), ProviderInstaller.ProviderInstal
                         android.util.Log.d("MainActivity",
                             "🛰️ [GPS FRAUD] getSatelliteCount → $count")
                         result.success(count)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // ══════════════════════════════════════════════════════════════════
+        // ✅ NEW: STORAGE INFO CHANNEL
+        // ══════════════════════════════════════════════════════════════════
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, STORAGE_INFO_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getStorageInfo" -> {
+                        try {
+                            // ── Storage ───────────────────────────────────────────────
+                            var totalStorageBytes: Long
+                            var freeStorageBytes: Long
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                // Try StorageStatsManager first (most accurate for API 26+)
+                                // Inner try-catch: some OEMs throw SecurityException even without special perms
+                                try {
+                                    val storageStatsManager = getSystemService(
+                                        Context.STORAGE_STATS_SERVICE
+                                    ) as android.app.usage.StorageStatsManager
+                                    val uuid = android.os.storage.StorageManager.UUID_DEFAULT
+                                    totalStorageBytes = storageStatsManager.getTotalBytes(uuid)
+                                    freeStorageBytes  = storageStatsManager.getFreeBytes(uuid)
+                                } catch (ex: Exception) {
+                                    // Fallback: StatFs on internal data partition (no permission needed)
+                                    android.util.Log.w("MainActivity",
+                                        "⚠️ [STORAGE] StorageStatsManager failed, using StatFs fallback: ${ex.message}")
+                                    val stat = StatFs(Environment.getDataDirectory().path)
+                                    totalStorageBytes = stat.totalBytes
+                                    freeStorageBytes  = stat.freeBytes
+                                }
+                            } else {
+                                // API < 26: StatFs on internal data partition
+                                val stat = StatFs(Environment.getDataDirectory().path)
+                                totalStorageBytes = stat.totalBytes
+                                freeStorageBytes  = stat.freeBytes
+                            }
+                            val totalStorageGB = totalStorageBytes.toDouble() / (1024.0 * 1024.0 * 1024.0)
+                            val freeStorageGB  = freeStorageBytes.toDouble()  / (1024.0 * 1024.0 * 1024.0)
+                            // ── RAM (ActivityManager — actual device RAM, not JVM heap) ──
+                            val activityManager =
+                                getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+                            val memInfo = android.app.ActivityManager.MemoryInfo()
+                            activityManager.getMemoryInfo(memInfo)
+                            // totalMem = physical device RAM (e.g. 6144 MB for 6 GB phone)
+                            // availMem = memory available/reclaimable by apps right now
+                            val totalRamGB = memInfo.totalMem.toDouble() / (1024.0 * 1024.0 * 1024.0)
+                            val availRamGB = memInfo.availMem.toDouble() / (1024.0 * 1024.0 * 1024.0)
+                            result.success(
+                                mapOf(
+                                    "total_gb"     to totalStorageGB,
+                                    "free_gb"      to freeStorageGB,
+                                    "used_gb"      to (totalStorageGB - freeStorageGB),
+                                    "total_ram_gb" to totalRamGB,
+                                    "free_ram_gb"  to availRamGB
+                                )
+                            )
+                        } catch (e: Exception) {
+                            result.error("STORAGE_ERROR", e.message, null)
+                        }
                     }
                     else -> result.notImplemented()
                 }

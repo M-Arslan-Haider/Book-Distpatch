@@ -1,4 +1,5 @@
 
+
 import 'dart:developer' as developer;
 
 /// One line item added to the current booking order.
@@ -155,12 +156,9 @@ class BookingFlowModel {
   String? shelfPhotoBase64;
 
   // ── Extra shop/visit metadata for the submit payload ─────────────────
-  // NOTE: this booking flow currently doesn't capture GPS/address/owner
-  // itself — these are optional and default empty. Wire them up from
-  // ShopVisitOutcomeScreen / a location capture step if/when available.
-  String shopAddress = '';
-  String ownerName = '';
-  bool gpsEnabled = false;
+  String shopAddress;
+  String ownerName;
+  bool gpsEnabled;
   double? latitude;
   double? longitude;
   String? notes;
@@ -169,6 +167,12 @@ class BookingFlowModel {
     required this.shopId,
     required this.shopName,
     required this.shopSubtitle,
+    // ✅ NEW PARAMETERS WITH DEFAULTS
+    this.shopAddress = '',
+    this.ownerName = '',
+    this.gpsEnabled = false,
+    this.latitude,
+    this.longitude,
   });
 
   double get subtotal => lineItems.fold(0.0, (sum, item) => sum + item.netAmount);

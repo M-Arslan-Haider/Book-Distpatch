@@ -1,5 +1,4 @@
 
-
 import 'package:book_dispatch/Screens/Order%20and%20Dispatch/screens/shop_visit_shop.dart';
 import 'package:flutter/material.dart';
 import '../../../AppColors.dart';
@@ -12,19 +11,6 @@ import '../../HomeScreenComponents/navbar.dart';
 import '../../HomeScreenComponents/sidebar_drawer.dart';
 import 'customer_account_screen.dart';
 import 'shop_closed_select_screen.dart';
-
-
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// shop_visit_outcome_screen.dart
-//
-// Opens when the salesman taps a shop (from "Select Shop" sheet, or from
-// "Today's Route" list). Shows the shop name at the top and lets the user
-// choose what happened at the visit:
-//   • Shop Closed        -> capture closed-shop photo
-//   • No Sale of Stock   -> capture shop + stock photo
-//   • Start Booking      -> proceed to order entry
-// ═══════════════════════════════════════════════════════════════════════════════
 
 class ShopVisitOutcomeScreen extends StatefulWidget {
   final String shopId;
@@ -84,7 +70,6 @@ class _ShopVisitOutcomeScreenState extends State<ShopVisitOutcomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Back button ─────────────────────────────────────────
               GestureDetector(
                 onTap: () {
                   HapticFeedback.lightImpact();
@@ -99,7 +84,6 @@ class _ShopVisitOutcomeScreenState extends State<ShopVisitOutcomeScreen> {
 
               const SizedBox(height: 8),
 
-              // ── Shop header card ─────────────────────────────────────
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
@@ -159,7 +143,6 @@ class _ShopVisitOutcomeScreenState extends State<ShopVisitOutcomeScreen> {
 
               const SizedBox(height: 18),
 
-              // ── Prompt ────────────────────────────────────────────────
               const Text(
                 'Choose the visit outcome for this shop.',
                 style: TextStyle(fontSize: 13, color: _textMuted),
@@ -167,10 +150,6 @@ class _ShopVisitOutcomeScreenState extends State<ShopVisitOutcomeScreen> {
 
               const SizedBox(height: 14),
 
-              // ── Shop Closed ───────────────────────────────────────────
-              // ── Shop Closed ───────────────────────────────────────────
-              // ── Shop Closed ───────────────────────────────────────────
-              // ── Shop Closed ───────────────────────────────────────────
               _OutcomeCard(
                 icon:        Icons.storefront_outlined,
                 iconColor:   const Color(0xFFF97316),
@@ -183,15 +162,11 @@ class _ShopVisitOutcomeScreenState extends State<ShopVisitOutcomeScreen> {
                     '🔒 Shop Closed tapped for shop=${widget.shopName} (id=${widget.shopId})',
                     name: 'ShopVisitOutcomeScreen',
                   );
-
-                  // ✅ DIRECT NAVIGATE - bilkul No Sale of Stock ki tarah
-                  // Callback ko ignore karein
                   Get.to(() => const ShopClosedSelectScreen());
                 },
               ),
               const SizedBox(height: 12),
 
-              // ── No Sale of Stock ──────────────────────────────────────
               _OutcomeCard(
                 icon:        Icons.block_rounded,
                 iconColor:   const Color(0xFFF97316),
@@ -213,7 +188,6 @@ class _ShopVisitOutcomeScreenState extends State<ShopVisitOutcomeScreen> {
               ),
               const SizedBox(height: 12),
 
-              // ── Start Booking (highlighted / primary) ─────────────────
               _OutcomeCard(
                 icon:        Icons.shopping_cart_rounded,
                 iconColor:   _tealDark,
@@ -246,9 +220,6 @@ class _ShopVisitOutcomeScreenState extends State<ShopVisitOutcomeScreen> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Single outcome option card (Shop Closed / No Sale of Stock / Start Booking)
-// ─────────────────────────────────────────────────────────────────────────────
 class _OutcomeCard extends StatelessWidget {
   final IconData     icon;
   final Color        iconColor;

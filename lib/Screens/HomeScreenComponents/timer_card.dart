@@ -26,6 +26,7 @@ import '../../Services/developer_options_check_service.dart';
 import '../../Services/location_accuracy_indicator_service.dart';
 import '../../Services/selfie_notification_policy_service.dart';
 import '../../Services/interval_selfie_service.dart';
+import '../../Services/sync_report_service.dart';
 import '../../ViewModels/attendance_out_view_model.dart';
 import '../../ViewModels/attendance_view_model.dart';
 import '../../ViewModels/geofancing_violation.dart';
@@ -78,7 +79,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
   // ─── Method Channel (Native monitoring service) ────────────────────────────
   static const platform =
-  MethodChannel('com.yourapp.attendance/location_monitor');
+  MethodChannel('com.metaxperts.bookdispatch/location_monitor');
 
   // ─── Timer state ───────────────────────────────────────────────────────────
   Timer? _locationMonitorTimer;
@@ -89,6 +90,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
   Timer? _autoSyncTimer;
   Timer? _distanceUpdateTimer;
   Timer? _employeeDataRefreshTimer; // ✅ Live employee data refresh (every 5 s)
+  Timer? _clockInWatchdogTimer;     // ✅ FIX: force-closes stuck "Clock In" loading dialog (iOS hang fix)
 
   // ── ✅ OVERTIME Auto Clock-Out Service ─────────────────────────────────────
   // Jab overtime=yes user shift end ke baad clock-in kare to yeh service
@@ -183,6 +185,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     _shiftEndClockOutTimer?.cancel();   // ✅ NEW: Shift end auto clock-out
     _permissionCheckTimer?.cancel();
     _employeeDataRefreshTimer?.cancel(); // ✅ Live employee data refresh
+    _clockInWatchdogTimer?.cancel();     // ✅ FIX: cancel watchdog timer
     // ✅ OVERTIME: Cancel overtime auto clock-out timers
     unawaited(_overtimeService.cancel());
     // ✅ Dispose MQTT
@@ -201,6 +204,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       _checkAndProcessCriticalEvent();
       _restoreEverything();
       _checkConnectivityAndSync();
+      _drainBulkPendingNow('app-resumed'); // ✅ NEW: level-triggered bulk drain
       _rescheduleMidnightClockOut();
       _scheduleShiftEndClockOut();       // ✅ NEW
       _applyTodayScheduleToCache();      // ✅ Day-wise shift schedule
@@ -216,7 +220,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
   Future<void> _startNativeMonitoringService() async {
     try {
-      if (Platform.isAndroid) {
+      if (Platform.isAndroid || Platform.isIOS) {          // ✅ FIX: iOS native service must start too
         final bool result = await platform.invokeMethod('startMonitoring');
         debugPrint('✅ [NATIVE SERVICE] Started: $result');
       }
@@ -229,7 +233,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
   Future<void> _stopNativeMonitoringService() async {
     try {
-      if (Platform.isAndroid) {
+      if (Platform.isAndroid || Platform.isIOS) {          // ✅ FIX: iOS native service must stop too
         final bool result = await platform.invokeMethod('stopMonitoring');
         debugPrint('🛑 [NATIVE SERVICE] Stopped: $result');
       }
@@ -1529,9 +1533,32 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
     _autoSyncTimer = Timer.periodic(const Duration(minutes: 2), (timer) {
       if (!_isSyncing) _checkConnectivityAndSync();
+      // ✅ NEW: always attempt a bulk drain, even when already online.
+      // _checkConnectivityAndSync only syncs on an offline→online EDGE; this
+      // makes the SQLite bulk queue drain LEVEL-triggered so stuck rows never
+      // wait for a connectivity transition (the old "reopen doesn't sync" bug).
+      _drainBulkPendingNow('periodic-2min');
     });
 
     _checkConnectivityAndSync();
+    _drainBulkPendingNow('auto-sync-start'); // ✅ NEW: drain on first mount too
+  }
+
+  // ✅ NEW: Level-triggered foreground bulk drain.
+  // Unlike _triggerAutoSync (which only fires on an offline→online transition),
+  // this ALWAYS attempts to drain the SQLite bulk queue. Independent of clock-in
+  // and of _isSyncing (syncPendingRecords has its own internal guard). While the
+  // app is in the FOREGROUND this owns the drain; when the app is background/
+  // killed the native LocationMonitorService drains the same SQLite queue.
+  void _drainBulkPendingNow(String reason) {
+    unawaited(() async {
+      try {
+        final int n = await LocationBulkTracker.instance.syncPendingRecords();
+        if (n > 0) debugPrint('📍 [BULK] drained $n pending records ($reason)');
+      } catch (e) {
+        debugPrint('⚠️ [BULK] drain error ($reason): $e');
+      }
+    }());
   }
 
   void _checkConnectivityAndSync() async {
@@ -1643,6 +1670,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     if (_isSyncing) return;
     _isSyncing = true;
     debugPrint('🔒 [AUTO-SYNC] Starting...');
+    final syncSnapshot = await SyncReportService.captureSnapshot();
 
     try {
       SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -1660,16 +1688,16 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
         }
       }
 
-      Get.snackbar(
-        'Syncing Data',
-        hasPendingGpx
-            ? 'Syncing attendance & GPS data...'
-            : 'Syncing attendance data...',
-        snackPosition: SnackPosition.TOP,
-        backgroundColor: const Color(0xFF1A2B6D),
-        colorText: Colors.white,
-        duration: const Duration(seconds: 3),
-      );
+      // Get.snackbar(
+      //   'Syncing Data',
+      //   hasPendingGpx
+      //       ? 'Syncing attendance & GPS data...'
+      //       : 'Syncing attendance data...',
+      //   snackPosition: SnackPosition.TOP,
+      //   backgroundColor: const Color(0xFF1A2B6D),
+      //   colorText: Colors.white,
+      //   duration: const Duration(seconds: 3),
+      // );
 
       // NOTE: GPX consolidation is intentionally removed from here.
       // locationViewModel.onClockOut() now handles GPX finalization and
@@ -1725,14 +1753,14 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
 
       if (mounted) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          Get.snackbar(
-            'Sync Complete',
-            'All data synchronized to server',
-            snackPosition: SnackPosition.BOTTOM,
-            backgroundColor: Colors.green,
-            colorText: Colors.white,
-            duration: const Duration(seconds: 2),
-          );
+          // Get.snackbar(
+          //   'Sync Complete',
+          //   'All data synchronized to server',
+          //   snackPosition: SnackPosition.BOTTOM,
+          //   backgroundColor: Colors.green,
+          //   colorText: Colors.white,
+          //   duration: const Duration(seconds: 2),
+          // );
         });
       }
     } catch (e) {
@@ -1741,6 +1769,10 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       _isSyncing = false;
       debugPrint('🔓 [AUTO-SYNC] Unlocked');
       SyncController.maybeComplete();
+      unawaited(SyncReportService.postReport(
+        syncType: 'Auto',
+        beforeCounts: syncSnapshot,
+      ));
     }
   }
 
@@ -1926,9 +1958,27 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
   // ══════════════════════════════════════════════════════════════════════════
 
   Future<bool> _checkLocationPermission(BuildContext context) async {
-    LocationPermission permission = await Geolocator.checkPermission();
+    // ✅ FIX (iOS hang): checkPermission()/requestPermission() can occasionally
+    // never resolve on iOS (CoreLocation callback not firing — known Geolocator
+    // iOS issue). Without a timeout this stalls Future.wait(...) in
+    // _handleClockIn forever, which is what kept the loading spinner stuck.
+    LocationPermission permission;
+    try {
+      permission = await Geolocator.checkPermission()
+          .timeout(const Duration(seconds: 10));
+    } catch (e) {
+      debugPrint('⚠️ [PERMISSION] checkPermission timed out/failed: $e');
+      return false;
+    }
+
     if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
+      try {
+        permission = await Geolocator.requestPermission()
+            .timeout(const Duration(seconds: 15));
+      } catch (e) {
+        debugPrint('⚠️ [PERMISSION] requestPermission timed out/failed: $e');
+        return false;
+      }
     }
 
     if (permission == LocationPermission.denied ||
@@ -2003,9 +2053,28 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     String? shapeType,     // NEW
   }) async {
     try {
-      final Position currentPosition = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
+      // ✅ FIX (iOS hang): getCurrentPosition() had no timeLimit, so on iOS
+      // (weak/no GPS signal, indoors, first fix after app launch) it can hang
+      // for a very long time instead of failing — this is the main cause of
+      // the "Clock In" spinner getting stuck for 30-40+ minutes on iOS.
+      // We now cap the wait and fall back to the last known position.
+      Position currentPosition;
+      try {
+        currentPosition = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 15),
+          ),
+        );
+      } on TimeoutException {
+        debugPrint('⏱️ [GEOFENCE] getCurrentPosition timed out after 15s — trying last known position');
+        final Position? lastPos = await Geolocator.getLastKnownPosition();
+        if (lastPos == null) {
+          debugPrint('❌ [GEOFENCE] No last known position available — failing geofence check');
+          return false;
+        }
+        currentPosition = lastPos;
+      }
 
       final double distanceInMeters = Geolocator.distanceBetween(
         currentPosition.latitude,
@@ -2783,12 +2852,48 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       ),
     );
 
+    // ✅ FIX (iOS "stuck loading" bug): several calls further below
+    // (attendanceViewModel.clockIn, locationViewModel.onClockIn, native
+    // MethodChannel calls, MQTT, etc.) live in other files and have no
+    // timeout of their own. On iOS a single stuck native callback used to
+    // leave this spinner on screen indefinitely (reported: 30-40+ minutes).
+    // This watchdog is a hard ceiling: if the dialog is still open after
+    // 30s no matter WHERE it's stuck, force-close it and tell the user,
+    // instead of leaving them staring at a spinner forever.
+    _clockInWatchdogTimer?.cancel();
+    _clockInWatchdogTimer = Timer(const Duration(seconds: 30), () {
+      if (mounted && Navigator.of(context).canPop()) {
+        debugPrint('⏱️ [CLOCK-IN] Watchdog fired — loading stuck >30s, force-closing dialog');
+        Navigator.of(context).pop();
+        Get.snackbar(
+          '⏱️ Taking Too Long',
+          'Clock-in is taking longer than expected. Please check your GPS/network and try again.',
+          snackPosition: SnackPosition.TOP,
+          backgroundColor: Colors.orange.shade700,
+          colorText: Colors.white,
+          duration: const Duration(seconds: 4),
+        );
+      }
+    });
+
     try {
       // ── 3. PARALLEL CHECKS (prefs + permission + location service) ────────
+      // ✅ FIX (iOS hang): each future now has its own timeout so a single
+      // stuck call (e.g. isLocationAvailable() waiting on a native iOS
+      // callback that never fires) can't keep Future.wait — and therefore
+      // the loading dialog — stuck indefinitely.
       final results = await Future.wait([
         SharedPreferences.getInstance(),
-        _checkLocationPermission(context),
-        attendanceViewModel.isLocationAvailable(),
+        _checkLocationPermission(context)
+            .timeout(const Duration(seconds: 20), onTimeout: () {
+          debugPrint('⏱️ [CLOCK-IN] _checkLocationPermission timed out');
+          return false;
+        }),
+        attendanceViewModel.isLocationAvailable()
+            .timeout(const Duration(seconds: 20), onTimeout: () {
+          debugPrint('⏱️ [CLOCK-IN] isLocationAvailable timed out');
+          return false;
+        }),
       ]);
 
       final prefs             = results[0] as SharedPreferences;
@@ -2796,6 +2901,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       final locationAvailable = results[2] as bool;
 
       if (!hasPermission || !locationAvailable) {
+        _clockInWatchdogTimer?.cancel();
         if (Navigator.of(context).canPop()) Navigator.of(context).pop();
         Get.snackbar(
           'Location Required',
@@ -2832,6 +2938,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       if (isGeoFencingRequired) {
         // ── 4a. No location selected ─────────────────────────────────────────
         if (savedLat == null || savedLng == null || savedRadius == null || savedName.isEmpty) {
+          _clockInWatchdogTimer?.cancel();
           if (Navigator.of(context).canPop()) Navigator.of(context).pop();
           Get.snackbar(
             '📍 Location Required',
@@ -2859,6 +2966,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
         );
 
         if (!withinGeofence) {
+          _clockInWatchdogTimer?.cancel();
           if (Navigator.of(context).canPop()) Navigator.of(context).pop();
           Get.snackbar(
             '📍 Outside Location',
@@ -2966,16 +3074,25 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       await prefs.setString(KEY_GPX_FILE_PATH, filePath);
 
       // ── 8. ATTENDANCE CLOCK-IN ─────────────────────────────────────────────
+      // ✅ FIX (iOS hang): this is the API call (with photo upload) most
+      // likely to stall on a slow/unstable iOS network connection with no
+      // built-in timeout. Capping it turns an indefinite hang into a clear
+      // error the user can retry, instead of a frozen spinner.
       await attendanceViewModel.clockIn(
         empId     : empId,
         empName   : empName,
         job       : job,
         city      : city,
         photoBytes: clockInPhotoBytes,
-      );
+      ).timeout(const Duration(seconds: 40), onTimeout: () {
+        throw TimeoutException('Clock-in request timed out — please check your network and try again');
+      });
 
       // ── 9. START GPS TRACKING ──────────────────────────────────────────────
-      await locationViewModel.onClockIn();
+      await locationViewModel.onClockIn()
+          .timeout(const Duration(seconds: 20), onTimeout: () {
+        debugPrint('⏱️ [CLOCK-IN] locationViewModel.onClockIn timed out — continuing anyway');
+      });
       debugPrint('✅ [CLOCK-IN] GPS tracking started via locationViewModel.onClockIn()');
 
       // ── 10. UI UPDATE ──────────────────────────────────────────────────────
@@ -3023,6 +3140,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       unawaited(BatteryConsumptionService.saveClockInBattery());
 
       // ── 12. CLOSE LOADING DIALOG ───────────────────────────────────────────
+      _clockInWatchdogTimer?.cancel();
       if (Navigator.of(context).canPop()) Navigator.of(context).pop();
 
       Get.snackbar(
@@ -3084,6 +3202,7 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       _runPostClockInTasks(filePath);
     } catch (e) {
       debugPrint('❌ [CLOCK-IN] Error: $e');
+      _clockInWatchdogTimer?.cancel();
       if (Navigator.of(context).canPop()) Navigator.of(context).pop();
 
       Get.snackbar(
@@ -3343,6 +3462,23 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       _currentDistance  = 0.0;
     });
 
+    // ✅ Show loading dialog immediately so user sees feedback right away
+    // (moved before stopAndFlush which can be slow on iOS)
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: SizedBox(
+          width: 80,
+          height: 80,
+          child: CircularProgressIndicator(
+            strokeWidth: 3,
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.red),
+          ),
+        ),
+      ),
+    );
+
     // ✅ Stop auto location POST tracker on clock-out
     _locationTrackerService.stop();
 
@@ -3382,22 +3518,6 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
     attendanceViewModel.elapsedTime.value = '00:00:00'; // ✅ FIX: reset ViewModel elapsed so UI shows 00:00:00
     attendanceViewModel.isClockedIn.value = false;
     locationViewModel.isClockedIn.value   = false;
-
-    // Show loading dialog
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(
-        child: SizedBox(
-          width: 80,
-          height: 80,
-          child: CircularProgressIndicator(
-            strokeWidth: 3,
-            valueColor: AlwaysStoppedAnimation<Color>(Colors.red),
-          ),
-        ),
-      ),
-    );
 
     try {
       final clockOutTime = DateTime.now();
@@ -3447,11 +3567,13 @@ class _TimerCardState extends State<TimerCard> with WidgetsBindingObserver {
       // app launch cannot accidentally restore this session's clock-in time.
       await attendanceViewModel.clearClockInState();
 
-      // ── MQTT CLOCK OUT ─────────────────────────────────────────────────────
-      await _mqttTracker.clockOutMqtt();
-
       // ── Close loading dialog ───────────────────────────────────────────────
+      // (moved before MQTT — clockOutMqtt is a network call that can be slow
+      //  on iOS; firing it unawaited keeps dialog dismiss instant)
       if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+
+      // ── MQTT CLOCK OUT ─────────────────────────────────────────────────────
+      unawaited(_mqttTracker.clockOutMqtt());
 
       // ── Success snackbar ───────────────────────────────────────────────────
       Get.snackbar(

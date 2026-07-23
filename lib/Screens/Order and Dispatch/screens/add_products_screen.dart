@@ -1,6 +1,4 @@
 
-
-
 import 'package:flutter/material.dart';
 import '../../../AppColors.dart';
 import 'package:flutter/services.dart';
@@ -36,9 +34,6 @@ Future<int> loadStockQtyFromPrefs({
   return prefs.getInt(_stockPrefKey(shopId, productName)) ?? 0;
 }
 
-/// Clears ALL saved stock quantities for a shop (all products), so the next
-/// visit/order for this shop starts fresh instead of prefilling old qty.
-/// Call this once a visit is submitted or an order is placed successfully.
 Future<void> clearStockQtyFromPrefs({required String shopId}) async {
   final prefs = await SharedPreferences.getInstance();
   final prefix = 'add_products_stock_qty::$shopId::';
@@ -133,14 +128,8 @@ class _AddProductsScreenState extends State<AddProductsScreen> {
     ).toList();
     final prefill = existing.isNotEmpty ? existing.first : null;
 
-    // Always resolves to a non-null int; defaults to 0 when no stock is
-    // saved for this shop/product combination.
     int savedStock = 0;
     try {
-      // 🔍 DEBUG: Key print karo
-      final key = 'add_products_stock_qty::${shopId}::${product.name.trim().toLowerCase()}';
-      print('🔍 LOADING: key="$key"');
-
       savedStock = await loadStockQtyFromPrefs(
         shopId: shopId,
         productName: product.name.trim(),
@@ -765,8 +754,6 @@ class _ProductQuantitySheetState extends State<_ProductQuantitySheet> {
 
   String? _errorText;
 
-  // Stock is purely informational — it always defaults to 0 when no value
-  // is saved for this shop/product, and it NEVER blocks the Add button.
   int get _displayStock => widget.stock < 0 ? 0 : widget.stock;
 
   @override
@@ -795,26 +782,6 @@ class _ProductQuantitySheetState extends State<_ProductQuantitySheet> {
   double get _grossTotal => _quantity * widget.product.rate;
   double get _netTotal => _grossTotal - (_grossTotal * (_discount / 100));
 
-  // void _submit() {
-  //   // ONLY quantity is validated/required here. Stock (whether 0 or any
-  //   // other value) never prevents Add from working.
-  //   final qty = int.tryParse(_qtyController.text.trim());
-  //   if (qty == null || qty <= 0) {
-  //     setState(() => _errorText = 'Enter a valid quantity');
-  //     return;
-  //   }
-  //   final discount = _discount.clamp(0, 100).toDouble();
-  //   final bonus = _bonus < 0 ? 0 : _bonus;
-  //
-  //   developer.log(
-  //     '➕ Add tapped: ${widget.product.name} qty=$qty unit=$_selectedUnit discount=$discount bonus=$bonus stock=$_displayStock',
-  //     name: '_ProductQuantitySheet',
-  //   );
-  //
-  //   Navigator.pop(context);
-  //   widget.onAdd(qty, _selectedUnit, discount, bonus);
-  // }
-
   void _submit() {
     final qty = int.tryParse(_qtyController.text.trim()) ?? 0;
     if (qty < 0) {
@@ -827,7 +794,6 @@ class _ProductQuantitySheetState extends State<_ProductQuantitySheet> {
     Navigator.pop(context);
     widget.onAdd(qty, _selectedUnit, discount, bonus);
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -906,9 +872,6 @@ class _ProductQuantitySheetState extends State<_ProductQuantitySheet> {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: AppColors.divider),
                   ),
-                  // Always prints "0" when no stock is saved for this
-                  // shop/product — this is purely informational and never
-                  // blocks the Add button below.
                   child: Text(
                     _displayStock.toString(),
                     style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),

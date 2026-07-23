@@ -1,11 +1,4 @@
-// ═══════════════════════════════════════════════════════════════════════════
-// booking_confirmed_screen.dart
-//
-// Final screen of the flow. Shows the confirmed booking ID + total, and
-// offers optional merchandising follow-ups (shop photo, shelf photo, expiry
-// records for existing products) before "Done". Matches the "Booking
-// Confirmed" screenshot.
-// ═══════════════════════════════════════════════════════════════════════════
+
 
 import 'package:flutter/material.dart';
 import '../../../AppColors.dart';

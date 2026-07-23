@@ -1,15 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════════════
-// shop_closed_model.dart
-//
-// Data model for the "Shop Closed" flow:
-//   ShopVisitOutcomeScreen -> ShopClosedShopSelectScreen (pick shop)
-//   -> ShopClosedScreen (capture shop photo + GPS ONLY, no products)
-//   -> submit
-//
-// Posts to the SAME endpoint as the "No Sale of Stock" / booking flow:
-//   POST http://oracle.metaxperts.net/ords/gps_workforce/shopvisit/post/
-// but with visit_type = 'Shop Closed' and an empty products array.
-// ═══════════════════════════════════════════════════════════════════════════
 
 import 'dart:developer' as developer;
 

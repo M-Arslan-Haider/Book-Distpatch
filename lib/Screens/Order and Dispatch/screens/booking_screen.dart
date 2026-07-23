@@ -1,7 +1,9 @@
+
 import 'package:book_dispatch/Screens/Order%20and%20Dispatch/screens/select_shop.dart';
 import 'package:book_dispatch/Screens/Order%20and%20Dispatch/screens/shop_visit_outcome_screen.dart';
 import 'package:book_dispatch/Screens/Order%20and%20Dispatch/screens/shop_visit_shop.dart';
 import 'package:flutter/material.dart';
+import 'dart:async';
 import '../../../AppColors.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -11,12 +13,6 @@ import '../../HomeScreenComponents/app_bottom_navbar.dart';
 import '../../HomeScreenComponents/navbar.dart';
 import '../../HomeScreenComponents/sidebar_drawer.dart';
 
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// booking_screen.dart
-// (renamed from order_screen.dart)
-// ═══════════════════════════════════════════════════════════════════════════════
-
 class BookingScreen extends StatefulWidget {
   final int currentIndex;
   final int chatBadgeCount;
@@ -24,7 +20,7 @@ class BookingScreen extends StatefulWidget {
 
   const BookingScreen({
     super.key,
-    this.currentIndex = 6, // Booking tab index in _allTabs
+    this.currentIndex = 6,
     this.chatBadgeCount = 0,
     required this.onNavTap,
   });
@@ -36,18 +32,15 @@ class BookingScreen extends StatefulWidget {
 class _BookingScreenState extends State<BookingScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  static const _bg        = AppColors.surface; // warm cream bg, matches screenshot
+  static const _bg        = AppColors.surface;
   static const _textMuted = AppColors.textSecondary;
   static const _textDark  = AppColors.textPrimary;
 
-  // ── Summary stats (today's booking summary) ────────────────────────────
-  // TODO: wire these up to real data from view-model
   static const int    _routeDone   = 0;
   static const int    _routeTotal  = 0;
   static const int    _bookings    = 0;
   static const String _todaySales  = 'Rs 0';
 
-  // TODO: wire this up to the actual route/shops list — left empty for now
   static const List<_RouteShop> _todaysRoute = [];
 
   @override
@@ -75,7 +68,6 @@ class _BookingScreenState extends State<BookingScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Section title ────────────────────────────────────────
               const Text(
                 'Booking',
                 style: TextStyle(
@@ -95,7 +87,6 @@ class _BookingScreenState extends State<BookingScreen> {
 
               const SizedBox(height: 16),
 
-              // ── Today's summary card ─────────────────────────────────
               _SummaryCard(
                 routeDone:  _routeDone,
                 routeTotal: _routeTotal,
@@ -105,7 +96,6 @@ class _BookingScreenState extends State<BookingScreen> {
 
               const SizedBox(height: 16),
 
-              // ── Two action buttons: New Booking / Sale Return ────────
               Row(
                 children: [
                   Expanded(
@@ -117,21 +107,16 @@ class _BookingScreenState extends State<BookingScreen> {
                         final selectedShop = await showSelectShopSheet(context);
                         if (selectedShop != null) {
                           Get.to(() => ShopVisitOutcomeScreen(
-                            shopId:      selectedShop.shopId, // TODO(api): confirm field name on SelectedShop
+                            shopId:      selectedShop.shopId,
                             shopName:    selectedShop.shopName,
                             shopSubtitle: '${selectedShop.ownerName}'
                                 '${selectedShop.city.isNotEmpty ? ' - ${selectedShop.city}' : ''}',
                             onShopClosed: () {
-                              // TODO: open closed-shop camera capture flow
+                              // handled by default
                             },
                             onNoSaleOfStock: () {
                               Get.to(() => const NoSaleShopSelectScreen());
                             },
-                            // onStartBooking intentionally omitted — leaving
-                            // this unset makes ShopVisitOutcomeScreen use its
-                            // default navigation into CustomerAccountScreen
-                            // (Customer Account -> Add Products -> Bill
-                            // Summary -> Booking Confirmed).
                           ));
                         }
                       },
@@ -153,7 +138,6 @@ class _BookingScreenState extends State<BookingScreen> {
 
               const SizedBox(height: 22),
 
-              // ── Today's route header ─────────────────────────────────
               Text(
                 'TODAY\'S ROUTE (${_todaysRoute.length} ${_todaysRoute.length == 1 ? "SHOP" : "SHOPS"})',
                 style: const TextStyle(
@@ -166,7 +150,6 @@ class _BookingScreenState extends State<BookingScreen> {
 
               const SizedBox(height: 12),
 
-              // ── Route list — empty for now ───────────────────────────
               if (_todaysRoute.isEmpty)
                 const _EmptyRouteState()
               else
@@ -180,13 +163,10 @@ class _BookingScreenState extends State<BookingScreen> {
                       shop: _todaysRoute[i],
                       onTap: () {
                         Get.to(() => ShopVisitOutcomeScreen(
-                          // TODO(api): _RouteShop currently has no id field —
-                          // add one once the route endpoint returns shop_id.
                           shopName:     _todaysRoute[i].name,
                           shopSubtitle: _todaysRoute[i].subtitle,
                           onShopClosed:    () {},
                           onNoSaleOfStock: () {},
-                          // onStartBooking omitted on purpose — see note above.
                         ));
                       },
                     ),
@@ -196,7 +176,6 @@ class _BookingScreenState extends State<BookingScreen> {
           ),
         ),
       ),
-      // ── Bottom navigation bar ────────────────────────────────────────────
       bottomNavigationBar: AppBottomNavBar(
         currentIndex:   widget.currentIndex,
         chatBadgeCount: widget.chatBadgeCount,
@@ -206,9 +185,6 @@ class _BookingScreenState extends State<BookingScreen> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Today's summary card (route done / bookings / today's sales)
-// ─────────────────────────────────────────────────────────────────────────────
 class _SummaryCard extends StatelessWidget {
   final int    routeDone;
   final int    routeTotal;
@@ -295,9 +271,6 @@ class _SummaryStat extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Primary action button — "New Booking" (filled, teal gradient)
-// ─────────────────────────────────────────────────────────────────────────────
 class _PrimaryActionButton extends StatelessWidget {
   final String       label;
   final IconData     icon;
@@ -352,9 +325,6 @@ class _PrimaryActionButton extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Secondary action button — "Sale Return" (outlined / white)
-// ─────────────────────────────────────────────────────────────────────────────
 class _SecondaryActionButton extends StatelessWidget {
   final String       label;
   final IconData     icon;
@@ -406,9 +376,6 @@ class _SecondaryActionButton extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Route shop card (used once route data is wired up)
-// ─────────────────────────────────────────────────────────────────────────────
 class _RouteShopCard extends StatelessWidget {
   final _RouteShop shop;
   final VoidCallback? onTap;
@@ -489,9 +456,6 @@ class _RouteShop {
   const _RouteShop({required this.name, required this.subtitle, required this.status});
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Empty state — shown when today's route has no shops yet
-// ─────────────────────────────────────────────────────────────────────────────
 class _EmptyRouteState extends StatelessWidget {
   const _EmptyRouteState();
 
