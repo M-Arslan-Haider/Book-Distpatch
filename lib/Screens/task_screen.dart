@@ -165,175 +165,205 @@ class _TaskScreenState extends State<TaskScreen>
 
   // ====================== TAB ROW ======================
   Widget _buildTabRow() {
-    return Container(
-      padding: const EdgeInsets.all(5),
-      decoration: BoxDecoration(
-        color: AppColors.cardBg,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.divider),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 5,
-            child: GestureDetector(
-              onTap: () {
-                setState(() => _activeTab = _TaskTab.assigned);
-                Get.find<TaskViewModel>().fetchAssignedTasks();
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 220),
-                padding: const EdgeInsets.symmetric(vertical: 13),
-                decoration: BoxDecoration(
-                  gradient: _activeTab == _TaskTab.assigned
-                      ? const LinearGradient(
-                    colors: [AppColors.primary, AppColors.cyan],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  )
-                      : null,
-                  color: _activeTab == _TaskTab.assigned
-                      ? null
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: _activeTab == _TaskTab.assigned
-                      ? [
-                    BoxShadow(
-                      color: AppColors.primary.withOpacity(0.30),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
-                    ),
-                  ]
-                      : null,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.assignment_ind_rounded,
-                      color: _activeTab == _TaskTab.assigned
-                          ? Colors.white
-                          : AppColors.textSecondary,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Assigned Tasks',
-                      style: TextStyle(
+    final vm = Get.find<TaskViewModel>();
+    return Obx(() {
+      return Container(
+        padding: const EdgeInsets.all(5),
+        decoration: BoxDecoration(
+          color: AppColors.cardBg,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.divider),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            // ── Assigned Tasks Tab ──
+            Expanded(
+              flex: 5,
+              child: GestureDetector(
+                onTap: () {
+                  setState(() => _activeTab = _TaskTab.assigned);
+                  Get.find<TaskViewModel>().fetchAssignedTasks();
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  decoration: BoxDecoration(
+                    gradient: _activeTab == _TaskTab.assigned
+                        ? const LinearGradient(
+                      colors: [AppColors.primary, AppColors.cyan],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    )
+                        : null,
+                    color: _activeTab == _TaskTab.assigned
+                        ? null
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: _activeTab == _TaskTab.assigned
+                        ? [
+                      BoxShadow(
+                        color: AppColors.primary.withOpacity(0.30),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ]
+                        : null,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.assignment_ind_rounded,
                         color: _activeTab == _TaskTab.assigned
                             ? Colors.white
                             : AppColors.textSecondary,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
+                        size: 16,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 6),
+                      Text(
+                        'Assigned',
+                        style: TextStyle(
+                          color: _activeTab == _TaskTab.assigned
+                              ? Colors.white
+                              : AppColors.textSecondary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      // ── Live count badge ──
+                      if (vm.assignedTasks.isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: _activeTab == _TaskTab.assigned
+                                ? Colors.white.withOpacity(0.25)
+                                : AppColors.cyan.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            '${vm.assignedTasks.length}',
+                            style: TextStyle(
+                              color: _activeTab == _TaskTab.assigned
+                                  ? Colors.white
+                                  : AppColors.cyan,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(width: 5),
-          Expanded(
-            flex: 4,
-            child: GestureDetector(
-              onTap: () {
-                setState(() => _activeTab = _TaskTab.myTasks);
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 220),
-                padding: const EdgeInsets.symmetric(vertical: 13),
-                decoration: BoxDecoration(
-                  gradient: _activeTab == _TaskTab.myTasks
-                      ? const LinearGradient(
-                    colors: [AppColors.primary, AppColors.cyan],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  )
-                      : null,
-                  color: _activeTab == _TaskTab.myTasks
-                      ? null
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: _activeTab == _TaskTab.myTasks
-                      ? [
-                    BoxShadow(
-                      color: AppColors.primary.withOpacity(0.30),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
-                    ),
-                  ]
-                      : null,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.person_outline_rounded,
-                      color: _activeTab == _TaskTab.myTasks
-                          ? Colors.white
-                          : AppColors.textSecondary,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'My Tasks',
-                      style: TextStyle(
+            const SizedBox(width: 5),
+            // ── My Tasks Tab ──
+            Expanded(
+              flex: 4,
+              child: GestureDetector(
+                onTap: () {
+                  setState(() => _activeTab = _TaskTab.myTasks);
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  decoration: BoxDecoration(
+                    gradient: _activeTab == _TaskTab.myTasks
+                        ? const LinearGradient(
+                      colors: [AppColors.primary, AppColors.cyan],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    )
+                        : null,
+                    color: _activeTab == _TaskTab.myTasks
+                        ? null
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: _activeTab == _TaskTab.myTasks
+                        ? [
+                      BoxShadow(
+                        color: AppColors.primary.withOpacity(0.30),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ]
+                        : null,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.person_outline_rounded,
                         color: _activeTab == _TaskTab.myTasks
                             ? Colors.white
                             : AppColors.textSecondary,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+                        size: 16,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 6),
+                      Text(
+                        'My Tasks',
+                        style: TextStyle(
+                          color: _activeTab == _TaskTab.myTasks
+                              ? Colors.white
+                              : AppColors.textSecondary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(width: 5),
-          Expanded(
-            flex: 3,
-            child: GestureDetector(
-              onTap: () => Get.to(
-                    () => const CreateTaskScreen(),
-                transition: Transition.rightToLeft,
-                duration: const Duration(milliseconds: 280),
-              ),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 13),
-                decoration: BoxDecoration(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
+            const SizedBox(width: 5),
+            // ── Create Tab ──
+            Expanded(
+              flex: 3,
+              child: GestureDetector(
+                onTap: () => Get.to(
+                      () => const CreateTaskScreen(),
+                  transition: Transition.rightToLeft,
+                  duration: const Duration(milliseconds: 280),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.add_rounded,
-                        color: AppColors.textSecondary, size: 18),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Create',
-                      style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  decoration: BoxDecoration(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.add_rounded,
+                          color: AppColors.textSecondary, size: 18),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Create',
+                        style: TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
-      ),
-    );
+          ],
+        ),
+      );
+    });
   }
 
   // ====================== FILTER CHIPS ======================
@@ -980,7 +1010,7 @@ class _TaskScreenState extends State<TaskScreen>
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// _TaskCard
+// _TaskCard  —  Redesigned: description + left accent bar + clean layout
 // ══════════════════════════════════════════════════════════════════════════
 class _TaskCard extends StatelessWidget {
   final TaskModel task;
@@ -1001,10 +1031,12 @@ class _TaskCard extends StatelessWidget {
 
     Color statusColor;
     IconData statusIcon;
+    String displayStatus = task.status;
 
     if (isCompleted) {
       statusColor = AppColors.greenTeal;
       statusIcon = Icons.check_circle_rounded;
+      displayStatus = 'Completed';
     } else if (isCancelled) {
       statusColor = AppColors.error;
       statusIcon = Icons.cancel_rounded;
@@ -1016,16 +1048,12 @@ class _TaskCard extends StatelessWidget {
       statusIcon = Icons.hourglass_empty_rounded;
     }
 
+    if (displayStatus == 'Done') displayStatus = 'Completed';
+
     Color priorityColor = AppColors.textSecondary;
     if (task.priority == 'High') priorityColor = AppColors.error;
     if (task.priority == 'Medium') priorityColor = AppColors.warning;
     if (task.priority == 'Low') priorityColor = AppColors.greenTeal;
-
-    // Display status for UI
-    String displayStatus = task.status;
-    if (displayStatus == 'Done') {
-      displayStatus = 'Completed';
-    }
 
     return Container(
       decoration: BoxDecoration(
@@ -1039,206 +1067,381 @@ class _TaskCard extends StatelessWidget {
               offset: const Offset(0, 4)),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-            decoration: BoxDecoration(
-              color: statusColor.withOpacity(0.06),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.14),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(statusIcon, size: 11, color: statusColor),
-                      const SizedBox(width: 4),
-                      Text(displayStatus,
-                          style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: statusColor)),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: priorityColor.withOpacity(0.10),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.flag_rounded,
-                          size: 11, color: priorityColor),
-                      const SizedBox(width: 4),
-                      Text(task.priority,
-                          style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: priorityColor)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  task.taskTitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Assigned by: ${task.assignedBy}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style:
-                  TextStyle(color: AppColors.textSecondary, fontSize: 11),
-                ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ── Left status accent bar ─────────────────────────────────
+              Container(
+                width: 4,
+                decoration: BoxDecoration(color: statusColor),
+              ),
+
+              // ── Card content ───────────────────────────────────────────
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _MetaChip(
-                        icon: Icons.person,
-                        label: task.empName,
-                        color: AppColors.skyBlueDk),
-                    _MetaChip(
-                        icon: Icons.calendar_today,
-                        label: task.dueDate,
-                        color: AppColors.greenTeal),
-                    _MetaChip(
-                        icon: Icons.category_rounded,
-                        label: task.taskType,
-                        color: AppColors.primary),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Icon(Icons.person_outline_rounded,
-                        size: 13, color: AppColors.textSecondary),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        task.empName,
-                        style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary),
-                        overflow: TextOverflow.ellipsis,
+
+                    // ── Header: badges + due date ──────────────────────
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: statusColor.withOpacity(0.06),
+                      ),
+                      child: Row(
+                        children: [
+                          // Status badge
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 9, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: statusColor.withOpacity(0.13),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(statusIcon,
+                                    size: 11, color: statusColor),
+                                const SizedBox(width: 4),
+                                Text(
+                                  displayStatus,
+                                  style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      color: statusColor),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          // Priority badge
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 9, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: priorityColor.withOpacity(0.10),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.flag_rounded,
+                                    size: 11, color: priorityColor),
+                                const SizedBox(width: 4),
+                                Text(
+                                  task.priority,
+                                  style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      color: priorityColor),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Spacer(),
+                          // Due date (right side of header)
+                          if (task.dueDate.isNotEmpty)
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.calendar_today_rounded,
+                                    size: 11,
+                                    color: AppColors.textSecondary),
+                                const SizedBox(width: 4),
+                                Text(
+                                  task.dueDate,
+                                  style: TextStyle(
+                                      fontSize: 10,
+                                      color: AppColors.textSecondary,
+                                      fontWeight: FontWeight.w500),
+                                ),
+                              ],
+                            ),
+                        ],
                       ),
                     ),
-                    // ── Messages Button (Naya) ──
-                    if (!isCompleted && !isCancelled)
-                      GestureDetector(
-                        onTap: () {
-                          Get.to(
-                                () => TaskChatScreen(task: task),
-                            transition: Transition.rightToLeft,
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeOut,
-                          );
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary.withOpacity(0.10),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                                color: AppColors.primary.withOpacity(0.20)),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
+
+                    // ── Body ───────────────────────────────────────────
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+
+                          // ── Title + Task ID badge ──────────────────
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Icon(Icons.message_rounded,
-                                  size: 13, color: AppColors.primary),
-                              const SizedBox(width: 4),
-                              const Text(
-                                'Chat',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.primary,
+                              Expanded(
+                                child: Text(
+                                  task.taskTitle,
+                                  style: const TextStyle(
+                                    fontSize: 14.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.textPrimary,
+                                    height: 1.3,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 7, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color:
+                                  AppColors.primary.withOpacity(0.08),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                      color: AppColors.primary
+                                          .withOpacity(0.18)),
+                                ),
+                                child: Text(
+                                  '#${task.id}',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.primary
+                                        .withOpacity(0.70),
+                                  ),
                                 ),
                               ),
                             ],
                           ),
-                        ),
-                      ),
-                    const SizedBox(width: 8),
-                    // ── Update button ── (pehle se tha)
-                    if (!isCompleted && !isCancelled)
-                      GestureDetector(
-                        onTap: onUpdate,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 8),
-                          decoration: BoxDecoration(
-                            gradient: isUpdated
-                                ? null
-                                : const LinearGradient(
-                              colors: [AppColors.primary, AppColors.cyan],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
+
+                          // ── Task Description (auto-height) ─────────
+                          if (task.taskDescription.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: AppColors.surface,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                    color:
+                                    AppColors.divider.withOpacity(0.7)),
+                              ),
+                              child: Row(
+                                crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                                children: [
+                                  Icon(
+                                    Icons.description_outlined,
+                                    size: 13,
+                                    color: AppColors.textSecondary
+                                        .withOpacity(0.7),
+                                  ),
+                                  const SizedBox(width: 7),
+                                  Expanded(
+                                    child: Text(
+                                      task.taskDescription,
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        color: AppColors.textSecondary,
+                                        height: 1.5,
+                                      ),
+                                      // No maxLines — auto-adjusts to full description
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                            color: isUpdated ? AppColors.greenTeal : null,
-                            borderRadius: BorderRadius.circular(8),
-                            boxShadow: isUpdated
-                                ? []
-                                : [
-                              BoxShadow(
-                                  color: AppColors.cyan.withOpacity(0.30),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 3)),
+                          ],
+
+                          const SizedBox(height: 10),
+
+                          // ── Meta chips: employee + task type ───────
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 6,
+                            children: [
+                              _MetaChip(
+                                  icon: Icons.person,
+                                  label: task.empName,
+                                  color: AppColors.skyBlueDk),
+                              _MetaChip(
+                                  icon: Icons.category_rounded,
+                                  label: task.taskType,
+                                  color: AppColors.primary),
                             ],
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                  isUpdated ? Icons.check_circle_rounded : Icons.edit_rounded,
-                                  size: 13,
-                                  color: Colors.white
+
+                          // ── Comments (if present) ─────────────────
+                          if (task.comments.isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: AppColors.cyan.withOpacity(0.05),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                    color:
+                                    AppColors.cyan.withOpacity(0.15)),
                               ),
-                              const SizedBox(width: 5),
-                              Text(
-                                isUpdated ? 'Updated' : 'Update',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white,
+                              child: Row(
+                                children: [
+                                  Icon(Icons.comment_outlined,
+                                      size: 12, color: AppColors.cyan),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      task.comments,
+                                      style: TextStyle(
+                                          fontSize: 11.5,
+                                          color: AppColors.textSecondary),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+
+                          const SizedBox(height: 12),
+
+                          // ── Bottom row: assigned by + action buttons ──
+                          Row(
+                            children: [
+                              Icon(Icons.person_outline_rounded,
+                                  size: 12,
+                                  color: AppColors.textSecondary),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  'By: ${task.assignedBy}',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textSecondary,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
+
+                              // ── Messages Button ──
+                              if (!isCompleted && !isCancelled) ...[
+                                GestureDetector(
+                                  onTap: () {
+                                    Get.to(
+                                          () => TaskChatScreen(task: task),
+                                      transition:
+                                      Transition.rightToLeft,
+                                      duration: const Duration(
+                                          milliseconds: 300),
+                                      curve: Curves.easeOut,
+                                    );
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 11, vertical: 7),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary
+                                          .withOpacity(0.08),
+                                      borderRadius:
+                                      BorderRadius.circular(8),
+                                      border: Border.all(
+                                          color: AppColors.primary
+                                              .withOpacity(0.18)),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.message_rounded,
+                                            size: 13,
+                                            color: AppColors.primary),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          'Chat',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppColors.primary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+
+                                // ── Update button ──
+                                GestureDetector(
+                                  onTap: onUpdate,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 7),
+                                    decoration: BoxDecoration(
+                                      gradient: isUpdated
+                                          ? null
+                                          : const LinearGradient(
+                                        colors: [
+                                          AppColors.primary,
+                                          AppColors.cyan
+                                        ],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                      ),
+                                      color: isUpdated
+                                          ? AppColors.greenTeal
+                                          : null,
+                                      borderRadius:
+                                      BorderRadius.circular(8),
+                                      boxShadow: isUpdated
+                                          ? []
+                                          : [
+                                        BoxShadow(
+                                            color: AppColors.cyan
+                                                .withOpacity(0.30),
+                                            blurRadius: 8,
+                                            offset:
+                                            const Offset(0, 3)),
+                                      ],
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          isUpdated
+                                              ? Icons
+                                              .check_circle_rounded
+                                              : Icons.edit_rounded,
+                                          size: 13,
+                                          color: Colors.white,
+                                        ),
+                                        const SizedBox(width: 5),
+                                        Text(
+                                          isUpdated
+                                              ? 'Updated'
+                                              : 'Update',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
-                        ),
+                        ],
                       ),
+                    ),
                   ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1274,4 +1477,3 @@ class _MetaChip extends StatelessWidget {
     );
   }
 }
-

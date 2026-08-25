@@ -1,15 +1,13 @@
-
 import 'package:book_dispatch/Screens/Order%20and%20Dispatch/screens/shop_visit_shop.dart';
 import 'package:flutter/material.dart';
 import '../../../AppColors.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'dart:developer' as developer;
-
 import '../../../ViewModels/login_view_model.dart';
 import '../../HomeScreenComponents/navbar.dart';
 import '../../HomeScreenComponents/sidebar_drawer.dart';
-import 'customer_account_screen.dart';
+import 'recovery_screen.dart';
 import 'shop_closed_select_screen.dart';
 
 class ShopVisitOutcomeScreen extends StatefulWidget {
@@ -188,28 +186,26 @@ class _ShopVisitOutcomeScreenState extends State<ShopVisitOutcomeScreen> {
               ),
               const SizedBox(height: 12),
 
+              // ── Recover Payment Card ──────────────────────────────────
               _OutcomeCard(
-                icon:        Icons.shopping_cart_rounded,
+                icon:        Icons.payments_outlined,
                 iconColor:   _tealDark,
                 iconBg:      AppColors.iconBgTeal,
-                title:       'Start Booking',
-                subtitle:    'Proceed to order entry',
+                title:       'Recover Payment',
+                subtitle:    'Record payment recovery from shop',
                 highlighted: true,
                 onTap: () {
                   HapticFeedback.lightImpact();
                   developer.log(
-                    '🛒 Start Booking tapped for shop=${widget.shopName} (id=${widget.shopId})',
+                    '🔄 Recover Payment tapped for shop=${widget.shopName} (id=${widget.shopId})',
                     name: 'ShopVisitOutcomeScreen',
                   );
-                  if (widget.onStartBooking != null) {
-                    widget.onStartBooking!.call();
-                  } else {
-                    Get.to(() => CustomerAccountScreen(
-                      shopId: widget.shopId,
-                      shopName: widget.shopName,
-                      shopSubtitle: widget.shopSubtitle,
-                    ));
-                  }
+                  // ✅ NAVIGATE TO RECOVERY SCREEN WITH SHOP DATA
+                  Get.to(() => RecoveryScreen(
+                    preSelectedShopId: widget.shopId.isNotEmpty ? widget.shopId : null,
+                    preSelectedShopName: widget.shopName,
+                    preSelectedOwnerName: widget.shopSubtitle,
+                  ));
                 },
               ),
             ],

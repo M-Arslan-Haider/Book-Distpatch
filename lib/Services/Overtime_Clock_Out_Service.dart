@@ -507,6 +507,17 @@ class OvertimeClockOutService {
         _overtimeClockInTime!.toIso8601String(),
       );
       debugPrint('💾 [OT SERVICE] Clock-in time saved to prefs: ${_overtimeClockInTime!.toIso8601String()}');
+
+      // ✅ FIX: Purani session ka leftover "overtime_session_end_time" turant
+      // clear karo — Kotlin OvertimeMonitorService niche instantly start ho
+      // raha hai (microtask), lekin fresh end_time _fetchAndReschedule() ke
+      // network call ke baad hi save hoti hai. Is 1-3 sec ke gap mein Kotlin
+      // agar purani end_time parh le aur wo coincidentally naye clock-in se
+      // "future" mein ho, to usay valid samajh kar time se pehle (galat)
+      // clockout kar deta hai. Yahan clear karne se Kotlin ko sirf fresh
+      // value milegi ya kuch nahi — stale value byabhi accept nahi hogi.
+      await prefs.remove(_keyOtEndTime);
+      debugPrint('🧹 [OT SERVICE] Stale overtime_session_end_time cleared before starting Kotlin service');
     } catch (e) {
       debugPrint('⚠️ [OT SERVICE] Failed to save clock-in time: $e');
     }

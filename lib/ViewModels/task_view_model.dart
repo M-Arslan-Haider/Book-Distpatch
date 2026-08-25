@@ -86,7 +86,7 @@ class TaskViewModel extends GetxController {
   //  Polling — every 5 seconds silently check for new assigned tasks
   // ──────────────────────────────────────────────────────────────────────────
   void _startPolling() {
-    _pollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    _pollingTimer = Timer.periodic(const Duration(minutes: 5), (_) {
       _pollAssignedTasks();
     });
   }

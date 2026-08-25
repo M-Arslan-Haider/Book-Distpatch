@@ -383,7 +383,7 @@ class _LoginScreenState extends State<LoginScreen>
               Icon(Icons.shield_outlined, color: Colors.white, size: 14),
               SizedBox(width: 6),
               Text(
-                'GPS Workforce Monitor',
+                'Book & Dispatch',
                 style: TextStyle(
                   fontSize:      11,
                   fontWeight:    FontWeight.w700,

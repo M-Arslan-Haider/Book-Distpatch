@@ -266,7 +266,7 @@ class _TaskChatScreenState extends State<TaskChatScreen>
     _msgCtrl.addListener(() { if (mounted) setState(() {}); });
 
     _autoRefreshTimer = Timer.periodic(
-      const Duration(seconds: 5),
+      const Duration(minutes: 1),
           (_) => _fetchMessages(silent: true),
     );
   }

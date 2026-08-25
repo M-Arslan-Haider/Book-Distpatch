@@ -1559,7 +1559,7 @@ class ShortBreakViewModel extends GetxController {
     debugPrint('🗺️ [SB-VM] Starting geo-fence watch '
         '(center=$_fenceLat,$_fenceLng  radius=$_fenceRadius m)');
 
-    _geofenceTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+    _geofenceTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
       if (!isOnShortBreak.value) return;
       final pos = await _getCurrentPosition();
       if (pos == null) return;

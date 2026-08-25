@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// ============================================================
-/// AppColors — GPS Workforce Monitor
+/// AppColors — Book & Dispatch
 /// Theme aligned with Navbar gradient:
 ///
 ///   ① Teal Light (navbar gradient start)  →  #3DAF93

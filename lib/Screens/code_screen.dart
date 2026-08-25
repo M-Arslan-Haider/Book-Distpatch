@@ -301,7 +301,7 @@ class _CodeScreenState extends State<CodeScreen>
                                 ),
                                 const SizedBox(height: 16),
                                 const Text(
-                                  'GPS Workforce Monitor',
+                                  'Book & Dispatch',
                                   style: TextStyle(
                                     fontSize: 26,
                                     fontWeight: FontWeight.w700,

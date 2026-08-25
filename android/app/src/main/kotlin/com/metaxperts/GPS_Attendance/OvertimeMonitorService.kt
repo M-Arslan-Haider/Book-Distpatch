@@ -114,6 +114,7 @@ class OvertimeMonitorService : Service() {
     // ════════════════════════════════════════════════════════════════════════
 
     companion object {
+        const val ACTION_STOP_SERVICE    = "action_stop_service" // ✅ NEW CONSTANT
         const val EXTRA_OT_ALARM_TRIGGER = "ot_alarm_trigger"
         const val EXTRA_DEVICE_ID        = "deviceId"
         const val EXTRA_COMPANY_CODE     = "companyCode"
@@ -137,8 +138,20 @@ class OvertimeMonitorService : Service() {
         /** Flutter → stop (clock-out / cancel) */
         fun stop(context: Context) {
             try {
-                context.stopService(Intent(context, OvertimeMonitorService::class.java))
-                Log.d("OvertimeMonitor", "⏹️ [OT] Service stop() called")
+                // ✅ FIX: Send an intent to stop gracefully instead of killing the service instantly.
+                val intent = Intent(context, OvertimeMonitorService::class.java).apply {
+                    action = ACTION_STOP_SERVICE
+                }
+                context.startService(intent)
+                Log.d("OvertimeMonitor", "⏹️ [OT] Service stop() queued via action")
+            } catch (e: IllegalStateException) {
+                // Fallback for background execution limits
+                try {
+                    context.stopService(Intent(context, OvertimeMonitorService::class.java))
+                    Log.d("OvertimeMonitor", "⏹️ [OT] Service stop() called via fallback")
+                } catch (ex: Exception) {
+                    Log.e("OvertimeMonitor", "❌ [OT] stop() fallback failed: ${ex.message}")
+                }
             } catch (e: Exception) {
                 Log.e("OvertimeMonitor", "❌ [OT] stop() failed: ${e.message}")
             }
@@ -179,8 +192,34 @@ class OvertimeMonitorService : Service() {
     override fun onCreate() {
         super.onCreate()
         handler = Handler(Looper.getMainLooper())
-        acquireWakeLock()
 
+        // ✅ Create channels FIRST — notification requires a valid channel on O+
+        createNotificationChannels()
+
+        // ✅ Call startForeground() immediately in onCreate() to satisfy the
+        //    5-second ANR timer before any logic in onStartCommand() runs.
+        //    Uses a minimal notification (no packageManager Binder IPC) so it
+        //    is instantaneous. onStartCommand() calls it again to attach the
+        //    proper content intent and update the text.
+        try {
+            val initialNotif = NotificationCompat.Builder(this, CHANNEL_ID)
+                .setContentTitle("⏰ Overtime Monitor")
+                .setContentText("Starting overtime monitor…")
+                .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                .setOngoing(true)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .build()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(NOTIF_ID, initialNotif, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+            } else {
+                startForeground(NOTIF_ID, initialNotif)
+            }
+            Log.d(TAG, "✅ [OT] startForeground() called in onCreate() — 5-sec timer satisfied")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ [OT] startForeground() in onCreate() failed: ${e.message}")
+        }
+
+        acquireWakeLock()
         logBlock("OvertimeMonitorService onCreate()")
     }
 
@@ -188,9 +227,8 @@ class OvertimeMonitorService : Service() {
         Log.d(TAG, "")
         Log.d(TAG, "── [OT] onStartCommand() ───────────────────────────────────────")
 
-        createNotificationChannels()
-
-        // ── Foreground notification (mandatory before anything else on O+) ──
+        // Channels already created and startForeground() already called in onCreate().
+        // Call again here to attach the proper content intent and update the text.
         try {
             val notif = buildStatusNotification("Starting overtime monitor…")
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -201,6 +239,14 @@ class OvertimeMonitorService : Service() {
             Log.d(TAG, "✅ [OT] startForeground() OK")
         } catch (e: Exception) {
             Log.e(TAG, "❌ [OT] startForeground() failed: ${e.message}")
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        // ✅ FIX: Process the stop action safely AFTER startForeground has been called.
+        if (intent?.action == ACTION_STOP_SERVICE) {
+            Log.d(TAG, "⏹️ [OT] ACTION_STOP_SERVICE received — stopping self safely")
+            try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
             stopSelf()
             return START_NOT_STICKY
         }
@@ -298,7 +344,12 @@ class OvertimeMonitorService : Service() {
             if (remainMs <= 0) {
                 Log.d(TAG, "🔴 [OT] Saved OT end time ALREADY PASSED → immediate clockout")
                 handler.postDelayed({ triggerOvertimeClockout() }, 500)
-                return START_STICKY
+                // ✅ FIX: START_STICKY → START_NOT_STICKY. Kill-safety already
+                // covered by AlarmManager (scheduleOtAlarm) + onTaskRemoved()'s
+                // restart alarm — OS-driven auto-restart-with-null-intent is
+                // redundant aur uncontrolled-timing race (ForegroundServiceDid
+                // NotStartInTimeException) ka source ban raha tha.
+                return START_NOT_STICKY
             }
             // Pre-schedule alarm so we survive kill before first fetch completes
             scheduleOtAlarm(savedEnd.time)
@@ -322,7 +373,8 @@ class OvertimeMonitorService : Service() {
             } else {
                 Log.d(TAG, "🔴 [OT] Estimated end time already passed → immediate clockout")
                 handler.postDelayed({ triggerOvertimeClockout() }, 500)
-                return START_STICKY
+                // ✅ FIX: START_STICKY → START_NOT_STICKY (see reasoning above).
+                return START_NOT_STICKY
             }
         }
 
@@ -332,7 +384,15 @@ class OvertimeMonitorService : Service() {
         Log.d(TAG, "")
 
         startFetchLoop()
-        return START_STICKY
+        // ✅ FIX: START_STICKY → START_NOT_STICKY. Agar OS process/service ko
+        // memory pressure mein kill kare, hum ise khud OS ke bharose null-intent
+        // restart pe chhodne ke bajaye AlarmManager (scheduleOtAlarm) aur
+        // onTaskRemoved()'s explicit restart-alarm se controlled tareeke se
+        // dobara start karte hain. START_STICKY ka uncontrolled, context-less
+        // restart hi is crash (ForegroundServiceDidNotStartInTimeException) ka
+        // asal source tha — Flutter-driven start/stop calls ke sath race karta
+        // tha.
+        return START_NOT_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

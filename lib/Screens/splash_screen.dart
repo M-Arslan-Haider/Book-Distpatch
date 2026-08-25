@@ -157,7 +157,7 @@ class _SplashScreenState extends State<SplashScreen>
 
                     // ── App Name in ONE LINE ─────────────────────────────
                     const Text(
-                      'GPS Workforce Monitor',
+                      'Book & Dispatch',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Colors.white,

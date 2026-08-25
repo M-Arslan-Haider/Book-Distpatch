@@ -98,7 +98,7 @@ object TaskNotificationService {
                     NotificationCompat.BigTextStyle()
                         .setBigContentTitle("🆕  New Task Assigned")
                         .bigText(expandedBody)
-                        .setSummaryText("GPS Workforce Monitor")
+                        .setSummaryText("Book & Dispatch")
                 )
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setCategory(NotificationCompat.CATEGORY_MESSAGE)

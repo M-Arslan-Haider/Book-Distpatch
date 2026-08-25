@@ -1,3 +1,2597 @@
+//package com.metaxperts.bookdispatch
+//
+//import android.app.AppOpsManager
+//import android.app.AlarmManager
+//import android.app.Notification
+//import android.app.NotificationChannel
+//import android.app.NotificationManager
+//import android.app.PendingIntent
+//import android.app.Service
+//import android.content.BroadcastReceiver
+//import android.content.Context
+//import android.content.Intent
+//import android.content.IntentFilter
+//import android.content.pm.PackageManager
+//import android.content.pm.ServiceInfo
+//import android.location.GnssStatus
+//import android.location.Location
+//import android.location.LocationListener
+//import android.location.LocationManager
+//import android.net.ConnectivityManager
+//import android.net.Network
+//import android.net.NetworkCapabilities
+//import android.net.NetworkRequest
+//import android.os.Build
+//import android.os.Bundle
+//import android.os.Handler
+//import android.os.IBinder
+//import android.os.Looper
+//import android.provider.Settings
+//import androidx.core.app.NotificationCompat
+//import androidx.core.content.ContextCompat
+//import android.Manifest
+//
+//import org.eclipse.paho.client.mqttv3.IMqttActionListener
+//import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken
+//import org.eclipse.paho.client.mqttv3.IMqttToken
+//import org.eclipse.paho.client.mqttv3.MqttAsyncClient
+//import org.eclipse.paho.client.mqttv3.MqttCallback
+//import org.eclipse.paho.client.mqttv3.MqttConnectOptions
+//import org.eclipse.paho.client.mqttv3.MqttMessage
+//import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence
+//
+//import org.json.JSONArray
+//import org.json.JSONObject
+//
+//import java.io.File
+//import java.io.OutputStreamWriter
+//import java.net.HttpURLConnection
+//import java.net.URL
+//
+//import android.os.BatteryManager
+//import android.location.Geocoder
+//import java.util.Locale as JavaLocale
+//
+//import java.text.SimpleDateFormat
+//import java.util.Date
+//import java.util.Locale
+//import io.flutter.plugin.common.MethodChannel
+//
+//class LocationMonitorService : Service() {
+//    private val CHANNEL_ID           = "location_monitor_channel"
+//    private val URGENT_CHANNEL_ID    = "urgent_auto_clockout_channel"
+//    private val SHIFT_END_CHANNEL_ID = "shift_end_alarm_channel_v2" // ✅ v2 = fresh channel with USAGE_ALARM attrs (bypasses Flutter channel that lacks alarm AudioAttributes)
+//    private val BREAK_END_CHANNEL_ID = "break_end_notification_channel" // ✅ Break end notification channel
+//    private val NOTIFICATION_ID      = 1001
+//    private val BREAK_END_NOTIF_ID   = 2001 // ✅ Break end notification ID
+//    private val CHECK_INTERVAL    = 2000L
+//    private val GPS_PUBLISH_MS    = 5000L
+//
+//    private val HTTP_POST_MS  = 3 * 60 * 1000L
+//    private val HTTP_POST_URL = "http://oracle.metaxperts.net/ords/gps_workforce/emplocation/post/"
+//
+//    // ✅ FIX #1: Increased capture interval from 1s → 10s to reduce polyline noise
+//    private val BULK_CAPTURE_MS = 10_000L   // was 1_000L
+//    private val BULK_POST_MS    = 30_000L   // was 10_000L — less network spam
+//    //    private val BULK_POST_URL   = "http://103.149.33.102:8001/location/bulk"
+//    private val BULK_POST_URL   = "http://103.120.70.171:8001/location/bulk"
+//
+//    // ✅ FIX #3: Accuracy filter — skip poor GPS readings
+//    private val MIN_ACCURACY_METERS  = 50f    // skip if GPS accuracy worse than 50m
+//    // ✅ FIX #11: Distance filter REMOVED — stationary users ka data bhi capture ho
+//    // Flutter side pe bhi yeh fix apply hai. 0f = har point record hoga
+//    private val MIN_DISTANCE_METERS  = 0f
+//
+//    // ✅ FIX #5: Offline persistence file name
+//    private val OFFLINE_BUFFER_FILE = "bulk_location_offline.json"
+//
+//    //    private val MQTT_HOST = "103.149.33.102"
+//    private val MQTT_HOST = "103.120.70.171"
+//    private val MQTT_PORT = 1883
+//
+//    private val mqttTopic get() = "gps/$companyCode/$deviceId"
+//
+//    private val PREFS_NAME             = "FlutterSharedPreferences"
+//
+//    // ✅ FIX #4: Flutter shared_preferences plugin double values ko is Base64
+//    // prefix ("ThisIsThePrefixForADouble.!") ke saath String mein store karta
+//    // hai. Native side se double likhte waqt yehi format use karna zaroori hai
+//    // warna Flutter prefs.getDouble() cast-error throw karta hai.
+//    private val FLUTTER_DOUBLE_PREFIX  = "VGhpc0lzVGhlUHJlZml4Rm9yQURvdWJsZS4h"
+//    private val KEY_IS_CLOCKED_IN      = "flutter.isClockedIn"
+//    private val KEY_HAS_CRITICAL_EVENT = "flutter.has_critical_event_pending"
+//    private val KEY_EVENT_TIMESTAMP    = "flutter.critical_event_timestamp"
+//    private val KEY_EVENT_REASON       = "flutter.critical_event_reason"
+//    private val KEY_IS_TIMER_FROZEN    = "flutter.is_timer_frozen"
+//    private val KEY_ELAPSED_TIME       = "flutter.elapsed_time"
+//    private val KEY_SHUTDOWN_TIME = "flutter.pending_shutdown_time"
+//
+//    private lateinit var handler: Handler
+//    private var checkRunnable: Runnable     = Runnable {}
+//    private var gpsRunnable: Runnable       = Runnable {}
+//    private var httpPostRunnable: Runnable? = null
+//    private var watchdogRunnable: Runnable? = null
+//    private var heartbeatRunnable: Runnable? = null
+//    private var bulkCaptureRunnable: Runnable? = null
+//    private var bulkPostRunnable: Runnable? = null
+//    private var isDestroyed = false
+//
+//    private var wakeLock: android.os.PowerManager.WakeLock? = null
+//    // ✅ FIX: Class-level reference so onDestroy() can unregisterReceiver()
+//    private var locationModeReceiver: android.content.BroadcastReceiver? = null
+//    private var shutdownReceiver: BroadcastReceiver? = null
+//
+//    private var wasLocationEnabled   = true
+//    private var wasPermissionGranted = true
+//    private var wasAutoTimeEnabled   = true   // ✅ NEW: Auto Time Off detection
+//    private var isClockedIn          = false
+//    private var lastEventTime: Long  = 0
+//    private var lastEventReason: String = ""
+//    private var serviceStartTime: Date  = Date()
+//
+//    private var lastLat      = 0.0
+//    private var lastLon      = 0.0
+//    private var lastAccuracy = 0f
+//    private var lastSpeed    = 0f
+//    private var lastHeartbeatTime: Long = 0
+//    private var locationManager: LocationManager? = null
+//    private var locationListener: LocationListener? = null
+//
+//    // ✅ FIX #3: Track last bulk-posted position for minimum distance check
+//    private var prevBulkLat = 0.0
+//    private var prevBulkLng = 0.0
+//
+//    // ✅ Break end notification — track which break end time we already notified for
+//    private var lastBreakEndNotifiedTime = ""
+//
+//    private var mqttClient: MqttAsyncClient? = null
+//    private var isMqttConnected = false
+//    private var isConnecting    = false
+//    private var connectivityManager: ConnectivityManager? = null
+//    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+//
+//    private var appOpsManager: AppOpsManager? = null
+//    private var appOpsCallback: AppOpsManager.OnOpChangedListener? = null
+//
+//    private var deviceId    = ""
+//    private var companyCode = ""
+//    private var empName     = ""
+//    private var depId       = ""
+//    private var empImage    = ""
+//
+//    private val bulkLocationBuffer = mutableListOf<JSONObject>()
+//
+//    // ✅ NEW: guards the native drain of the Flutter SQLite bulk queue so the
+//    // 30s loop and onTaskRemoved can never overlap into a double-drain.
+//    private val isSqliteDraining = java.util.concurrent.atomic.AtomicBoolean(false)
+//
+//    private val FAKE_GPS_API         = "http://oracle.metaxperts.net/ords/gps_workforce/fakegps/post/"
+//    private var lastFakeGpsReportTime: Long = 0
+//    private val FAKE_GPS_COOLDOWN_MS = 30_000L
+//
+//    // ── Dead Zone Detection ─────────────────────────────────────────────────
+//    // ✅ Confirmed live endpoint — inserts into APP_EMP_DEADZONE_TRACKING
+//    private val DEAD_ZONE_API                = "http://oracle.metaxperts.net/ords/gps_workforce/deadzone/post/"
+//    private val DEAD_ZONE_THRESHOLD_MS       = 60_000L        // no usable fix for 60s → dead zone
+//    private val DEAD_ZONE_REPORT_COOLDOWN_MS = 5 * 60_000L    // re-report every 5min while it persists
+//    private val DEAD_ZONE_OFFLINE_FILE       = "dead_zone_offline.json"
+//    private var lastGoodFixTime: Long        = System.currentTimeMillis()
+//    private var lastDeadZoneReportTime: Long = 0
+//    private var isDeadZone: Boolean          = false
+//
+//    // ── GPS Fraud Detection — Satellite Count (CHECK 1) ───────────────────
+//    // Updated by GnssStatus.Callback on every GNSS fix.
+//    // Read by the Flutter MethodChannel 'getSatelliteCount' handler.
+//    // -1 = not yet received
+//    private var gnssStatusCallback: GnssStatus.Callback? = null
+//
+//    companion object {
+//        const val EXTRA_DEVICE_ID          = "deviceId"
+//        const val EXTRA_COMPANY_CODE       = "companyCode"
+//        const val EXTRA_EMP_NAME           = "empName"
+//        // ✅ BACKGROUND ALARM FIX: intent extra for AlarmManager-triggered shift-end clockout
+//        const val EXTRA_SHIFT_END_TRIGGER  = "shift_end_trigger"
+//        private const val SHIFT_END_ALARM_REQ = 77
+//        @Volatile var lastSatelliteCount: Int = -1// AlarmManager request code
+//
+//        fun start(context: Context) {
+//            try {
+//                val i = Intent(context, LocationMonitorService::class.java)
+//                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+//                    context.startForegroundService(i)
+//                } else {
+//                    context.startService(i)
+//                }
+//            } catch (e: Exception) {
+//                android.util.Log.e("LocationMonitor", "start: ${e.message}")
+//            }
+//        }
+//
+//        fun start(context: Context, deviceId: String, companyCode: String, empName: String) {
+//            try {
+//                val i = Intent(context, LocationMonitorService::class.java).apply {
+//                    putExtra(EXTRA_DEVICE_ID,    deviceId)
+//                    putExtra(EXTRA_COMPANY_CODE, companyCode)
+//                    putExtra(EXTRA_EMP_NAME,     empName)
+//                }
+//                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+//                    context.startForegroundService(i)
+//                } else {
+//                    context.startService(i)
+//                }
+//            } catch (e: Exception) {
+//                android.util.Log.e("LocationMonitor", "start(identity): ${e.message}")
+//            }
+//        }
+//
+//        fun stop(context: Context) {
+//            try {
+//                context.stopService(Intent(context, LocationMonitorService::class.java))
+//            } catch (e: Exception) {
+//                android.util.Log.e("LocationMonitor", "stop: ${e.message}")
+//            }
+//        }
+//    }
+//
+//    // ══════════════════════════════════════════════════════════════════════════
+//    // ✅ FIX #4: OFFLINE BUFFER PERSISTENCE
+//    // Saves in-memory buffer to disk so it survives service kill
+//    // ══════════════════════════════════════════════════════════════════════════
+//
+//    private fun saveOfflineBuffer(records: List<JSONObject>) {
+//        if (records.isEmpty()) return
+//        try {
+//            val file  = File(filesDir, OFFLINE_BUFFER_FILE)
+//            val array = JSONArray()
+//            records.forEach { array.put(it) }
+//            file.writeText(array.toString())
+//            android.util.Log.d("LocationMonitor",
+//                "💾 [BULK OFFLINE] Saved ${records.size} records to disk → $OFFLINE_BUFFER_FILE")
+//        } catch (e: Exception) {
+//            android.util.Log.e("LocationMonitor", "❌ [BULK OFFLINE] saveOfflineBuffer error: ${e.message}")
+//        }
+//    }
+//
+//    /**
+//     * Loads previously-saved offline records from disk and DELETES the file.
+//     * Called at the start of every postBulkLocationToApi() so stale records
+//     * are included in the next successful API call.
+//     */
+//    private fun loadAndClearOfflineBuffer(): List<JSONObject> {
+//        val result = mutableListOf<JSONObject>()
+//        try {
+//            val file = File(filesDir, OFFLINE_BUFFER_FILE)
+//            if (!file.exists()) return result
+//            val content = file.readText().trim()
+//            if (content.isEmpty()) { file.delete(); return result }
+//            val array = JSONArray(content)
+//            for (i in 0 until array.length()) {
+//                result.add(array.getJSONObject(i))
+//            }
+//            file.delete()   // Clear file after loading — prevents re-posting
+//            android.util.Log.d("LocationMonitor",
+//                "📂 [BULK OFFLINE] Loaded ${result.size} saved records from disk")
+//        } catch (e: Exception) {
+//            android.util.Log.e("LocationMonitor", "❌ [BULK OFFLINE] loadOfflineBuffer error: ${e.message}")
+//        }
+//        return result
+//    }
+//
+//    // ══════════════════════════════════════════════════════════════════════════
+//    // HELPERS
+//    // ══════════════════════════════════════════════════════════════════════════
+//
+//    private fun parseTimeTo24h(raw: String): Pair<Int, Int>? {
+//        return try {
+//            val upper   = raw.trim().uppercase()
+//            val isPM    = upper.contains("PM")
+//            val isAM    = upper.contains("AM")
+//            val cleaned = upper.replace("PM", "").replace("AM", "").trim()
+//            val parts   = cleaned.split(":")
+//            if (parts.size < 2) return null
+//            var hour   = parts[0].trim().toIntOrNull() ?: return null
+//            val minute = parts[1].trim().split(Regex("\\s+"))[0].toIntOrNull() ?: return null
+//            if (isPM && hour != 12) hour += 12
+//            if (isAM && hour == 12) hour  = 0
+//            Pair(hour, minute)
+//        } catch (e: Exception) {
+//            null
+//        }
+//    }
+//
+//    private fun prefString(prefs: android.content.SharedPreferences, key: String): String {
+//        return try {
+//            val raw = prefs.all[key] ?: return ""
+//            val str = raw.toString().trim()
+//            if (str == "null") "" else str
+//        } catch (e: Exception) {
+//            ""
+//        }
+//    }
+//
+//    private fun firstNonEmptyPref(prefs: android.content.SharedPreferences, keys: List<String>): String {
+//        for (key in keys) {
+//            val value = prefString(prefs, key).trim()
+//            if (value.isNotEmpty()) return value
+//        }
+//        return ""
+//    }
+//
+//    // ══════════════════════════════════════════════════════════════════════════
+//    // LIFECYCLE
+//    // ══════════════════════════════════════════════════════════════════════════
+//
+//    override fun onCreate() {
+//        super.onCreate()
+//        handler = Handler(Looper.getMainLooper())
+//
+//        try {
+//            val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+//            wakeLock = pm.newWakeLock(
+//                android.os.PowerManager.PARTIAL_WAKE_LOCK,
+//                "GPS_Workforce_Monitor:MqttBgLock"
+//            )
+//            wakeLock?.acquire()
+//            android.util.Log.d("LocationMonitor", "✅ PARTIAL_WAKE_LOCK acquired")
+//        } catch (e: Exception) {
+//            android.util.Log.e("LocationMonitor", "WakeLock acquire failed: ${e.message}")
+//        }
+//
+//        registerShutdownReceiver()
+//        registerReceivers()
+//        registerNetworkCallback()
+//        registerAppOpsListener()
+//
+//        // ── GPS Fraud Detection MethodChannel ─────────────────────────────
+//        // Flutter calls 'getSatelliteCount' to read the latest GNSS fix count.
+//        // The channel name must match GpsFraudDetectionService._channel in Dart.
+//
+//    }
+//
+//    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+//        createNotificationChannel()
+//        serviceStartTime = Date()
+//
+//        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+//
+//        deviceId    = intent?.getStringExtra(EXTRA_DEVICE_ID)?.takeIf { it.isNotEmpty() }
+//            ?: prefString(prefs, "user_name")
+//        companyCode = intent?.getStringExtra(EXTRA_COMPANY_CODE)?.takeIf { it.isNotEmpty() }
+//            ?: prefString(prefs, "company_code")
+//        empName     = intent?.getStringExtra(EXTRA_EMP_NAME)?.takeIf { it.isNotEmpty() }
+//            ?: prefString(prefs, "emp_name")
+//
+//        depId    = prefString(prefs, "flutter.cached_dep_id")
+//        empImage = prefString(prefs, "flutter.cached_image_url")
+//
+//        prefs.edit().apply {
+//            if (deviceId.isNotEmpty())    putString("user_name",    deviceId)
+//            if (companyCode.isNotEmpty()) putString("company_code", companyCode)
+//            if (empName.isNotEmpty())     putString("emp_name",     empName)
+//            apply()
+//        }
+//
+//        android.util.Log.d("LocationMonitor",
+//            "identity → deviceId=$deviceId  company=$companyCode  emp=$empName  topic=$mqttTopic")
+//        android.util.Log.d("LocationMonitor",
+//            "⚙️ [CONFIG] BULK_CAPTURE=${BULK_CAPTURE_MS}ms  BULK_POST=${BULK_POST_MS}ms  " +
+//                    "MIN_ACCURACY=${MIN_ACCURACY_METERS}m  DISTANCE_FILTER=DISABLED(stationary safe)")
+//
+//        try {
+//            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+//                startForeground(
+//                    NOTIFICATION_ID, buildNotification("Initialising..."),
+//                    ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+//                )
+//            } else {
+//                startForeground(NOTIFICATION_ID, buildNotification("Initialising..."))
+//            }
+//        } catch (e: Exception) {
+//            android.util.Log.d("LocationMonitor", "startForeground failed: ${e.message}")
+//            stopSelf()
+//            return START_NOT_STICKY
+//        }
+//
+//        // ✅ BACKGROUND ALARM FIX: Service was started by AlarmManager at exact shift-end time
+//        val isShiftEndTrigger = intent?.getBooleanExtra(EXTRA_SHIFT_END_TRIGGER, false) ?: false
+//        if (isShiftEndTrigger) {
+//            android.util.Log.d("LocationMonitor", "⏰ [SHIFT END ALARM] Triggered by AlarmManager — firing clockout")
+//            val clk = prefs.getBoolean(KEY_IS_CLOCKED_IN, false)
+//            val frz = prefs.getBoolean(KEY_IS_TIMER_FROZEN, false)
+//
+//            // ✅ FIX: Overtime user — agar re-clock-in ke baad alarm fire hua to ignore karo.
+//            // shift_end_clockout_done_date aaj ki date hai matlab shift-end clockout ho chuka tha,
+//            // phir user ne dobara clock-in kiya — yeh overtime session hai, alarm fire nahi hona chahiye.
+//            val overtime = prefString(prefs, "flutter.cached_overtime").lowercase()
+//            val isOvertimeUser = overtime == "yes" || overtime == "y" || overtime == "true" || overtime == "1"
+//            if (isOvertimeUser) {
+//                val savedDate = prefString(prefs, "flutter.shift_end_clockout_done_date")
+//                val todayDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+//                if (savedDate == todayDate) {
+//                    android.util.Log.d("LocationMonitor",
+//                        "⏰ [SHIFT END ALARM] Overtime re-clock-in detected — alarm ignored (shift_end_clockout_done_date=today)")
+//                    stopSelf()
+//                    return START_NOT_STICKY
+//                }
+//            }
+//
+//            if (clk && !frz) {
+//                handler.postDelayed({ handleCriticalEvent("System Clockout - Shift End") }, 300)
+//            } else {
+//                android.util.Log.d("LocationMonitor", "⏰ [SHIFT END ALARM] Already clocked out — ignoring")
+//                stopSelf()
+//            }
+//            return START_NOT_STICKY
+//        }
+//
+//        wasLocationEnabled   = isLocationEnabled()
+//        wasPermissionGranted = checkLocationPermission()
+//        wasAutoTimeEnabled   = isAutoTimeEnabled()   // ✅ NEW
+//
+//        val clockedIn = prefs.getBoolean(KEY_IS_CLOCKED_IN, false)
+//        val isFrozen  = prefs.getBoolean(KEY_IS_TIMER_FROZEN, false)
+//
+//        if (clockedIn && !isFrozen) {
+//            if (!wasPermissionGranted) {
+//                handler.postDelayed({ handleCriticalEvent("System Clockout - Permission Revoked") }, 500)
+//                return START_STICKY
+//            }
+//            if (!wasLocationEnabled) {
+//                handler.postDelayed({ handleCriticalEvent("System Clockout - Location Off") }, 500)
+//                return START_STICKY
+//            }
+//            // ✅ NEW: Auto Time Off — service restart pe bhi check karo
+//            if (!wasAutoTimeEnabled) {
+//                handler.postDelayed({ handleCriticalEvent("System Clockout - Auto Time Off") }, 500)
+//                return START_STICKY
+//            }
+//            startLocationUpdates()
+//            connectMqtt()
+//            // ✅ BACKGROUND ALARM FIX: Schedule exact AlarmManager alarm at shift end time
+//            scheduleShiftEndAlarm()
+////            IntervalSelfieAlarmReceiver.scheduleAll(applicationContext)
+//        }
+//
+//        startMonitoring()
+//        return START_STICKY
+//    }
+//
+//    private fun startMonitoring() {
+//        checkRunnable = object : Runnable {
+//            override fun run() {
+//                if (isDestroyed) return
+//                checkLocationAndPermission()
+//                handler.postDelayed(this, CHECK_INTERVAL)
+//            }
+//        }
+//        handler.post(checkRunnable)
+//
+//        gpsRunnable = object : Runnable {
+//            override fun run() {
+//                if (isDestroyed) return
+//                if (isClockedIn && isMqttConnected && (lastLat != 0.0 || lastLon != 0.0)) {
+//                    publishLocationViaMqtt()
+//                }
+//                handler.postDelayed(this, GPS_PUBLISH_MS)
+//            }
+//        }
+//        handler.postDelayed(gpsRunnable, GPS_PUBLISH_MS)
+//
+//        httpPostRunnable = object : Runnable {
+//            override fun run() {
+//                if (isDestroyed || !isClockedIn) return
+//                try {
+//                    val p       = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+//                    val clocked = p.getBoolean(KEY_IS_CLOCKED_IN, false)
+//                    val frozen  = p.getBoolean(KEY_IS_TIMER_FROZEN, false)
+//                    if (clocked && !frozen && isNetworkAvailable()) {
+//                        postLocationToApi()
+//                    }
+//                    if (!isDestroyed) handler.postDelayed(this, HTTP_POST_MS)
+//                } catch (e: Exception) {
+//                    if (!isDestroyed && isClockedIn) handler.postDelayed(this, HTTP_POST_MS)
+//                }
+//            }
+//        }.also {
+//            if (!isDestroyed) handler.postDelayed(it, HTTP_POST_MS)
+//        }
+//
+//        // ✅ FIX #1: BULK_CAPTURE_MS is now 10 seconds (was 1s)
+//        bulkCaptureRunnable = object : Runnable {
+//            override fun run() {
+//                if (isDestroyed) return
+//                val p = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+//                val clocked = p.getBoolean(KEY_IS_CLOCKED_IN, false)
+//                val frozen  = p.getBoolean(KEY_IS_TIMER_FROZEN, false)
+//                if (clocked && !frozen) {
+//                    captureBulkLocationSnapshot()
+//                }
+//                if (!isDestroyed) handler.postDelayed(this, BULK_CAPTURE_MS)
+//            }
+//        }
+//        handler.postDelayed(bulkCaptureRunnable!!, BULK_CAPTURE_MS)
+//
+//        // ✅ FIX #1: BULK_POST_MS is now 30 seconds (was 10s)
+//        bulkPostRunnable = object : Runnable {
+//            override fun run() {
+//                if (isDestroyed) return
+//                val p = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+//                val clocked = p.getBoolean(KEY_IS_CLOCKED_IN, false)
+//                if (clocked && isNetworkAvailable()) {
+//                    postBulkLocationToApi()
+//                    // ✅ NEW: when app is background/killed, also drain the Flutter
+//                    // SQLite queue (foreground → Flutter owns it; the method self-
+//                    // guards on isFlutterAppForeground()). This is what makes bulk
+//                    // sync as reliable as the 3-min log across kill/force-stop/boot.
+//                    drainFlutterSqliteBulk("bulkPostRunnable")
+//                }
+//                if (!isDestroyed) handler.postDelayed(this, BULK_POST_MS)
+//            }
+//        }
+//        handler.postDelayed(bulkPostRunnable!!, BULK_POST_MS)
+//
+//        startMqttWatchdog()
+//        startHeartbeatWatchdog()
+//    }
+//
+//    // ══════════════════════════════════════════════════════════════════════════
+//    // ✅ FIX #12: Flutter foreground check — duplicate data prevention
+//    // Flutter app open ho to Kotlin ka bulk capture skip karo.
+//    // Flutter SQLite-first architecture use karta hai — dono chalenge to
+//    // same user ke duplicate records server pe jayenge.
+//    // ══════════════════════════════════════════════════════════════════════════
+//    @Suppress("DEPRECATION")
+//    private fun isFlutterAppForeground(): Boolean {
+//        return try {
+//            val am = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+//            val processes = am.runningAppProcesses ?: return false
+//            for (proc in processes) {
+//                if (proc.processName == packageName) {
+//                    return proc.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND ||
+//                            proc.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE
+//                }
+//            }
+//            false
+//        } catch (e: Exception) {
+//            false
+//        }
+//    }
+//
+//    // ══════════════════════════════════════════════════════════════════════════
+//    // ✅ BULK CAPTURE — FIXED VERSION
+//    //    Fix #2:  Accuracy filter (skip if GPS > 50m accuracy)
+//    //    Fix #11: Distance filter REMOVED — stationary users bhi capture hon
+//    //    Fix #12: Flutter foreground check — no duplicate records
+//    //    Fix: Comprehensive debug logs for every decision
+//    // ══════════════════════════════════════════════════════════════════════════
+//    private fun captureBulkLocationSnapshot() {
+//        // ✅ FIX #12: Flutter app foreground mein hai — wo SQLite-first se handle kar raha hai
+//        // Kotlin ka bulk capture skip karo taake server pe duplicate records na jayein
+//        if (isFlutterAppForeground()) {
+//            android.util.Log.d("LocationMonitor",
+//                "⏭️ [BULK] Flutter active (foreground) — Kotlin capture skipped (Flutter handles it)")
+//            return
+//        }
+//
+//        try {
+//            val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+//
+//            var lat = if (lastLat != 0.0) lastLat else 0.0
+//            var lng = if (lastLon != 0.0) lastLon else 0.0
+//            var accuracy = lastAccuracy
+//
+//            // Fallback to last known location if live location not yet received
+//            if (lat == 0.0 && lng == 0.0) {
+//                try {
+//                    val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+//                    if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+//                        listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER).forEach { provider ->
+//                            if (lat != 0.0 || lng != 0.0) return@forEach
+//                            val loc = lm.getLastKnownLocation(provider)
+//                            if (loc != null) {
+//                                lat      = loc.latitude
+//                                lng      = loc.longitude
+//                                accuracy = loc.accuracy
+//                                android.util.Log.d("LocationMonitor",
+//                                    "📡 [BULK] Using lastKnownLocation from $provider: lat=$lat lng=$lng acc=${accuracy}m")
+//                            }
+//                        }
+//                    }
+//                } catch (_: Exception) {}
+//            }
+//
+//            // ✅ FIX: Skip if invalid coordinates
+//            // lat == 0.0 check kafi nahi — ColorOS/OnePlus Double.MIN_VALUE (5e-324) return karta hai
+//            // jo == 0.0 se match nahi karta lekin practically zero hai — global range + near-zero check
+//            if (lat !in -90.0..90.0 || lng !in -180.0..180.0 ||
+//                (lat > -0.001 && lat < 0.001 && lng > -0.001 && lng < 0.001)) {
+//                android.util.Log.w("LocationMonitor",
+//                    "⚠️ [BULK] SKIP — invalid coordinate (possible GPS suspend/Double.MIN_VALUE): lat=$lat lng=$lng")
+//                return
+//            }
+//
+//            // ✅ FIX #2: Accuracy filter — skip poor GPS readings
+//            // accuracy == 0f bhi invalid hai (Android ne accuracy set nahi ki) — skip karo
+//            if (accuracy == 0f || accuracy > MIN_ACCURACY_METERS) {
+//                android.util.Log.w("LocationMonitor",
+//                    "⚠️ [BULK] SKIP — poor GPS accuracy: ${accuracy}m (threshold: ${MIN_ACCURACY_METERS}m)")
+//                return
+//            }
+//
+//            // ✅ FIX #11: Distance filter removed — stationary users ka data bhi capture ho
+//            // prevBulkLat/Lng still tracked for logging purposes only
+//            if (prevBulkLat != 0.0 && prevBulkLng != 0.0) {
+//                val distanceResults = FloatArray(1)
+//                Location.distanceBetween(prevBulkLat, prevBulkLng, lat, lng, distanceResults)
+//                val movedMeters = distanceResults[0]
+//                android.util.Log.d("LocationMonitor",
+//                    "📏 [BULK] Distance from last point: ${movedMeters.toInt()}m — recording (distance filter disabled)")
+//            }
+//
+//            // Update previous position
+//            prevBulkLat = lat
+//            prevBulkLng = lng
+//
+//            val userId = firstNonEmptyPref(prefs, listOf("flutter.user_id", "user_id", "flutter.emp_id", "emp_id"))
+//                .ifEmpty { deviceId }
+//
+//            val bookerName = firstNonEmptyPref(prefs, listOf("flutter.booker_name", "booker_name", "flutter.emp_name", "emp_name"))
+//                .ifEmpty { empName }
+//
+//            val designation = firstNonEmptyPref(prefs, listOf(
+//                "flutter.cached_designation",
+//                "flutter.userDesignation",
+//                "userDesignation",
+//                "designation",
+//                "flutter.designation",
+//                "job",
+//                "role"
+//            )).ifEmpty { "GPS" }
+//
+//            val company = firstNonEmptyPref(prefs, listOf("flutter.company_code", "company_code"))
+//                .ifEmpty { companyCode }
+//
+//            // ✅ FIX: Validate required fields before recording
+//            if (userId.isEmpty()) {
+//                android.util.Log.w("LocationMonitor", "⚠️ [BULK] SKIP — user_id is empty")
+//                return
+//            }
+//
+//            val now  = Date()
+//            val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(now)
+//            val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(now)
+//            val locationTrackingId = "KT-${userId}-${now.time}"  // KT prefix = Kotlin source
+//
+//            val snap = JSONObject().apply {
+//                put("locationtracking_id", locationTrackingId)
+//                put("locationtracking_date", dateStr)
+//                put("locationtracking_time", timeStr)
+//                put("user_id", userId)
+//                put("lat_in", lat)
+//                put("lng_in", lng)
+//                put("booker_name", bookerName)
+//                put("designation", designation)
+//                put("posted", false)
+//                put("company_code", company)
+//            }
+//
+//            synchronized(bulkLocationBuffer) {
+//                bulkLocationBuffer.add(snap)
+//                android.util.Log.d("LocationMonitor",
+//                    "✅ [BULK] Buffered #${bulkLocationBuffer.size} | " +
+//                            "user=$userId lat=$lat lng=$lng acc=${accuracy}m " +
+//                            "date=$dateStr time=$timeStr")
+//            }
+//
+//        } catch (e: Exception) {
+//            android.util.Log.e("LocationMonitor", "❌ [BULK] captureBulkLocationSnapshot error: ${e.message}")
+//        }
+//    }
+//
+//    // ══════════════════════════════════════════════════════════════════════════
+//    // ✅ BULK POST — FIXED VERSION
+//    //    Fix #4: Load offline saved records from disk and merge before posting
+//    //    Fix: Save to file on failure so no data is lost
+//    //    Fix: Comprehensive request/response logging
+//    // ══════════════════════════════════════════════════════════════════════════
+//    private fun postBulkLocationToApi() {
+//        try {
+//            // Take current in-memory snapshot
+//            val inMemorySnapshot = synchronized(bulkLocationBuffer) {
+//                if (bulkLocationBuffer.isEmpty()) {
+//                    // Still check disk for any saved offline records
+//                    val fromDisk = loadAndClearOfflineBuffer()
+//                    if (fromDisk.isEmpty()) {
+//                        android.util.Log.d("LocationMonitor", "ℹ️ [BULK] Nothing to post — buffer and disk both empty")
+//                        return
+//                    }
+//                    return@synchronized fromDisk
+//                }
+//                val copy = bulkLocationBuffer.toList()
+//                bulkLocationBuffer.clear()
+//                copy
+//            }
+//
+//            // ✅ FIX #4: Merge with any records saved offline on previous failure/kill
+//            val offlineRecords = loadAndClearOfflineBuffer()
+//            val allRecords     = offlineRecords + inMemorySnapshot
+//
+//            if (allRecords.isEmpty()) return
+//
+//            android.util.Log.d("LocationMonitor",
+//                "📤 [BULK] Sending ${allRecords.size} records " +
+//                        "(disk: ${offlineRecords.size}, buffer: ${inMemorySnapshot.size}) → $BULK_POST_URL")
+//
+//            Thread {
+//                var success = false
+//                try {
+//                    val jsonArray = JSONArray()
+//                    allRecords.forEach { jsonArray.put(it) }
+//                    val rootObj = JSONObject().apply { put("records", jsonArray) }
+//                    val body    = rootObj.toString()
+//
+//                    android.util.Log.d("LocationMonitor",
+//                        "📡 [BULK] REQUEST body (first record): ${allRecords.firstOrNull()}")
+//
+//                    val conn = (URL(BULK_POST_URL).openConnection() as HttpURLConnection).apply {
+//                        requestMethod = "POST"
+//                        setRequestProperty("Content-Type", "application/json")
+//                        setRequestProperty("Accept", "application/json")
+//                        doOutput        = true
+//                        connectTimeout  = 15000
+//                        readTimeout     = 15000
+//                    }
+//
+//                    OutputStreamWriter(conn.outputStream).use { it.write(body) }
+//                    val responseCode = conn.responseCode
+//                    val responseMsg  = try { conn.responseMessage } catch (_: Exception) { "" }
+//                    conn.disconnect()
+//
+//                    android.util.Log.d("LocationMonitor",
+//                        "📥 [BULK] RESPONSE code=$responseCode msg=$responseMsg " +
+//                                "records_sent=${allRecords.size}")
+//
+//                    if (responseCode in 200..299) {
+//                        success = true
+//                        android.util.Log.d("LocationMonitor",
+//                            "✅ [BULK] Successfully synced ${allRecords.size} records to server")
+//                    } else {
+//                        android.util.Log.w("LocationMonitor",
+//                            "⚠️ [BULK] API returned $responseCode — saving ${allRecords.size} records to disk")
+//                    }
+//                } catch (e: Exception) {
+//                    android.util.Log.e("LocationMonitor",
+//                        "❌ [BULK] Network error: ${e.message} — saving ${allRecords.size} records to disk")
+//                }
+//
+//                // ✅ FIX #4: On any failure, persist records to disk so they survive kill
+//                if (!success) {
+//                    saveOfflineBuffer(allRecords)
+//                }
+//            }.start()
+//
+//        } catch (e: Exception) {
+//            android.util.Log.e("LocationMonitor", "❌ [BULK] postBulkLocationToApi error: ${e.message}")
+//        }
+//    }
+//
+//    // ══════════════════════════════════════════════════════════════════════════
+//    // ✅ NEW: NATIVE DRAIN OF THE FLUTTER SQLite BULK QUEUE
+//    //
+//    // The always-on foreground service (the reason 3-min sync never fails) now
+//    // also drains the SAME SQLite queue that the Flutter side writes to
+//    // (employee_portal.db → location_tracking, posted=0). This is what makes
+//    // bulk sync survive app-kill / force-stop / process-death / reboot, exactly
+//    // like the 3-min log.
+//    //
+//    // OWNERSHIP RULE (no double-drain): this only runs when the Flutter app is
+//    // NOT in the foreground. While the app is foreground, Flutter owns the drain.
+//    // sqflite opens the DB in WAL mode, so this native read/write is safe
+//    // alongside Flutter. Server MUST upsert on locationtracking_id (idempotency)
+//    // to absorb the rare transition-moment overlap.
+//    // ══════════════════════════════════════════════════════════════════════════
+//    private fun drainFlutterSqliteBulk(triggerReason: String) {
+//        // Foreground → Flutter owns the drain. Skip here.
+//        if (isFlutterAppForeground()) return
+//        if (!isNetworkAvailable()) return
+//        // Prevent overlapping native drains.
+//        if (!isSqliteDraining.compareAndSet(false, true)) return
+//
+//        Thread {
+//            var db: android.database.sqlite.SQLiteDatabase? = null
+//            try {
+//                val dbFile = applicationContext.getDatabasePath("employee_portal.db")
+//                if (!dbFile.exists()) {
+//                    android.util.Log.d("LocationMonitor",
+//                        "ℹ️ [BULK-SQLITE] DB not found yet — nothing to drain ($triggerReason)")
+//                    return@Thread
+//                }
+//
+//                db = android.database.sqlite.SQLiteDatabase.openDatabase(
+//                    dbFile.absolutePath, null,
+//                    android.database.sqlite.SQLiteDatabase.OPEN_READWRITE
+//                )
+//
+//                var totalSynced = 0
+//
+//                while (true) {
+//                    val sendable = ArrayList<Pair<Int, JSONObject>>()
+//                    val zeroIds  = ArrayList<Int>()
+//
+//                    val cursor = db.rawQuery(
+//                        "SELECT id, locationtracking_id, locationtracking_date, " +
+//                                "locationtracking_time, user_id, company_code, lat_in, lng_in, " +
+//                                "booker_name, designation " +
+//                                "FROM location_tracking WHERE posted = 0 " +
+//                                "ORDER BY created_at ASC LIMIT 500",
+//                        null
+//                    )
+//
+//                    cursor.use { c ->
+//                        while (c.moveToNext()) {
+//                            val id  = c.getInt(0)
+//                            val lat = c.getDouble(6)
+//                            val lng = c.getDouble(7)
+//
+//                            // Zero-coord rows can never be posted — mark them posted
+//                            // directly so they never block the queue forever.
+//                            if (lat == 0.0 && lng == 0.0) {
+//                                zeroIds.add(id)
+//                                continue
+//                            }
+//
+//                            val obj = JSONObject().apply {
+//                                put("locationtracking_id",   c.getString(1) ?: "")
+//                                put("locationtracking_date", c.getString(2) ?: "")
+//                                put("locationtracking_time", c.getString(3) ?: "")
+//                                put("user_id",               c.getString(4) ?: "")
+//                                put("company_code",          c.getString(5) ?: "")
+//                                put("lat_in",                lat)
+//                                put("lng_in",                lng)
+//                                put("booker_name",           c.getString(8) ?: "")
+//                                put("designation",           c.getString(9) ?: "GPS")
+//                                put("posted",                true)
+//                            }
+//                            sendable.add(Pair(id, obj))
+//                        }
+//                    }
+//
+//                    val batchCount = sendable.size + zeroIds.size
+//                    if (batchCount == 0) {
+//                        android.util.Log.d("LocationMonitor",
+//                            "🏁 [BULK-SQLITE] queue empty — total=$totalSynced ($triggerReason)")
+//                        break
+//                    }
+//
+//                    if (zeroIds.isNotEmpty()) {
+//                        markSqlitePosted(db, zeroIds)
+//                        android.util.Log.w("LocationMonitor",
+//                            "⚠️ [BULK-SQLITE] marked ${zeroIds.size} zero-coord rows posted ($triggerReason)")
+//                    }
+//
+//                    if (sendable.isEmpty()) {
+//                        if (batchCount < 500) break else continue
+//                    }
+//
+//                    // Build payload — identical shape to postBulkLocationToApi
+//                    val arr = JSONArray()
+//                    sendable.forEach { arr.put(it.second) }
+//                    val body = JSONObject().apply { put("records", arr) }.toString()
+//
+//                    var ok = false
+//                    try {
+//                        val conn = (URL(BULK_POST_URL).openConnection() as HttpURLConnection).apply {
+//                            requestMethod  = "POST"
+//                            setRequestProperty("Content-Type", "application/json")
+//                            setRequestProperty("Accept",       "application/json")
+//                            doOutput       = true
+//                            connectTimeout = 15000
+//                            readTimeout    = 15000
+//                        }
+//                        OutputStreamWriter(conn.outputStream).use { it.write(body) }
+//                        val code = conn.responseCode
+//                        conn.disconnect()
+//                        ok = code in 200..299
+//                        android.util.Log.d("LocationMonitor",
+//                            "📥 [BULK-SQLITE] RESPONSE code=$code sent=${sendable.size} ($triggerReason)")
+//                    } catch (e: Exception) {
+//                        android.util.Log.e("LocationMonitor",
+//                            "❌ [BULK-SQLITE] POST error: ${e.message} — rows stay posted=0")
+//                        ok = false
+//                    }
+//
+//                    if (ok) {
+//                        markSqlitePosted(db, sendable.map { it.first })
+//                        totalSynced += sendable.size
+//                        android.util.Log.d("LocationMonitor",
+//                            "✅ [BULK-SQLITE] drained ${sendable.size} rows (total=$totalSynced) via $triggerReason")
+//                        if (batchCount < 500) break
+//                    } else {
+//                        // Stop — data stays safe (posted=0), retried next cycle.
+//                        break
+//                    }
+//                }
+//            } catch (e: Exception) {
+//                android.util.Log.e("LocationMonitor", "❌ [BULK-SQLITE] drain error: ${e.message}")
+//            } finally {
+//                try { db?.close() } catch (_: Exception) {}
+//                isSqliteDraining.set(false)
+//            }
+//        }.start()
+//    }
+//
+//    /** Marks the given SQLite row ids posted=1, with a small lock-retry. */
+//    private fun markSqlitePosted(db: android.database.sqlite.SQLiteDatabase, ids: List<Int>) {
+//        if (ids.isEmpty()) return
+//        val inList = ids.joinToString(",")   // ids are our own Ints — no injection risk
+//        var attempt = 0
+//        while (attempt < 3) {
+//            try {
+//                db.execSQL("UPDATE location_tracking SET posted = 1 WHERE id IN ($inList)")
+//                return
+//            } catch (e: android.database.sqlite.SQLiteDatabaseLockedException) {
+//                attempt++
+//                try { Thread.sleep(150) } catch (_: InterruptedException) {}
+//            } catch (e: Exception) {
+//                android.util.Log.e("LocationMonitor", "❌ [BULK-SQLITE] mark posted error: ${e.message}")
+//                return
+//            }
+//        }
+//        android.util.Log.w("LocationMonitor", "⚠️ [BULK-SQLITE] mark posted gave up after lock retries")
+//    }
+//
+//    // ══════════════════════════════════════════════════════════════════════════
+//    // MQTT + WATCHDOGS (unchanged)
+//    // ══════════════════════════════════════════════════════════════════════════
+//
+//    private fun startMqttWatchdog() {
+//        var consecutiveFailures = 0
+//        watchdogRunnable = object : Runnable {
+//            override fun run() {
+//                if (isDestroyed) return
+//                val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+//                val clocked = prefs.getBoolean(KEY_IS_CLOCKED_IN, false)
+//                val frozen = prefs.getBoolean(KEY_IS_TIMER_FROZEN, false)
+//                if (clocked && !frozen) {
+//                    if (!isMqttConnected && !isConnecting && isNetworkAvailable()) {
+//                        consecutiveFailures++
+//                        android.util.Log.d("LocationMonitor",
+//                            "🔁 [WATCHDOG] MQTT not connected — Attempt #$consecutiveFailures")
+//                        connectMqtt()
+//                    } else if (isMqttConnected) {
+//                        consecutiveFailures = 0
+//                    }
+//                } else {
+//                    consecutiveFailures = 0
+//                }
+//                if (!isDestroyed) handler.postDelayed(this, 15_000L)
+//            }
+//        }
+//        handler.postDelayed(watchdogRunnable!!, 15_000L)
+//    }
+//
+//    private fun startHeartbeatWatchdog() {
+//        heartbeatRunnable = object : Runnable {
+//            override fun run() {
+//                if (isDestroyed) return
+//                val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+//                val clocked = prefs.getBoolean(KEY_IS_CLOCKED_IN, false)
+//                val frozen = prefs.getBoolean(KEY_IS_TIMER_FROZEN, false)
+//                if (clocked && !frozen) {
+//                    val now = System.currentTimeMillis()
+//                    if (now - lastHeartbeatTime > 12_000L) {
+//                        lastHeartbeatTime = now
+//                        if (isMqttConnected && (lastLat != 0.0 || lastLon != 0.0)) {
+//                            publishLocationViaMqtt()
+//                        }
+//                    }
+//                }
+//                if (!isDestroyed) handler.postDelayed(this, 5_000L)
+//            }
+//        }
+//        handler.postDelayed(heartbeatRunnable!!, 5_000L)
+//    }
+//
+//    // ══════════════════════════════════════════════════════════════════════════
+//    // CRITICAL EVENT / CLOCKOUT DETECTION (unchanged)
+//    // ══════════════════════════════════════════════════════════════════════════
+//
+//    private fun checkLocationAndPermission() {
+//        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+//        isClockedIn = prefs.getBoolean(KEY_IS_CLOCKED_IN, false)
+//
+//        // ✅ Break end check — isClockedIn se PEHLE karo
+//        // Wajah: break start hone pe user clock-out ho jata hai (isClockedIn=false)
+//        // Isliye agar check baad mein hota to kabhi fire nahi hota
+//        checkBreakEndNotification(prefs)
+//
+//        if (!isClockedIn) {
+//            updateNotification("Not clocked in", false)
+//            return
+//        }
+//
+//        val isFrozen = prefs.getBoolean(KEY_IS_TIMER_FROZEN, false)
+//        if (isFrozen) {
+//            handler.removeCallbacks(checkRunnable)
+//            return
+//        }
+//
+//        val calendar = java.util.Calendar.getInstance()
+//        val hour   = calendar.get(java.util.Calendar.HOUR_OF_DAY)
+//        val minute = calendar.get(java.util.Calendar.MINUTE)
+//
+//        if (hour == 23 && minute == 58) {
+//            // 🌙 NIGHT SHIFT FIX: Night shift workers ke liye midnight clockout skip karo.
+//            // flutter.cached_shift_type login pe save hoti hai (login_repository.dart → _detectShiftType).
+//            val shiftType   = prefString(prefs, "flutter.cached_shift_type")
+//            val isNightShift = shiftType.equals("Night Shift", ignoreCase = true)
+//            if (isNightShift) {
+//                android.util.Log.d("LocationMonitor",
+//                    "🌙 [MIDNIGHT] Night shift user — midnight clockout skipped (shift_type=$shiftType)")
+//            } else {
+//                val currentTime = System.currentTimeMillis()
+//                if (currentTime - lastEventTime > 60000) {
+//                    lastEventTime   = currentTime
+//                    lastEventReason = "System Clockout - Midnight Time"
+//                    handleCriticalEvent("System Clockout - Midnight Time")
+//                    return
+//                }
+//            }
+//        }
+//
+//        val cachedEndTime = prefString(prefs, "flutter.cached_end_time")
+//        if (cachedEndTime.isNotEmpty()) {
+//            try {
+//                val parsed = parseTimeTo24h(cachedEndTime)
+//                if (parsed != null) {
+//                    val endTotalMin = parsed.first * 60 + parsed.second
+//                    val nowTotalMin = hour * 60 + minute
+//
+//                    // 🌙 NIGHT SHIFT FIX: Night shift pe evening side (hour >= 12) mein
+//                    // shift-end check kabhi fire mat karo. End time (e.g. 02:00) sirf
+//                    // midnight ke baad (hour < 12) check honi chahiye.
+//                    val shiftTypeKt  = prefString(prefs, "flutter.cached_shift_type")
+//                    val isNightShiftKt = shiftTypeKt.equals("Night Shift", ignoreCase = true)
+//                    if (isNightShiftKt && hour >= 12) {
+//                        android.util.Log.d("LocationMonitor",
+//                            "🌙 [SHIFT END] Night shift — evening side (hour=$hour) — shift-end check skipped")
+//                        // Continue to other checks, do not fire shift-end clockout
+//                    } else {
+//                        val diffMin     = nowTotalMin - endTotalMin
+//                        if (diffMin in 0..480) {
+//                            // ✅ FIX: Overtime user — agar aaj ka shift-end clockout already ho chuka hai
+//                            // (re-clock-in ke baad wala case) to dobara auto-clockout mat karo.
+//                            val overtime = prefString(prefs, "flutter.cached_overtime").lowercase()
+//                            val isOvertimeUser = overtime == "yes" || overtime == "y" || overtime == "true" || overtime == "1"
+//                            if (isOvertimeUser) {
+//                                val savedDate = prefString(prefs, "flutter.shift_end_clockout_done_date")
+//                                val todayDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+//                                if (savedDate == todayDate) {
+//                                    android.util.Log.d("LocationMonitor",
+//                                        "⏰ [SHIFT END] Overtime user — clockout already done today — skipping (re-clock-in protected)")
+//                                    return
+//                                }
+//                            }
+//                            val currentTime = System.currentTimeMillis()
+//                            if (currentTime - lastEventTime > 60000 && lastEventReason != "System Clockout - Shift End") {
+//                                lastEventTime   = currentTime
+//                                lastEventReason = "System Clockout - Shift End"
+//                                handleCriticalEvent("System Clockout - Shift End")
+//                                return
+//                            }
+//                        }
+//                    }
+//                }
+//            } catch (_: Exception) {}
+//        }
+//
+//        val currentLocationEnabled   = isLocationEnabled()
+//        val currentPermissionGranted = checkLocationPermission()
+//
+//        if (wasPermissionGranted && !currentPermissionGranted) {
+//            val currentTime = System.currentTimeMillis()
+//            if (currentTime - lastEventTime > 5000 && lastEventReason != "System Clockout - Permission Revoked") {
+//                lastEventTime   = currentTime
+//                lastEventReason = "System Clockout - Permission Revoked"
+//                handleCriticalEvent("System Clockout - Permission Revoked")
+//                return
+//            }
+//        }
+//
+//        if (wasLocationEnabled && !currentLocationEnabled) {
+//            val currentTime = System.currentTimeMillis()
+//            if (currentTime - lastEventTime > 5000 && lastEventReason != "System Clockout - Location Off") {
+//                lastEventTime   = currentTime
+//                lastEventReason = "System Clockout - Location Off"
+//                handleCriticalEvent("System Clockout - Location Off")
+//                return
+//            }
+//        }
+//
+//        // ✅ NEW: Auto Time Off → Auto Clockout (same pattern as Location Off)
+//        val currentAutoTimeEnabled = isAutoTimeEnabled()
+//        if (wasAutoTimeEnabled && !currentAutoTimeEnabled) {
+//            val currentTime = System.currentTimeMillis()
+//            if (currentTime - lastEventTime > 5000 && lastEventReason != "System Clockout - Auto Time Off") {
+//                lastEventTime   = currentTime
+//                lastEventReason = "System Clockout - Auto Time Off"
+//                handleCriticalEvent("System Clockout - Auto Time Off")
+//                return
+//            }
+//        }
+//
+//        wasLocationEnabled    = currentLocationEnabled
+//        wasPermissionGranted  = currentPermissionGranted
+//        wasAutoTimeEnabled    = currentAutoTimeEnabled   // ✅ NEW
+//
+//        // ── Dead Zone Detection: no usable GPS fix for a sustained duration ──
+//        if (isClockedIn && currentLocationEnabled && currentPermissionGranted) {
+//            val sinceGoodFix = System.currentTimeMillis() - lastGoodFixTime
+//            isDeadZone = sinceGoodFix > DEAD_ZONE_THRESHOLD_MS
+//            if (isDeadZone) checkAndReportDeadZone(sinceGoodFix)
+//        } else {
+//            isDeadZone = false
+//        }
+//
+//        val status = if (currentLocationEnabled && currentPermissionGranted) {
+//            val base = "Monitoring | MQTT: ${if (isMqttConnected) "●" else "○"} | Buf:${bulkLocationBuffer.size}"
+//            if (isDeadZone) "$base | ⚠️ DeadZone" else base
+//        } else {
+//            "Issue detected - Processing..."
+//        }
+//        updateNotification(status, false)
+//    }
+//
+//    private fun handleCriticalEvent(reason: String) {
+//        val prefs         = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+//        val alreadyFrozen = prefs.getBoolean(KEY_IS_TIMER_FROZEN, false)
+//        if (alreadyFrozen) return
+//
+//        // ✅ BACKGROUND ALARM FIX: Cancel any pending shift-end AlarmManager alarm
+//        cancelShiftEndAlarm()
+//        IntervalSelfieAlarmReceiver.cancelAll(applicationContext)
+//
+//        val editor    = prefs.edit()
+//        val timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(Date())
+//
+//        editor.putBoolean(KEY_HAS_CRITICAL_EVENT, true)
+//        editor.putBoolean(KEY_IS_TIMER_FROZEN, true)
+//        editor.putString(KEY_EVENT_TIMESTAMP, timestamp)
+//        editor.putString(KEY_EVENT_REASON, reason)
+//        editor.putBoolean(KEY_IS_CLOCKED_IN, false)
+//        editor.putBoolean("flutter.pending_gpx_close", true)
+//        editor.putString("flutter.fastClockOutTime", timestamp)
+//        // ✅ FIX #4: Pehle yahan raw String "0.0" likhi jati thi. Flutter ka
+//        // shared_preferences plugin double ko is Base64 prefix ke saath store
+//        // karta hai — raw String par Flutter side prefs.getDouble() cast-error
+//        // throw karta tha aur restoreFastDataOnStartup() poora abort ho jata
+//        // tha (native auto-clockout kabhi post nahi hota tha). Ab Flutter ke
+//        // apne double format mein likhte hain; Flutter side par _safeReadDouble
+//        // dono shapes handle karta hai (purane poisoned devices bhi recover).
+//        editor.putString(
+//            "flutter.fastClockOutDistance",
+//            FLUTTER_DOUBLE_PREFIX + "0.0"
+//        )
+//        editor.putString("flutter.fastClockOutReason", reason)
+//        editor.putBoolean("flutter.hasFastClockOutData", true)
+//        editor.putBoolean("flutter.clockOutPending", true)
+//
+//        // ✅ FIX: Shift-end clockout hone pe aaj ki date save karo — overtime users ke liye
+//        // re-clock-in ke baad dobara auto-clockout nahi hoga.
+//        if (reason == "System Clockout - Shift End") {
+//            val todayDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+//            editor.putString("flutter.shift_end_clockout_done_date", todayDate)
+//            android.util.Log.d("LocationMonitor",
+//                "⏰ [SHIFT END] shift_end_clockout_done_date saved: $todayDate")
+//        }
+//
+//        val clockInTime = prefs.getString("flutter.clockInTime", "") ?: ""
+//
+//        // ✅ FIX #4: Pehle JSON mein fast_attendanceId="" aur key ka naam
+//        // fast_userId tha jabke Flutter fast_empId parhta hai — restore par
+//        // empId hamesha '' aata tha aur attendance ID resolve nahi hoti thi
+//        // (UNKWN_ fallback → server par orphan clock-out).
+//        //
+//        // emp_id Flutter setInt() se save hota hai → Android prefs mein Long
+//        // type. getString() us par ClassCastException dega, is liye prefs.all
+//        // map se type-safe read:
+//        val empIdNative: String = try {
+//            prefs.all["flutter.emp_id"]?.toString() ?: ""
+//        } catch (e: Exception) { "" }
+//
+//        // Attendance ID — Flutter waali hi fallback chain (attendanceId →
+//        // currentAttendanceId → clockInAttendanceId), har read try-guarded:
+//        fun safePrefString(key: String): String = try {
+//            prefs.all[key]?.toString() ?: ""
+//        } catch (e: Exception) { "" }
+//
+//        var attendanceIdNative = safePrefString("flutter.attendanceId")
+//        if (attendanceIdNative.isEmpty()) {
+//            attendanceIdNative = safePrefString("flutter.currentAttendanceId")
+//        }
+//        if (attendanceIdNative.isEmpty()) {
+//            attendanceIdNative = safePrefString("flutter.clockInAttendanceId")
+//        }
+//
+//        android.util.Log.d("LocationMonitor",
+//            "🆔 [CRITICAL EVENT] fastJson → empId=$empIdNative attendanceId=$attendanceIdNative")
+//
+//        // fast_userId bhi rakha hai (back-compat) — Flutter dono parhta hai.
+//        val fastJson = """{"fast_attendanceId":"$attendanceIdNative","fast_empId":"$empIdNative","fast_userId":"$empIdNative","fast_clockOutTime":"$timestamp","fast_totalTime":"00:00:00","fast_totalDistance":0.0,"fast_reason":"$reason","fast_clockInTime":"$clockInTime"}"""
+//        editor.putString("flutter.fastClockOutData", fastJson)
+//
+//        val isTravelMode = prefs.getBoolean("flutter.is_travel_mode", false)
+//        if (isTravelMode) {
+//            val travelId       = prefs.getString("flutter.travel_id", "") ?: ""
+//            val travelStartStr = prefs.getString("flutter.travel_start_time", "") ?: ""
+//            val travelDist     = try {
+//                prefs.getString("flutter.travel_distance", "0.0")?.toDoubleOrNull() ?: 0.0
+//            } catch (_: Exception) { 0.0 }
+//
+//            var travelElapsed = "00:00:00"
+//            try {
+//                if (travelStartStr.isNotEmpty()) {
+//                    val sdf   = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
+//                    val start = sdf.parse(travelStartStr)
+//                    if (start != null) {
+//                        val elapsedSec = ((Date().time - start.time) / 1000).toInt()
+//                        val h = elapsedSec / 3600
+//                        val m = (elapsedSec % 3600) / 60
+//                        val s = elapsedSec % 60
+//                        travelElapsed = String.format("%02d:%02d:%02d", h, m, s)
+//                    }
+//                }
+//            } catch (_: Exception) {}
+//
+//            val travelFastJson = """{"travel_attendanceId":"$travelId","travel_clockOutTime":"$timestamp","travel_totalTime":"$travelElapsed","travel_totalDistance":$travelDist,"travel_reason":"$reason","travel_clockInTime":"$travelStartStr"}"""
+//            editor.putBoolean("flutter.hasTravelFastClockOut", true)
+//            editor.putString("flutter.travelFastClockOutData", travelFastJson)
+//            editor.putString("flutter.travelFastClockOutTime", timestamp)
+//            editor.putString("flutter.travelFastClockOutReason", reason)
+//            editor.putString("flutter.travelFastClockOutId", travelId)
+//            editor.putBoolean("flutter.is_travel_mode", false)
+//
+//            android.util.Log.d("LocationMonitor",
+//                "🚗 [TRAVEL] Auto clockout during travel → id=$travelId reason=$reason dist=$travelDist")
+//        }
+//
+//        try { editor.commit() } catch (e: Exception) { editor.apply() }
+//
+//        showCriticalNotification(reason, timestamp)
+//        updateNotification("⚠️ AUTO CLOCKOUT: $reason", true)
+//
+//        // ✅ NEW: Shift end pe selfie notification — foreground, background, aur app-killed teeno cases
+//        if (reason == "System Clockout - Shift End") {
+//            android.util.Log.d("LocationMonitor", "📸 [SELFIE NOTIF] Shift ended — sending selfie reminder notification")
+//            showSelfieReminderNotification()
+//            // Grace time ke baad bhi remind karo — SharedPrefs se policy padhte hain
+//            scheduleSelfieGraceNotifications(prefs)
+//        }
+//
+//        handler.removeCallbacks(checkRunnable)
+//        handler.removeCallbacks(gpsRunnable)
+//        httpPostRunnable?.let { handler.removeCallbacks(it) }
+//        watchdogRunnable?.let { handler.removeCallbacks(it) }
+//        heartbeatRunnable?.let { handler.removeCallbacks(it) }
+//        bulkCaptureRunnable?.let { handler.removeCallbacks(it) }
+//        bulkPostRunnable?.let { handler.removeCallbacks(it) }
+//
+//        // ✅ FIX: Flush + persist remaining bulk buffer before stopping
+//        val remaining = synchronized(bulkLocationBuffer) {
+//            if (bulkLocationBuffer.isNotEmpty()) {
+//                val copy = bulkLocationBuffer.toList()
+//                bulkLocationBuffer.clear()
+//                copy
+//            } else emptyList()
+//        }
+//        if (remaining.isNotEmpty()) {
+//            if (isNetworkAvailable()) {
+//                postBulkLocationToApi()
+//            } else {
+//                saveOfflineBuffer(remaining)
+//                android.util.Log.d("LocationMonitor",
+//                    "💾 [BULK] Saved ${remaining.size} records offline (critical event, no network)")
+//            }
+//        }
+//
+//        disconnectMqtt()
+//        try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
+//        stopSelf()
+//    }
+//
+//    // ══════════════════════════════════════════════════════════════════════════
+//    // ✅ BREAK END NOTIFICATION
+//    // Foreground, background, aur app killed — teeno cases mein kaam karta hai.
+//    // Flutter har 10 sec mein latest break schedule SharedPreferences mein save
+//    // karta hai (flutter.break_scheduled_end). Yeh function har 2 sec mein us
+//    // latest value ko read karke check karta hai — koi other logic change nahi.
+//    // ══════════════════════════════════════════════════════════════════════════
+//
+//    private fun checkBreakEndNotification(prefs: android.content.SharedPreferences) {
+//        try {
+//            // ✅ FIX: Sirf tab fire karo jab user ACTUALLY break par ho
+//            // Covers: not clocked in, weekly off, aur clocked in but not on break
+//            val isOnBreak = prefs.getBoolean("flutter.break_is_on_break", false)
+//            if (!isOnBreak) {
+//                android.util.Log.d("LocationMonitor", "⏭ [BREAK END] Skipped — user is not on break")
+//                return
+//            }
+//
+//            val breakEndStr = prefString(prefs, "flutter.break_scheduled_end")
+//            if (breakEndStr.isEmpty()) return
+//            if (breakEndStr == lastBreakEndNotifiedTime) return
+//
+//            val parsed = parseTimeTo24h(breakEndStr) ?: return
+//            val cal    = java.util.Calendar.getInstance()
+//            val nowMins = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
+//            val endMins = parsed.first * 60 + parsed.second
+//            val diff    = nowMins - endMins  // positive = past break end
+//
+//            // Fire within 0-5 minute window after break end
+//            if (diff in 0..5) {
+//                lastBreakEndNotifiedTime = breakEndStr
+//                showBreakEndNotification(breakEndStr)
+//                android.util.Log.d("LocationMonitor",
+//                    "⏰ [BREAK END] Notification sent — breakEnd=$breakEndStr diff=${diff}min")
+//            }
+//        } catch (e: Exception) {
+//            android.util.Log.e("LocationMonitor",
+//                "❌ [BREAK END] checkBreakEndNotification error: ${e.message}")
+//        }
+//    }
+//
+//    private fun showBreakEndNotification(breakEndTime: String) {
+//        try {
+//            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+//                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+//            }
+//            val pendingIntent = PendingIntent.getActivity(
+//                this, 0, launchIntent,
+//                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+//            )
+//            val notification = NotificationCompat.Builder(this, BREAK_END_CHANNEL_ID)
+//                .setContentTitle("⏰ Break Time Over")
+//                .setContentText("Your break has ended — please return to work!")
+//                .setSmallIcon(android.R.drawable.ic_dialog_info)
+//                .setPriority(NotificationCompat.PRIORITY_HIGH)
+//                .setCategory(NotificationCompat.CATEGORY_REMINDER)
+//                .setAutoCancel(true)
+//                .setContentIntent(pendingIntent)
+//                .setVibrate(longArrayOf(0, 500, 200, 500))
+//                .setLights(android.graphics.Color.YELLOW, 1000, 500)
+//                .build()
+//            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+//                .notify(BREAK_END_NOTIF_ID, notification)
+//            android.util.Log.d("LocationMonitor",
+//                "🔔 [BREAK END] Notification shown for end time: $breakEndTime")
+//            // ── POST notification log to API (offline-safe) ───────────────
+//            NotificationApiLogger.log(this, "⏰ Break Time Over")
+//        } catch (e: Exception) {
+//            android.util.Log.e("LocationMonitor",
+//                "❌ [BREAK END] showBreakEndNotification error: ${e.message}")
+//        }
+//    }
+//
+//    // ══════════════════════════════════════════════════════════════════════════
+//    // ✅ NEW: SELFIE REMINDER NOTIFICATION
+//    // Shift end ke baad "Your shift has ended. Please take your selfie." notification
+//    // Foreground, background, aur app-killed — teeno cases mein kaam karta hai.
+//    // Immediate notification yahan se show hoti hai (Kotlin — app-killed bhi cover hota hai).
+//    // Grace window ke baad notifications Flutter ka zonedSchedule handle karta hai.
+//    // ══════════════════════════════════════════════════════════════════════════
+//
+//    private val SELFIE_CHANNEL_ID  = "selfie_grace_notif_channel"   // Flutter wala hi channel
+//    private val SELFIE_NOTIF_BASE  = 8100   // base notification ID — avoids collision
+//
+//    private fun showSelfieReminderNotification() {
+//        try {
+//            // Ensure channel exists (Flutter wala channel reuse karte hain — same ID)
+//            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+//                val channel = NotificationChannel(
+//                    SELFIE_CHANNEL_ID,
+//                    "Selfie Grace Notifications",
+//                    NotificationManager.IMPORTANCE_HIGH
+//                ).apply {
+//                    description      = "Reminders to take attendance selfie after shift end"
+//                    enableVibration(true)
+//                    enableLights(true)
+//                    lightColor       = android.graphics.Color.CYAN
+//                }
+//                (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+//                    .createNotificationChannel(channel)
+//            }
+//
+//            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+//                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+//            }
+//            val pendingIntent = PendingIntent.getActivity(
+//                this, SELFIE_NOTIF_BASE, launchIntent,
+//                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+//            )
+//
+//            val notification = NotificationCompat.Builder(this, SELFIE_CHANNEL_ID)
+//                .setContentTitle("Attendance Selfie")
+//                .setContentText("Your shift has ended. Please take your selfie.")
+//                .setStyle(NotificationCompat.BigTextStyle()
+//                    .bigText("Your shift has ended. Please take your selfie."))
+//                .setSmallIcon(android.R.drawable.ic_menu_camera)
+//                .setPriority(NotificationCompat.PRIORITY_HIGH)
+//                .setCategory(NotificationCompat.CATEGORY_REMINDER)
+//                .setAutoCancel(true)
+//                .setContentIntent(pendingIntent)
+//                .setVibrate(longArrayOf(0, 500, 200, 500))
+//                .build()
+//
+//            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+//                .notify(SELFIE_NOTIF_BASE, notification)
+//
+//            android.util.Log.d("LocationMonitor",
+//                "📸 [SELFIE NOTIF] Immediate selfie reminder shown at ${SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())}")
+//            // ── POST notification log to API (offline-safe) ───────────────
+//            NotificationApiLogger.log(this, "Attendance Selfie")
+//        } catch (e: Exception) {
+//            android.util.Log.e("LocationMonitor", "❌ [SELFIE NOTIF] showSelfieReminderNotification error: ${e.message}")
+//        }
+//    }
+//
+//    /// Logs policy ke baad further notifications — Flutter ka zonedSchedule cover karta hai grace window
+//    private fun scheduleSelfieGraceNotifications(prefs: android.content.SharedPreferences) {
+//        val notifCount   = prefs.getInt("flutter.selfie_policy_notif_count", 0)
+//        val graceMinutes = prefs.getInt("flutter.selfie_policy_grace_min",  0)
+//        android.util.Log.d("LocationMonitor",
+//            "📸 [SELFIE NOTIF] Policy → notifCount=$notifCount  graceMin=$graceMinutes — " +
+//                    "grace-window notifications will be handled by Flutter zonedSchedule on next app open")
+//    }
+//
+//    // ══════════════════════════════════════════════════════════════════════════
+//    // LOCATION UPDATES (unchanged)
+//    // ══════════════════════════════════════════════════════════════════════════
+//
+//    private fun startLocationUpdates() {
+//        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+//            != PackageManager.PERMISSION_GRANTED &&
+//            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
+//            != PackageManager.PERMISSION_GRANTED
+//        ) return
+//
+//        try {
+//            if (locationListener != null) return
+//            locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+//
+//            locationListener = object : LocationListener {
+//                override fun onLocationChanged(loc: Location) {
+//                    // ✅ FIX: Invalid coordinate se lastLat/lastLon update mat karo
+//                    // Double.MIN_VALUE (5e-324) — ColorOS GPS suspend pe aata hai
+//                    val locLat = loc.latitude
+//                    val locLng = loc.longitude
+//                    if (locLat !in -90.0..90.0 || locLng !in -180.0..180.0 ||
+//                        (locLat > -0.001 && locLat < 0.001 && locLng > -0.001 && locLng < 0.001)) {
+//                        android.util.Log.w("LocationMonitor",
+//                            "⚠️ [GPS] Invalid coordinate ignored: lat=$locLat lng=$locLng")
+//                        lastAccuracy = loc.accuracy // accuracy update karo dead zone detect ke liye
+//                        return
+//                    }
+//                    lastLat      = locLat
+//                    lastLon      = locLng
+//                    lastAccuracy = loc.accuracy
+//                    lastSpeed    = loc.speed
+//                    lastHeartbeatTime = System.currentTimeMillis()
+//                    // ✅ Dead zone tracking — only usable (within accuracy threshold) fixes reset the clock
+//                    if (loc.accuracy in 0f..MIN_ACCURACY_METERS) lastGoodFixTime = lastHeartbeatTime
+//                    android.util.Log.d("LocationMonitor",
+//                        "📍 [GPS] lat=$lastLat lng=$lastLon acc=${lastAccuracy}m spd=${lastSpeed}")
+//                    if (loc.isFromMockProvider) checkAndReportFakeGps(loc)
+//                }
+//                @Deprecated("Deprecated")
+//                override fun onStatusChanged(p: String?, s: Int, e: Bundle?) {}
+//                override fun onProviderEnabled(p: String) {}
+//                override fun onProviderDisabled(p: String) {}
+//            }
+//
+//            listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).forEach { p ->
+//                try {
+//                    if (locationManager?.isProviderEnabled(p) == true) {
+//                        locationManager?.requestLocationUpdates(
+//                            p, 1000L, 0f, locationListener!!, Looper.getMainLooper()
+//                        )
+//                    }
+//                } catch (_: Exception) {}
+//            }
+//
+//            // ── GPS Fraud Detection: register GnssStatus.Callback (API 24+) ──
+//            // Counts satellites used in the latest fix and stores in lastSatelliteCount.
+//            // Flutter reads this via the 'getSatelliteCount' MethodChannel call.
+//            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+//                try {
+//                    gnssStatusCallback = object : GnssStatus.Callback() {
+//                        override fun onSatelliteStatusChanged(status: GnssStatus) {
+//                            var usedCount = 0
+//                            for (i in 0 until status.satelliteCount) {
+//                                if (status.usedInFix(i)) usedCount++
+//                            }
+//                            // ✅ FIX: Only overwrite when at least one satellite contributed
+//                            // to the fix. GnssStatus fires continuously — between fix cycles
+//                            // every satellite temporarily shows usedInFix=false even when 44
+//                            // are visible, which would reset lastSatelliteCount to 0 and
+//                            // incorrectly trigger the SUSPICIOUS fraud rule on next clock-in.
+//                            if (usedCount > 0) {
+//                                lastSatelliteCount = usedCount
+//                                android.util.Log.d("LocationMonitor",
+//                                    "🛰️ [GPS FRAUD] GnssStatus update: " +
+//                                            "total=${status.satelliteCount} usedInFix=$usedCount")
+//                            }
+//                        }
+//                    }
+//                    locationManager?.registerGnssStatusCallback(
+//                        gnssStatusCallback!!, Handler(Looper.getMainLooper())
+//                    )
+//                    android.util.Log.d("LocationMonitor",
+//                        "✅ [GPS FRAUD] GnssStatus.Callback registered")
+//                } catch (e: Exception) {
+//                    android.util.Log.e("LocationMonitor",
+//                        "❌ [GPS FRAUD] GnssStatus.Callback registration error: ${e.message}")
+//                }
+//            } else {
+//                android.util.Log.d("LocationMonitor",
+//                    "ℹ️ [GPS FRAUD] GnssStatus requires API 24+ — skipped on this device (API ${Build.VERSION.SDK_INT})")
+//            }
+//        } catch (_: Exception) {}
+//    }
+//
+//    private fun stopLocationUpdates() {
+//        try { locationListener?.let { locationManager?.removeUpdates(it) } } catch (_: Exception) {}
+//        locationListener = null
+//
+//        // ── GPS Fraud Detection: unregister GnssStatus.Callback ──────────
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+//            try {
+//                gnssStatusCallback?.let {
+//                    locationManager?.unregisterGnssStatusCallback(it)
+//                    android.util.Log.d("LocationMonitor",
+//                        "🛰️ [GPS FRAUD] GnssStatus.Callback unregistered")
+//                }
+//            } catch (e: Exception) {
+//                android.util.Log.e("LocationMonitor",
+//                    "❌ [GPS FRAUD] GnssStatus.Callback unregister error: ${e.message}")
+//            }
+//        }
+//        gnssStatusCallback = null
+//    }
+//
+//    // ══════════════════════════════════════════════════════════════════════════
+//    // MQTT (unchanged)
+//    // ══════════════════════════════════════════════════════════════════════════
+//
+//    private fun connectMqtt() {
+//        if (isMqttConnected || isConnecting || !isNetworkAvailable()) return
+//        isConnecting = true
+//
+//        handler.postDelayed({
+//            if (isConnecting && !isMqttConnected && !isDestroyed) {
+//                isConnecting = false
+//                safeCloseClient()
+//            }
+//        }, 15_000L)
+//
+//        try {
+//            val clientId = "android_bg_${System.currentTimeMillis()}"
+//            android.util.Log.d("LocationMonitor",
+//                "Connecting tcp://$MQTT_HOST:$MQTT_PORT id=$clientId topic=$mqttTopic")
+//
+//            safeCloseClient()
+//
+//            mqttClient = MqttAsyncClient(
+//                "tcp://$MQTT_HOST:$MQTT_PORT", clientId, MemoryPersistence()
+//            )
+//
+//            mqttClient?.setCallback(object : MqttCallback {
+//                override fun connectionLost(cause: Throwable?) {
+//                    isMqttConnected = false
+//                    isConnecting    = false
+//                    android.util.Log.d("LocationMonitor", "Connection lost: ${cause?.message}")
+//                }
+//                override fun messageArrived(topic: String?, message: MqttMessage?) {}
+//                override fun deliveryComplete(token: IMqttDeliveryToken?) {}
+//            })
+//
+//            val opts = MqttConnectOptions().apply {
+//                isCleanSession       = true
+//                keepAliveInterval    = 30
+//                connectionTimeout    = 15
+//                isAutomaticReconnect = false
+//            }
+//
+//            mqttClient?.connect(opts, null, object : IMqttActionListener {
+//                override fun onSuccess(asyncActionToken: IMqttToken?) {
+//                    isMqttConnected   = true
+//                    isConnecting      = false
+//                    lastHeartbeatTime = System.currentTimeMillis()
+//                    android.util.Log.d("LocationMonitor", "✅ MQTT Connected! topic=$mqttTopic")
+//                    updateNotification("Online | GPS → $mqttTopic", false)
+//                }
+//                override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
+//                    isMqttConnected = false
+//                    isConnecting    = false
+//                    android.util.Log.d("LocationMonitor", "Connect failed: ${exception?.message}")
+//                }
+//            })
+//        } catch (e: Exception) {
+//            isMqttConnected = false
+//            isConnecting    = false
+//        }
+//    }
+//
+//    private fun publishLocationViaMqtt() {
+//        if (!isMqttConnected || (lastLat == 0.0 && lastLon == 0.0)) return
+//        try {
+//            val payload = buildPayload()
+//            val msg     = MqttMessage(payload.toByteArray(Charsets.UTF_8))
+//            msg.qos     = 1
+//            mqttClient?.publish(mqttTopic, msg)
+//            lastHeartbeatTime = System.currentTimeMillis()
+//        } catch (e: Exception) {
+//            isMqttConnected = false
+//        }
+//    }
+//
+//    private fun buildPayload(): String {
+//        val ts = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.getDefault()).format(Date())
+//        return JSONObject().apply {
+//            put("device_id",    deviceId)
+//            put("company_code", companyCode)
+//            put("emp_name",     empName)
+//            put("dept_id",      depId)
+//            put("emp_image",    empImage)
+//            put("track_id",     System.currentTimeMillis())
+//            put("lat",          lastLat)
+//            put("lon",          lastLon)
+//            put("accuracy",     lastAccuracy.toDouble())
+//            put("speed",        lastSpeed.toDouble())
+//            put("timestamp",    ts)
+//            put("source",       "android_background_service")
+//        }.toString()
+//    }
+//
+//    private fun postLocationToApi() {
+//        try {
+//            val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+//            val empIdKeys = listOf(
+//                "flutter.emp_id", "emp_id", "flutter.empId", "empId",
+//                "flutter.user_id", "user_id", "flutter.userId", "userId"
+//            )
+//            var empId = ""
+//            for (key in empIdKeys) {
+//                val value = prefString(prefs, key)
+//                if (value.isNotEmpty()) { empId = value; break }
+//            }
+//            if (empId.isEmpty()) {
+//                try {
+//                    for ((key, raw) in prefs.all) {
+//                        if (key.contains("emp_id", true) || key.contains("empId", true) ||
+//                            key.contains("user_id", true) || key.contains("userId", true)) {
+//                            val candidate = raw?.toString()?.trim() ?: ""
+//                            if (candidate.isNotEmpty() && candidate != "null") {
+//                                empId = candidate; break
+//                            }
+//                        }
+//                    }
+//                } catch (_: Exception) {}
+//            }
+//            if (empId.isEmpty()) return
+//
+//            var lat = lastLat; var lon = lastLon
+//            if (lat == 0.0 && lon == 0.0) {
+//                try {
+//                    val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+//                    for (p in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)) {
+//                        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+//                            val loc = lm.getLastKnownLocation(p)
+//                            if (loc != null) { lat = loc.latitude; lon = loc.longitude; break }
+//                        }
+//                    }
+//                } catch (_: Exception) {}
+//            }
+//            if (lat == 0.0 && lon == 0.0) return
+//
+//            val name    = empName.ifEmpty { prefString(prefs, "flutter.emp_name").ifEmpty { prefString(prefs, "emp_name") } }
+//            val company = companyCode.ifEmpty { prefString(prefs, "flutter.company_code").ifEmpty { prefString(prefs, "company_code") } }
+//
+//            val snapLat = lat; val snapLon = lon
+//            val snapEmp = empId; val snapName = name; val snapCo = company
+//
+//            Thread {
+//                try {
+//                    val bm = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+//                    val battery = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).coerceIn(0, 100)
+//
+//                    var address = ""
+//                    try {
+//                        @Suppress("DEPRECATION")
+//                        val results = Geocoder(applicationContext, JavaLocale.getDefault()).getFromLocation(snapLat, snapLon, 1)
+//                        if (!results.isNullOrEmpty()) {
+//                            val a = results[0]
+//                            address = listOfNotNull(a.thoroughfare, a.subLocality, a.locality, a.adminArea, a.countryName)
+//                                .filter { it.isNotEmpty() }.joinToString(", ")
+//                        }
+//                    } catch (_: Exception) {}
+//
+//                    val trackDate = SimpleDateFormat("dd-MM-yyyy HH:mm:ss", Locale.getDefault()).format(Date())
+//                    val json = JSONObject().apply {
+//                        put("lat", snapLat); put("lng", snapLon); put("emp_id", snapEmp)
+//                        put("emp_name", snapName); put("company_code", snapCo)
+//                        put("track_date", trackDate); put("battery_percent", battery); put("address", address)
+//                    }.toString()
+//
+//                    val conn = (URL(HTTP_POST_URL).openConnection() as HttpURLConnection).apply {
+//                        requestMethod = "POST"
+//                        setRequestProperty("Content-Type", "application/json")
+//                        setRequestProperty("Accept", "application/json")
+//                        doOutput = true; connectTimeout = 15000; readTimeout = 15000
+//                    }
+//                    OutputStreamWriter(conn.outputStream).use { it.write(json) }
+//                    conn.responseCode
+//                    conn.disconnect()
+//                } catch (_: Exception) {}
+//            }.start()
+//        } catch (_: Exception) {}
+//    }
+//
+//    private fun checkAndReportFakeGps(loc: Location) {
+//        val now = System.currentTimeMillis()
+//        if (now - lastFakeGpsReportTime < FAKE_GPS_COOLDOWN_MS) return
+//        lastFakeGpsReportTime = now
+//
+//        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+//        val empId = prefString(prefs, "emp_id")
+//        val detectedAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(Date())
+//        val json = JSONObject().apply {
+//            put("emp_id", empId); put("emp_name", empName); put("company_code", companyCode)
+//            put("latitude", loc.latitude); put("longitude", loc.longitude); put("detected_at", detectedAt)
+//        }.toString()
+//
+//        Thread {
+//            try {
+//                val conn = (URL(FAKE_GPS_API).openConnection() as HttpURLConnection).apply {
+//                    requestMethod = "POST"; setRequestProperty("Content-Type", "application/json")
+//                    doOutput = true; connectTimeout = 10_000; readTimeout = 10_000
+//                }
+//                OutputStreamWriter(conn.outputStream).use { it.write(json) }
+//                conn.responseCode; conn.disconnect()
+//            } catch (_: Exception) {}
+//        }.start()
+//    }
+//
+//    /**
+//     * Reports a sustained GPS dead zone to the server (company_code + emp_name included).
+//     * Cooldown-gated so it fires once on entry, then re-fires every DEAD_ZONE_REPORT_COOLDOWN_MS
+//     * while the dead zone persists — duration_seconds keeps growing each report.
+//     * ✅ Offline-safe: if there's no network, or the POST fails, the event is saved to disk
+//     * and auto-synced later via flushDeadZoneOffline() when connectivity returns.
+//     */
+//    private fun checkAndReportDeadZone(durationMs: Long) {
+//        val now = System.currentTimeMillis()
+//        if (now - lastDeadZoneReportTime < DEAD_ZONE_REPORT_COOLDOWN_MS) return
+//        lastDeadZoneReportTime = now
+//
+//        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+//        val empId = prefString(prefs, "emp_id")
+//        val detectedAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(Date())
+//        val record = JSONObject().apply {
+//            put("emp_id", empId); put("emp_name", empName); put("company_code", companyCode)
+//            put("last_lat", lastLat); put("last_lon", lastLon)
+//            put("duration_seconds", durationMs / 1000)
+//            put("gps_unavailable", true)
+//            put("detected_at", detectedAt)
+//        }
+//
+//        android.util.Log.w("LocationMonitor",
+//            "⚠️ [DEAD ZONE] No usable GPS fix for ${durationMs / 1000}s — reporting to server")
+//
+//        if (!isNetworkAvailable()) {
+//            saveDeadZoneOffline(record)
+//            android.util.Log.d("LocationMonitor",
+//                "💾 [DEAD ZONE OFFLINE] No network — saved event to disk")
+//            return
+//        }
+//
+//        Thread {
+//            try {
+//                val conn = (URL(DEAD_ZONE_API).openConnection() as HttpURLConnection).apply {
+//                    requestMethod = "POST"; setRequestProperty("Content-Type", "application/json")
+//                    doOutput = true; connectTimeout = 10_000; readTimeout = 10_000
+//                }
+//                OutputStreamWriter(conn.outputStream).use { it.write(record.toString()) }
+//                val code = conn.responseCode
+//                conn.disconnect()
+//                if (code !in 200..299) {
+//                    saveDeadZoneOffline(record)
+//                    android.util.Log.w("LocationMonitor",
+//                        "⚠️ [DEAD ZONE OFFLINE] Server $code — saved event to disk")
+//                }
+//            } catch (_: Exception) {
+//                saveDeadZoneOffline(record)
+//                android.util.Log.w("LocationMonitor",
+//                    "⚠️ [DEAD ZONE OFFLINE] POST failed — saved event to disk")
+//            }
+//        }.start()
+//    }
+//
+//    /**
+//     * Appends one dead-zone event to disk (JSON array file). Safe to call from any thread
+//     * that already caught its own exceptions — this function catches its own too.
+//     */
+//    private fun saveDeadZoneOffline(record: JSONObject) {
+//        try {
+//            val file  = File(filesDir, DEAD_ZONE_OFFLINE_FILE)
+//            val array = if (file.exists() && file.readText().trim().isNotEmpty())
+//                JSONArray(file.readText()) else JSONArray()
+//            array.put(record)
+//            file.writeText(array.toString())
+//        } catch (e: Exception) {
+//            android.util.Log.e("LocationMonitor", "❌ [DEAD ZONE OFFLINE] save error: ${e.message}")
+//        }
+//    }
+//
+//    /**
+//     * Called when connectivity returns — resends every saved dead-zone event.
+//     * On success the file is cleared; on failure records are re-saved for the next attempt.
+//     */
+//    private fun flushDeadZoneOffline() {
+//        Thread {
+//            try {
+//                val file = File(filesDir, DEAD_ZONE_OFFLINE_FILE)
+//                if (!file.exists()) return@Thread
+//                val content = file.readText().trim()
+//                if (content.isEmpty()) { file.delete(); return@Thread }
+//                val array = JSONArray(content)
+//                if (array.length() == 0) { file.delete(); return@Thread }
+//                file.delete()   // clear now — failed sends re-append below
+//
+//                val stillFailed = mutableListOf<JSONObject>()
+//                for (i in 0 until array.length()) {
+//                    val record = array.getJSONObject(i)
+//                    try {
+//                        val conn = (URL(DEAD_ZONE_API).openConnection() as HttpURLConnection).apply {
+//                            requestMethod = "POST"; setRequestProperty("Content-Type", "application/json")
+//                            doOutput = true; connectTimeout = 10_000; readTimeout = 10_000
+//                        }
+//                        OutputStreamWriter(conn.outputStream).use { it.write(record.toString()) }
+//                        val code = conn.responseCode
+//                        conn.disconnect()
+//                        if (code !in 200..299) stillFailed.add(record)
+//                    } catch (_: Exception) {
+//                        stillFailed.add(record)
+//                    }
+//                }
+//
+//                if (stillFailed.isNotEmpty()) {
+//                    val retryArray = JSONArray()
+//                    stillFailed.forEach { retryArray.put(it) }
+//                    file.writeText(retryArray.toString())
+//                    android.util.Log.w("LocationMonitor",
+//                        "⚠️ [DEAD ZONE OFFLINE] ${stillFailed.size} events still failed — kept on disk")
+//                } else {
+//                    android.util.Log.d("LocationMonitor",
+//                        "✅ [DEAD ZONE OFFLINE] Synced ${array.length()} saved event(s)")
+//                }
+//            } catch (e: Exception) {
+//                android.util.Log.e("LocationMonitor", "❌ [DEAD ZONE OFFLINE] flush error: ${e.message}")
+//            }
+//        }.start()
+//    }
+//
+//    private fun disconnectMqtt() {
+//        try { if (mqttClient?.isConnected == true) mqttClient?.disconnect() } catch (_: Exception) {}
+//        isMqttConnected = false
+//        safeCloseClient()
+//    }
+//
+//    private fun safeCloseClient() {
+//        try { mqttClient?.close() } catch (_: Exception) {}
+//        mqttClient = null
+//    }
+//
+//    private fun isNetworkAvailable(): Boolean {
+//        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+//        val nw = cm.activeNetwork ?: return false
+//        val nc = cm.getNetworkCapabilities(nw) ?: return false
+//        return nc.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+//    }
+//
+//    private fun registerNetworkCallback() {
+//        try {
+//            connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+//            val request = NetworkRequest.Builder()
+//                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+//                .build()
+//            networkCallback = object : ConnectivityManager.NetworkCallback() {
+//                override fun onAvailable(network: Network) {
+//                    android.util.Log.d("LocationMonitor", "✅ Network available — reconnecting MQTT + flushing offline buffer")
+//                    handler.post {
+//                        if (!isMqttConnected && !isConnecting && !isDestroyed) {
+//                            connectMqtt()
+//                        }
+//                        // ✅ FIX: Trigger bulk post when internet comes back
+//                        if (!isDestroyed) {
+//                            postBulkLocationToApi()
+//                            flushDeadZoneOffline()
+//                        }
+//                    }
+//                }
+//                override fun onLost(network: Network) {
+//                    isMqttConnected = false
+//                    isConnecting = false
+//                    android.util.Log.d("LocationMonitor", "📴 Network lost — future bulk points will be saved to disk")
+//                }
+//            }
+//            connectivityManager?.registerNetworkCallback(request, networkCallback!!)
+//        } catch (_: Exception) {}
+//    }
+//
+//    private fun unregisterNetworkCallback() {
+//        try { networkCallback?.let { connectivityManager?.unregisterNetworkCallback(it) } } catch (_: Exception) {}
+//        networkCallback = null
+//    }
+//
+//    private fun registerAppOpsListener() {
+//        try {
+//            appOpsManager = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+//            val listener = AppOpsManager.OnOpChangedListener { _, pkg ->
+//                if (pkg == packageName) handler.post { checkLocationAndPermission() }
+//            }
+//            appOpsManager?.startWatchingMode(AppOpsManager.OPSTR_FINE_LOCATION, packageName, listener)
+//            appOpsCallback = listener
+//        } catch (_: Exception) {}
+//    }
+//
+//    private fun unregisterAppOpsListener() {
+//        try { appOpsCallback?.let { appOpsManager?.stopWatchingMode(it) }; appOpsCallback = null } catch (_: Exception) {}
+//    }
+//
+//    private fun registerReceivers() {
+//        // ✅ FIX: Wrapped in try-catch — Android 14+ (API 34) requires RECEIVER_EXPORTED for
+//        // system broadcasts. Without this, the service crashes in onCreate() and ALL background
+//        // work stops (no alarms, no auto-clockout detection, no critical event on reopen).
+//        try {
+//            locationModeReceiver = object : BroadcastReceiver() {
+//                override fun onReceive(context: Context?, intent: Intent?) {
+//                    if (intent?.action == LocationManager.MODE_CHANGED_ACTION) {
+//                        handler.post { checkLocationAndPermission() }
+//                    }
+//                }
+//            }
+//            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+//                // Android 14+: system broadcasts require RECEIVER_EXPORTED flag
+//                registerReceiver(
+//                    locationModeReceiver,
+//                    IntentFilter(LocationManager.MODE_CHANGED_ACTION),
+//                    Context.RECEIVER_EXPORTED
+//                )
+//            } else {
+//                registerReceiver(locationModeReceiver, IntentFilter(LocationManager.MODE_CHANGED_ACTION))
+//            }
+//        } catch (e: Exception) {
+//            android.util.Log.e("LocationMonitor", "registerReceivers error: ${e.message}")
+//        }
+//    }
+//
+//    private fun registerShutdownReceiver() {
+//        if (shutdownReceiver != null) return
+//
+//        shutdownReceiver = object : BroadcastReceiver() {
+//            override fun onReceive(context: Context, intent: Intent) {
+//                if (intent.action == Intent.ACTION_SHUTDOWN) {
+//                    android.util.Log.d("LocationMonitor", "🔻 ACTION_SHUTDOWN received — saving exact time")
+//                    saveShutdownTimestamp(context)
+//                }
+//            }
+//        }
+//
+//        val filter = IntentFilter(Intent.ACTION_SHUTDOWN)
+//        try {
+//            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+//                registerReceiver(shutdownReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+//            } else {
+//                registerReceiver(shutdownReceiver, filter)
+//            }
+//            android.util.Log.d("LocationMonitor", "✅ Shutdown receiver registered dynamically")
+//        } catch (e: Exception) {
+//            android.util.Log.e("LocationMonitor", "❌ Shutdown receiver register failed: ${e.message}")
+//        }
+//    }
+//
+//    // ✅ THIS FUNCTION USES commit() — SYNCHRONOUS WRITE
+//    private fun saveShutdownTimestamp(context: Context) {
+//        try {
+//            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+//            val exactTime = System.currentTimeMillis()
+//            val saved = prefs.edit()
+//                .putLong(KEY_SHUTDOWN_TIME, exactTime)
+//                .commit()  // ✅ SYNCHRONOUS — GUARANTEED WRITE!
+//
+//            android.util.Log.d("LocationMonitor",
+//                "💾 Shutdown time saved = $exactTime | commit success = $saved")
+//        } catch (e: Exception) {
+//            android.util.Log.e("LocationMonitor", "❌ Failed to save shutdown time: ${e.message}")
+//        }
+//    }
+//
+//    private fun unregisterShutdownReceiver() {
+//        shutdownReceiver?.let {
+//            try {
+//                unregisterReceiver(it)
+//                android.util.Log.d("LocationMonitor", "🛑 Shutdown receiver unregistered")
+//            } catch (e: Exception) {
+//                android.util.Log.e("LocationMonitor", "⚠️ Shutdown receiver unregister failed: ${e.message}")
+//            }
+//        }
+//        shutdownReceiver = null
+//    }
+//
+//
+//
+//
+//    // ══════════════════════════════════════════════════════════════════════════
+//    // NOTIFICATIONS (unchanged)
+//    // ══════════════════════════════════════════════════════════════════════════
+//
+//    private fun createNotificationChannel() {
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+//            val serviceChannel = NotificationChannel(CHANNEL_ID, "Location Monitor Service", NotificationManager.IMPORTANCE_LOW)
+//                .apply { description = "Monitors location + MQTT GPS publishing" }
+//            val urgentChannel = NotificationChannel(URGENT_CHANNEL_ID, "URGENT Auto Clockout", NotificationManager.IMPORTANCE_HIGH)
+//                .apply { description = "Critical auto clockout notifications"; enableVibration(true); enableLights(true); lightColor = android.graphics.Color.RED }
+//
+//            // ✅ NEW: Dedicated Shift End channel — device alarm sound + max vibration
+//            // ✅ FIX: getDefaultUri can return null on devices with no alarm sound set;
+//            // null URI causes setSound(null,...) → silent channel → no alarm in background
+//            val alarmSoundUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM)
+//                ?: android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_RINGTONE)
+//                ?: android.net.Uri.parse("content://settings/system/alarm_alert")
+//            val alarmAudioAttr = android.media.AudioAttributes.Builder()
+//                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+//                .setUsage(android.media.AudioAttributes.USAGE_ALARM)
+//                .build()
+//            val shiftEndChannel = NotificationChannel(SHIFT_END_CHANNEL_ID, "Shift End Alarm", NotificationManager.IMPORTANCE_HIGH)
+//                .apply {
+//                    description = "Full device alarm for shift end auto clockout"
+//                    enableVibration(true)
+//                    vibrationPattern = longArrayOf(0, 1000, 200, 1000, 200, 1000)
+//                    setSound(alarmSoundUri, alarmAudioAttr)
+//                    enableLights(true)
+//                    lightColor = android.graphics.Color.RED
+//                }
+//
+//            val manager = getSystemService(NotificationManager::class.java)
+//            manager.createNotificationChannel(serviceChannel)
+//            manager.createNotificationChannel(urgentChannel)
+//            manager.createNotificationChannel(shiftEndChannel)    // ✅ NEW channel registered
+//
+//            // ✅ Break end notification channel
+//            val breakEndChannel = NotificationChannel(BREAK_END_CHANNEL_ID, "Break Notifications", NotificationManager.IMPORTANCE_HIGH)
+//                .apply {
+//                    description = "Notifies when your scheduled break time is over"
+//                    enableVibration(true)
+//                    vibrationPattern = longArrayOf(0, 500, 200, 500)
+//                    enableLights(true)
+//                }
+//            manager.createNotificationChannel(breakEndChannel)
+//        }
+//    }
+//
+//    private fun buildNotification(text: String): Notification {
+//        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+//        val pendingIntent = PendingIntent.getActivity(this, 0, launchIntent, PendingIntent.FLAG_IMMUTABLE)
+//        return NotificationCompat.Builder(this, CHANNEL_ID)
+//            .setContentTitle("Attendance Active").setContentText(text)
+//            .setSmallIcon(android.R.drawable.ic_dialog_info)
+//            .setContentIntent(pendingIntent).setOngoing(true).setSilent(true).build()
+//    }
+//
+//    private fun updateNotification(text: String, isAlert: Boolean) {
+//        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+//        val pendingIntent = PendingIntent.getActivity(this, 0, launchIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+//        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+//            .setContentTitle(if (isAlert) "⚠️ ATTENTION REQUIRED" else "Attendance Active")
+//            .setContentText(text).setSmallIcon(android.R.drawable.ic_dialog_info)
+//            .setContentIntent(pendingIntent).setOngoing(true).setSilent(!isAlert)
+//            .apply { if (isAlert) { setColor(android.graphics.Color.RED); setLights(android.graphics.Color.RED, 1000, 500) } }
+//            .build()
+//        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification)
+//    }
+//
+//    private fun showCriticalNotification(reason: String, time: String) {
+//        // ✅ NEW: Shift End uses dedicated alarm channel; all others use urgent channel
+//        val isShiftEnd = (reason == "System Clockout - Shift End")
+//        val channelId  = if (isShiftEnd) SHIFT_END_CHANNEL_ID else URGENT_CHANNEL_ID
+//
+//        val title = when (reason) {
+//            "System Clockout - Location Off"       -> "⚠️ LOCATION TURNED OFF"
+//            "System Clockout - Permission Revoked" -> "⚠️ PERMISSION REVOKED"
+//            "System Clockout - Midnight Time"      -> "⚠️ MIDNIGHT AUTO CLOCKOUT"
+//            "System Clockout - Shift End"          -> "⏰ SHIFT END AUTO CLOCKOUT"
+//            "System Clockout - Auto Time Off"      -> "⚠️ AUTOMATIC TIME DISABLED"  // ✅ NEW
+//            else                                   -> "⚠️ AUTO CLOCKOUT"
+//        }
+//        val message = "Time: $time\nApp was closed - Event captured. Open app to sync."
+//        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+//            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+//        }
+//        val pendingIntent = PendingIntent.getActivity(this, 0, launchIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+//        val notification = NotificationCompat.Builder(this, channelId)
+//            .setContentTitle(title).setContentText(message).setSmallIcon(android.R.drawable.ic_dialog_alert)
+//            .setPriority(NotificationCompat.PRIORITY_MAX).setCategory(NotificationCompat.CATEGORY_ALARM)
+//            .setAutoCancel(true).setContentIntent(pendingIntent)
+//            .setVibrate(longArrayOf(0, 1000, 500, 1000)).setLights(android.graphics.Color.RED, 1000, 500)
+//            .build()
+//        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(9999, notification)
+//
+//        // ── POST notification log to API (offline-safe) ───────────────────
+//        NotificationApiLogger.log(this, title)
+//
+//        // ✅ NEW: Shift End — vibrate at MAX amplitude for exactly 60 seconds
+//        if (isShiftEnd) {
+//            triggerShiftEndVibration()
+//        }
+//    }
+//
+//    // ✅ NEW: Vibrates the device at maximum intensity for 60 full seconds on shift-end clockout
+//    private fun triggerShiftEndVibration() {
+//        try {
+//            val vibrator: android.os.Vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+//                val vm = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as android.os.VibratorManager
+//                vm.defaultVibrator
+//            } else {
+//                @Suppress("DEPRECATION")
+//                getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator
+//            }
+//
+//            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+//                // Max amplitude (255) for a single 60-second burst — no repeat
+//                val effect = android.os.VibrationEffect.createOneShot(60_000L, 255)
+//                vibrator.vibrate(effect)
+//            } else {
+//                // Pre-API 26 fallback — vibrate for 60 seconds
+//                @Suppress("DEPRECATION")
+//                vibrator.vibrate(60_000L)
+//            }
+//            android.util.Log.d("LocationMonitor", "📳 [SHIFT END] Max vibration started for 60 seconds")
+//        } catch (e: Exception) {
+//            android.util.Log.e("LocationMonitor", "❌ [SHIFT END] Vibration error: ${e.message}")
+//        }
+//    }
+//
+//    private fun isLocationEnabled(): Boolean {
+//        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+//            (getSystemService(Context.LOCATION_SERVICE) as LocationManager).isLocationEnabled
+//        } else {
+//            try {
+//                Settings.Secure.getInt(contentResolver, Settings.Secure.LOCATION_MODE, Settings.Secure.LOCATION_MODE_OFF) != Settings.Secure.LOCATION_MODE_OFF
+//            } catch (_: Exception) { false }
+//        }
+//    }
+//
+//    // ✅ NEW: Check if Android "Automatic Date & Time" is enabled
+//    // Settings.Global.AUTO_TIME = 1 (on), 0 (off)
+//    // Read-only — no special permission required
+//    private fun isAutoTimeEnabled(): Boolean {
+//        return try {
+//            Settings.Global.getInt(contentResolver, Settings.Global.AUTO_TIME, 1) == 1
+//        } catch (_: Exception) { true } // fail-safe: agar check na ho sake to clockout mat karo
+//    }
+//
+//    private fun checkLocationPermission(): Boolean {
+//        return try {
+//            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+//                    ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+//        } catch (_: Exception) { false }
+//    }
+//
+//    override fun onBind(intent: Intent?): IBinder? = null
+//
+//    override fun onTaskRemoved(rootIntent: Intent?) {
+//        super.onTaskRemoved(rootIntent)
+//        val prefs   = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+//        val clocked = prefs.getBoolean(KEY_IS_CLOCKED_IN, false)
+//        val frozen  = prefs.getBoolean(KEY_IS_TIMER_FROZEN, false)
+//
+//        // ✅ FIX: Save buffer to disk before task is removed
+//        val snapshot = synchronized(bulkLocationBuffer) {
+//            if (bulkLocationBuffer.isNotEmpty()) {
+//                val copy = bulkLocationBuffer.toList()
+//                bulkLocationBuffer.clear()
+//                copy
+//            } else emptyList()
+//        }
+//        if (snapshot.isNotEmpty()) {
+//            saveOfflineBuffer(snapshot)
+//            android.util.Log.d("LocationMonitor",
+//                "💾 [BULK] onTaskRemoved — persisted ${snapshot.size} records to disk")
+//        }
+//
+//        // ✅ NEW: user swiped the app away → app is now background/killed. Drain
+//        // the Flutter SQLite bulk queue promptly instead of waiting for the 30s
+//        // loop. Self-guards on foreground + network + concurrency.
+//        drainFlutterSqliteBulk("onTaskRemoved")
+//
+//        if (clocked && !frozen) {
+//            // ✅ BACKGROUND ALARM FIX: Check shift end time
+//            // ✅ FIX: Overtime re-clock-in check — agar aaj shift-end clockout ho chuka aur dobara clock-in hua
+//            // to background kill pe bhi alarm schedule mat karo.
+//            val overtime = prefString(prefs, "flutter.cached_overtime").lowercase()
+//            val isOvertimeUser = overtime == "yes" || overtime == "y" || overtime == "true" || overtime == "1"
+//            val overtimeDoneToday = if (isOvertimeUser) {
+//                val savedDate = prefString(prefs, "flutter.shift_end_clockout_done_date")
+//                val todayDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+//                savedDate == todayDate
+//            } else false
+//
+//            val endTimeStr = prefString(prefs, "flutter.cached_end_time")
+//
+//            if (endTimeStr.isNotEmpty()) {
+//                val parsed = parseTimeTo24h(endTimeStr)
+//                if (parsed != null) {
+//                    val cal    = java.util.Calendar.getInstance()
+//                    val nowMin = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
+//                    val endMin = parsed.first * 60 + parsed.second
+//                    val diff   = nowMin - endMin
+//
+//                    if (diff in 0..480) {
+//                        // ✅ FIX: Overtime re-clock-in — shift-end already hua aaj, dobara clockout mat karo
+//                        if (overtimeDoneToday) {
+//                            android.util.Log.d("LocationMonitor",
+//                                "⏰ [SHIFT END] onTaskRemoved: overtime re-clock-in — skipping clockout (shift_end_clockout_done_date=today)")
+//                        } else {
+//                            // Shift end already passed while app was running — clockout NOW before service dies
+//                            android.util.Log.d("LocationMonitor",
+//                                "⏰ [SHIFT END] onTaskRemoved: shift end passed ${diff}min ago — clockout now")
+//                            handleCriticalEvent("System Clockout - Shift End")
+//                            return   // handleCriticalEvent calls stopSelf()
+//                        }
+//                    } else if (diff < 0) {
+//                        // ✅ FIX: Overtime re-clock-in — alarm schedule mat karo, cancel karo
+//                        if (overtimeDoneToday) {
+//                            cancelShiftEndAlarm()
+//                            android.util.Log.d("LocationMonitor",
+//                                "⏰ [SHIFT END] onTaskRemoved: overtime re-clock-in — alarm CANCELLED (not scheduled)")
+//                        } else {
+//                            // Shift end is in the future — schedule exact AlarmManager wakeup
+//                            scheduleShiftEndAlarm()
+//                            android.util.Log.d("LocationMonitor",
+//                                "⏰ [SHIFT END] onTaskRemoved: shift end in ${-diff}min — alarm scheduled")
+//                        }
+//                    }
+//                }
+//            }
+//
+//            val restartIntent = Intent(applicationContext, LocationMonitorService::class.java).apply {
+//                putExtra(EXTRA_DEVICE_ID,    deviceId)
+//                putExtra(EXTRA_COMPANY_CODE, companyCode)
+//                putExtra(EXTRA_EMP_NAME,     empName)
+//            }
+//            val pi = PendingIntent.getService(applicationContext, 1, restartIntent, PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE)
+//            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+//            val triggerTime  = android.os.SystemClock.elapsedRealtime() + 1000L
+//
+//            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && alarmManager.canScheduleExactAlarms()) {
+//                alarmManager.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerTime, pi)
+//            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+//                alarmManager.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerTime, pi)
+//            } else {
+//                alarmManager.set(AlarmManager.ELAPSED_REALTIME, triggerTime, pi)
+//            }
+//            android.util.Log.d("LocationMonitor", "🔄 [RESTART] Service restart scheduled in 1s")
+//        }
+//    }
+//
+//    // ══════════════════════════════════════════════════════════════════════════
+//    // DAY-WISE SHIFT SCHEDULE — Kotlin helper  ✅
+//    // Reads today's end_time from flutter.cached_shift_schedule JSON.
+//    // Returns:
+//    //   non-empty string → today's end_time (use this for alarm)
+//    //   empty string ""  → today is non-working day (cancel alarm, skip)
+//    //   null             → no day-wise schedule (fall back to flutter.cached_end_time)
+//    // ══════════════════════════════════════════════════════════════════════════
+//    private fun getTodayShiftEndFromSchedule(
+//        prefs: android.content.SharedPreferences
+//    ): String? {
+//        return try {
+//            val scheduleJson = prefString(prefs, "flutter.cached_shift_schedule")
+//            if (scheduleJson.isEmpty()) return null
+//
+//            val schedule = org.json.JSONObject(scheduleJson)
+//            val dayName  = java.text.SimpleDateFormat("EEEE", java.util.Locale.ENGLISH)
+//                .format(java.util.Date()) // e.g. "Monday"
+//
+//            if (!schedule.has(dayName)) return null
+//
+//            val dayData = schedule.getJSONObject(dayName)
+//            val working = dayData.optString("working", "Yes")
+//
+//            if (working.equals("No", ignoreCase = true)) {
+//                android.util.Log.d("LocationMonitor",
+//                    "📅 [SHIFT SCHEDULE] Non-working day ($dayName) — alarm skipped")
+//                return "" // signal: non-working day, cancel alarm
+//            }
+//
+//            dayData.optString("end_time", "").trim()
+//        } catch (e: Exception) {
+//            android.util.Log.w("LocationMonitor",
+//                "⚠️ [SHIFT SCHEDULE] Parse error: ${e.message}")
+//            null // parse failed → fall back to cached_end_time
+//        }
+//    }
+//
+//    // ══════════════════════════════════════════════════════════════════════════
+//    // ✅ BACKGROUND ALARM FIX — SHIFT END EXACT ALARM
+//    // scheduleShiftEndAlarm(): reads cached_end_time → schedules AlarmManager.RTC_WAKEUP
+//    //   at the exact wall-clock shift-end time.  This wakeup fires even if the
+//    //   process is fully dead (bypasses all OEM process killers).
+//    // cancelShiftEndAlarm(): cancels the PendingIntent when clockout happens normally.
+//    // ══════════════════════════════════════════════════════════════════════════
+//
+//    private fun scheduleShiftEndAlarm() {
+//        try {
+//            val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+//
+//            // ✅ Day-wise schedule: try today's end_time first, fallback to cached_end_time
+//            val scheduleResult = getTodayShiftEndFromSchedule(prefs)
+//            val endTimeStr: String = when {
+//                scheduleResult == null -> {
+//                    // No day-wise schedule yet — use flat cached value
+//                    val cached = prefString(prefs, "flutter.cached_end_time")
+//                    if (cached.isEmpty()) {
+//                        android.util.Log.d("LocationMonitor", "⏰ [SHIFT ALARM] No cached_end_time — skipping")
+//                        return
+//                    }
+//                    cached
+//                }
+//                scheduleResult.isEmpty() -> {
+//                    // Non-working day — cancel any existing alarm and skip
+//                    cancelShiftEndAlarm()
+//                    return
+//                }
+//                else -> scheduleResult
+//            }
+//            if (endTimeStr.isEmpty()) {
+//                android.util.Log.d("LocationMonitor", "⏰ [SHIFT ALARM] No end_time for today — skipping")
+//                return
+//            }
+//            // ✅ FIX: Overtime user — aaj clockout already ho chuka hai → alarm schedule mat karo
+//            val overtime = prefString(prefs, "flutter.cached_overtime").lowercase()
+//            val isOvertimeUser = overtime == "yes" || overtime == "y" || overtime == "true" || overtime == "1"
+//            if (isOvertimeUser) {
+//                val savedDate = prefString(prefs, "flutter.shift_end_clockout_done_date")
+//                val todayDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+//                if (savedDate == todayDate) {
+//                    // ✅ FIX: Sirf return nahi — already-set alarm bhi cancel karo.
+//                    // Warna purana AlarmManager alarm fire ho ke notification + vibration
+//                    // trigger kar deta hai overtime re-clock-in ke baad.
+//                    cancelShiftEndAlarm()
+//                    android.util.Log.d("LocationMonitor",
+//                        "⏰ [SHIFT ALARM] Overtime user — clockout already done today — alarm CANCELLED (re-clock-in protected)")
+//                    return
+//                }
+//            }
+//
+//            val parsed = parseTimeTo24h(endTimeStr) ?: run {
+//                android.util.Log.w("LocationMonitor", "⏰ [SHIFT ALARM] Cannot parse end_time: \"$endTimeStr\"")
+//                return
+//            }
+//
+//            // Build wall-clock trigger time for today
+//            val cal = java.util.Calendar.getInstance().apply {
+//                set(java.util.Calendar.HOUR_OF_DAY, parsed.first)
+//                set(java.util.Calendar.MINUTE,      parsed.second)
+//                set(java.util.Calendar.SECOND,      0)
+//                set(java.util.Calendar.MILLISECOND, 0)
+//            }
+//
+//            // 🌙 NIGHT SHIFT FIX: Night shift ke liye alarm next day set karo.
+//            // e.g. end=02:00, abhi shaam 20:00 hai → "aaj ka 02:00" pehle guzar chuka →
+//            // triggerMs <= nowMs check fail hota aur alarm skip ho jata.
+//            // Fix: evening side (nowHour >= 12) aur end hour < 12 ho to +1 din add karo.
+//            val shiftTypeAlarm  = prefString(prefs, "flutter.cached_shift_type")
+//            val isNightShiftAlm = shiftTypeAlarm.equals("Night Shift", ignoreCase = true)
+//            if (isNightShiftAlm) {
+//                val nowHour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+//                if (nowHour >= 12 && parsed.first < 12) {
+//                    cal.add(java.util.Calendar.DATE, 1)
+//                    android.util.Log.d("LocationMonitor",
+//                        "🌙 [SHIFT ALARM] Night shift — alarm scheduled for TOMORROW ${parsed.first}:${parsed.second}")
+//                }
+//            }
+//            val triggerMs = cal.timeInMillis
+//            val nowMs     = System.currentTimeMillis()
+//
+//            // If the shift end time has already passed today, do not schedule.
+//            // onTaskRemoved and checkLocationAndPermission cover that path.
+//            if (triggerMs <= nowMs) {
+//                android.util.Log.d("LocationMonitor",
+//                    "⏰ [SHIFT ALARM] Shift end already passed — no new alarm scheduled")
+//                return
+//            }
+//
+//            val shiftIntent = Intent(applicationContext, LocationMonitorService::class.java).apply {
+//                putExtra(EXTRA_SHIFT_END_TRIGGER, true)
+//                putExtra(EXTRA_DEVICE_ID,         deviceId)
+//                putExtra(EXTRA_COMPANY_CODE,      companyCode)
+//                putExtra(EXTRA_EMP_NAME,          empName)
+//            }
+//            val pi = PendingIntent.getService(
+//                applicationContext,
+//                SHIFT_END_ALARM_REQ,
+//                shiftIntent,
+//                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+//            )
+//
+//            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+//            when {
+//                Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && alarmManager.canScheduleExactAlarms() ->
+//                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMs, pi)
+//                Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ->
+//                    alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMs, pi)
+//                else ->
+//                    alarmManager.set(AlarmManager.RTC_WAKEUP, triggerMs, pi)
+//            }
+//
+//            val diffMin = ((triggerMs - nowMs) / 60_000).toInt()
+//            android.util.Log.d("LocationMonitor",
+//                "⏰ [SHIFT ALARM] ✅ Exact alarm set for $endTimeStr (in ${diffMin}min) — " +
+//                        "survives process kill on all OEM ROMs")
+//        } catch (e: Exception) {
+//            android.util.Log.e("LocationMonitor", "❌ [SHIFT ALARM] scheduleShiftEndAlarm error: ${e.message}")
+//        }
+//    }
+//
+//    private fun cancelShiftEndAlarm() {
+//        try {
+//            val shiftIntent = Intent(applicationContext, LocationMonitorService::class.java).apply {
+//                putExtra(EXTRA_SHIFT_END_TRIGGER, true)
+//            }
+//            val pi = PendingIntent.getService(
+//                applicationContext,
+//                SHIFT_END_ALARM_REQ,
+//                shiftIntent,
+//                PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+//            )
+//            if (pi != null) {
+//                (getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(pi)
+//                pi.cancel()
+//                android.util.Log.d("LocationMonitor", "⏰ [SHIFT ALARM] Cancelled pending shift-end alarm")
+//            }
+//        } catch (e: Exception) {
+//            android.util.Log.e("LocationMonitor", "❌ [SHIFT ALARM] cancelShiftEndAlarm error: ${e.message}")
+//        }
+//    }
+//
+//    override fun onDestroy() {
+//        isDestroyed = true
+//        unregisterShutdownReceiver()
+//        handler.removeCallbacks(checkRunnable)
+//        handler.removeCallbacks(gpsRunnable)
+//        httpPostRunnable?.let { handler.removeCallbacks(it) }
+//        watchdogRunnable?.let { handler.removeCallbacks(it) }
+//        heartbeatRunnable?.let { handler.removeCallbacks(it) }
+//        bulkCaptureRunnable?.let { handler.removeCallbacks(it) }
+//        bulkPostRunnable?.let { handler.removeCallbacks(it) }
+//
+//        // ✅ FIX #13: onDestroy — synchronous bulk flush before process dies
+//        // postBulkLocationToApi() uses Thread{}.start() which gets killed when
+//        // onDestroy() returns. We must send synchronously here.
+//        val remaining = synchronized(bulkLocationBuffer) {
+//            if (bulkLocationBuffer.isNotEmpty()) {
+//                val copy = bulkLocationBuffer.toList()
+//                bulkLocationBuffer.clear()
+//                copy
+//            } else emptyList()
+//        }
+//
+//        if (remaining.isNotEmpty()) {
+//            if (isNetworkAvailable()) {
+//                // ✅ FIX #13: Synchronous HTTP POST — blocks onDestroy until send completes
+//                // This is intentional: we MUST NOT return until data is safe
+//                try {
+//                    val offlineRecords = loadAndClearOfflineBuffer()
+//                    val allRecords     = offlineRecords + remaining
+//
+//                    val jsonArray = JSONArray()
+//                    allRecords.forEach { jsonArray.put(it) }
+//                    val body = JSONObject().apply { put("records", jsonArray) }.toString()
+//
+//                    val conn = (URL(BULK_POST_URL).openConnection() as HttpURLConnection).apply {
+//                        requestMethod = "POST"
+//                        setRequestProperty("Content-Type", "application/json")
+//                        setRequestProperty("Accept",       "application/json")
+//                        doOutput       = true
+//                        connectTimeout = 10000 // shorter timeout on destroy
+//                        readTimeout    = 10000
+//                    }
+//                    OutputStreamWriter(conn.outputStream).use { it.write(body) }
+//                    val code = conn.responseCode
+//                    conn.disconnect()
+//
+//                    if (code in 200..299) {
+//                        android.util.Log.d("LocationMonitor",
+//                            "✅ [BULK] onDestroy — synced ${allRecords.size} records synchronously")
+//                    } else {
+//                        saveOfflineBuffer(allRecords)
+//                        android.util.Log.w("LocationMonitor",
+//                            "⚠️ [BULK] onDestroy — server $code — saved ${allRecords.size} to disk")
+//                    }
+//                } catch (e: Exception) {
+//                    saveOfflineBuffer(remaining)
+//                    android.util.Log.e("LocationMonitor",
+//                        "❌ [BULK] onDestroy sync error: ${e.message} — saved to disk")
+//                }
+//            } else {
+//                // Save to disk for next launch
+//                saveOfflineBuffer(remaining)
+//                android.util.Log.d("LocationMonitor",
+//                    "💾 [BULK] onDestroy — persisted ${remaining.size} records to disk (offline)")
+//            }
+//        }
+//
+//        // Permission-revoked auto clockout check
+//        try {
+//            val prefs   = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+//            val clocked = prefs.getBoolean(KEY_IS_CLOCKED_IN, false)
+//            val frozen  = prefs.getBoolean(KEY_IS_TIMER_FROZEN, false)
+//            val permNow = checkLocationPermission()
+//
+//            // ✅ FIX: Always schedule shift-end alarm on destroy so OEM force-kills
+//            // (which skip onTaskRemoved) still leave a wakeup for the exact shift end time.
+//            // ✅ FIX: Overtime re-clock-in — agar aaj ka shift-end ho chuka hai to alarm cancel karo.
+//            if (clocked && !frozen) {
+//                val otStr = prefString(prefs, "flutter.cached_overtime").lowercase()
+//                val isOtUser = otStr == "yes" || otStr == "y" || otStr == "true" || otStr == "1"
+//                val overtimeDoneToday = if (isOtUser) {
+//                    val savedDate = prefString(prefs, "flutter.shift_end_clockout_done_date")
+//                    val todayDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+//                    savedDate == todayDate
+//                } else false
+//
+//                if (overtimeDoneToday) {
+//                    cancelShiftEndAlarm()
+//                    android.util.Log.d("LocationMonitor",
+//                        "⏰ [SHIFT ALARM] onDestroy: overtime re-clock-in — alarm CANCELLED")
+//                } else {
+//                    scheduleShiftEndAlarm()
+//                    android.util.Log.d("LocationMonitor",
+//                        "⏰ [SHIFT ALARM] onDestroy: alarm (re)scheduled to survive process kill")
+//                }
+//            }
+//
+//            if (clocked && !frozen && !permNow) {
+//                handleCriticalEvent("System Clockout - Permission Revoked")
+//                android.util.Log.d("LocationMonitor",
+//                    "onDestroy: permission revoked while clocked-in → auto clockout saved")
+//            }
+//        } catch (e: Exception) {
+//            android.util.Log.e("LocationMonitor", "onDestroy permission-check error: ${e.message}")
+//        }
+//
+//        stopLocationUpdates()
+//        disconnectMqtt()
+//        unregisterNetworkCallback()
+//        unregisterAppOpsListener()
+//
+//        // ✅ FIX: Unregister locationModeReceiver to prevent IntentReceiverLeaked
+//        try {
+//            locationModeReceiver?.let { unregisterReceiver(it) }
+//            locationModeReceiver = null
+//            android.util.Log.d("LocationMonitor", "✅ locationModeReceiver unregistered")
+//        } catch (e: Exception) {
+//            android.util.Log.w("LocationMonitor", "unregisterReceiver warning: ${e.message}")
+//        }
+//
+//        try { if (wakeLock?.isHeld == true) wakeLock?.release() } catch (_: Exception) {}
+//
+//        super.onDestroy()
+//    }
+//}
+
+
 package com.metaxperts.bookdispatch
 
 import android.app.AppOpsManager
@@ -71,10 +2665,15 @@ class LocationMonitorService : Service() {
     private val HTTP_POST_URL = "http://oracle.metaxperts.net/ords/gps_workforce/emplocation/post/"
 
     // ✅ FIX #1: Increased capture interval from 1s → 10s to reduce polyline noise
-    private val BULK_CAPTURE_MS = 10_000L   // was 1_000L
+    // ✅ NEW: BULK_CAPTURE_MS ab constant nahi — DYNAMIC, server-driven interval
+    // istemal hota hai (see getDynamicCaptureIntervalMs()). Yeh fallback default
+    // hai jab prefs mein koi value hi maujood na ho.
+    private val DEFAULT_BULK_CAPTURE_MS = 60_000L
+    private val MIN_BULK_CAPTURE_MS     = 5_000L  // matches server CHK_GPS_CFG_INTERVAL (>=5s)
+    private val PREF_GPS_INTERVAL_SECONDS_KEY = "gps_post_interval_seconds"
     private val BULK_POST_MS    = 30_000L   // was 10_000L — less network spam
-        private val BULK_POST_URL   = "http://103.149.33.102:8001/location/bulk"
-//    private val BULK_POST_URL   = "http://119.153.102.7:8001/location/bulk"
+    //    private val BULK_POST_URL   = "http://103.149.33.102:8001/location/bulk"
+    private val BULK_POST_URL   = "http://103.120.70.171:8001/location/bulk"
 
     // ✅ FIX #3: Accuracy filter — skip poor GPS readings
     private val MIN_ACCURACY_METERS  = 50f    // skip if GPS accuracy worse than 50m
@@ -85,13 +2684,19 @@ class LocationMonitorService : Service() {
     // ✅ FIX #5: Offline persistence file name
     private val OFFLINE_BUFFER_FILE = "bulk_location_offline.json"
 
-        private val MQTT_HOST = "103.149.33.102"
-//    private val MQTT_HOST = "119.153.102.7"
+    //    private val MQTT_HOST = "103.149.33.102"
+    private val MQTT_HOST = "103.120.70.171"
     private val MQTT_PORT = 1883
 
     private val mqttTopic get() = "gps/$companyCode/$deviceId"
 
     private val PREFS_NAME             = "FlutterSharedPreferences"
+
+    // ✅ FIX #4: Flutter shared_preferences plugin double values ko is Base64
+    // prefix ("ThisIsThePrefixForADouble.!") ke saath String mein store karta
+    // hai. Native side se double likhte waqt yehi format use karna zaroori hai
+    // warna Flutter prefs.getDouble() cast-error throw karta hai.
+    private val FLUTTER_DOUBLE_PREFIX  = "VGhpc0lzVGhlUHJlZml4Rm9yQURvdWJsZS4h"
     private val KEY_IS_CLOCKED_IN      = "flutter.isClockedIn"
     private val KEY_HAS_CRITICAL_EVENT = "flutter.has_critical_event_pending"
     private val KEY_EVENT_TIMESTAMP    = "flutter.critical_event_timestamp"
@@ -293,6 +2898,37 @@ class LocationMonitorService : Service() {
         }
     }
 
+    /// ✅ Reads the current GPS post interval fresh from SharedPreferences
+    /// every time it's called — this is what makes capture dynamic instead
+    /// of a fixed constant. Flutter's shared_preferences plugin stores ints
+    /// under the "flutter." prefix, so we check both key variants.
+    /// NOTE: Flutter's shared_preferences plugin persists Dart `int` values
+    /// as a native Android `Long` (not `Integer`), so we MUST read with
+    /// getLong() — calling getInt() on a Long-backed key throws
+    /// ClassCastException: java.lang.Long cannot be cast to java.lang.Integer.
+    private fun getDynamicCaptureIntervalMs(): Long {
+        val p = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val key = if (p.contains("flutter.$PREF_GPS_INTERVAL_SECONDS_KEY")) {
+            "flutter.$PREF_GPS_INTERVAL_SECONDS_KEY"
+        } else {
+            PREF_GPS_INTERVAL_SECONDS_KEY
+        }
+
+        val seconds: Long = try {
+            p.getLong(key, -1L)
+        } catch (e: ClassCastException) {
+            // Fallback in case it was ever written as a plain Int on some device/version
+            try {
+                p.getInt(key, -1).toLong()
+            } catch (e2: ClassCastException) {
+                -1L
+            }
+        }
+
+        val ms = seconds * 1000L
+        return if (seconds <= 0 || ms < MIN_BULK_CAPTURE_MS) DEFAULT_BULK_CAPTURE_MS else ms
+    }
+
     private fun prefString(prefs: android.content.SharedPreferences, key: String): String {
         return try {
             val raw = prefs.all[key] ?: return ""
@@ -368,7 +3004,7 @@ class LocationMonitorService : Service() {
         android.util.Log.d("LocationMonitor",
             "identity → deviceId=$deviceId  company=$companyCode  emp=$empName  topic=$mqttTopic")
         android.util.Log.d("LocationMonitor",
-            "⚙️ [CONFIG] BULK_CAPTURE=${BULK_CAPTURE_MS}ms  BULK_POST=${BULK_POST_MS}ms  " +
+            "⚙️ [CONFIG] BULK_CAPTURE=${getDynamicCaptureIntervalMs()}ms(dynamic)  BULK_POST=${BULK_POST_MS}ms  " +
                     "MIN_ACCURACY=${MIN_ACCURACY_METERS}m  DISTANCE_FILTER=DISABLED(stationary safe)")
 
         try {
@@ -451,6 +3087,18 @@ class LocationMonitorService : Service() {
     }
 
     private fun startMonitoring() {
+        // ✅ FIX: startMonitoring() is called from onStartCommand(), which Android
+        // re-invokes on every startService() call (clock-in, geofence-restart alarm,
+        // boot receiver, etc). Previously none of these runnables were cancelled
+        // before being reassigned/rescheduled below, so every re-entry into
+        // onStartCommand() left the OLD loop still alive alongside the NEW one —
+        // stacking duplicate checkRunnable / gpsRunnable / httpPostRunnable /
+        // bulkCaptureRunnable / bulkPostRunnable loops that all fire independently.
+        // Cancel every existing instance first so onStartCommand() is idempotent.
+        checkRunnable.let { handler.removeCallbacks(it) }
+        gpsRunnable.let { handler.removeCallbacks(it) }
+        httpPostRunnable?.let { handler.removeCallbacks(it) }
+
         checkRunnable = object : Runnable {
             override fun run() {
                 if (isDestroyed) return
@@ -490,7 +3138,20 @@ class LocationMonitorService : Service() {
             if (!isDestroyed) handler.postDelayed(it, HTTP_POST_MS)
         }
 
-        // ✅ FIX #1: BULK_CAPTURE_MS is now 10 seconds (was 1s)
+        // ✅ NEW: Capture interval ab DYNAMIC hai — har cycle ke baad
+        // SharedPreferences se fresh value padh kar next delay set hota hai.
+        // LoginRepository (Dart side) yehi key ("gps_post_interval_seconds")
+        // login aur Clock-In refresh par likhta hai, isliye is service ko
+        // (jo app background/killed hone par bhi zinda rehti hai) bhi turant
+        // naya interval mil jata hai — koi restart/redeploy zaroori nahi.
+        // ✅ FIX: onStartCommand() Android lifecycle mein multiple baar call hoti hai
+        // (clock-in, geofence-restart alarm, boot receiver, waghera — sab startService()
+        // fire karte hain). Pehle yahan naya bulkCaptureRunnable seedha overwrite +
+        // postDelayed ho raha tha bina purana cancel kiye — is se multiple overlapping
+        // capture loops zinda ho jate the, jo combined output mein 60s ki jagah
+        // 5-15s ke irregular gaps ki tarah dikhte the ("Buffered #1" wali entries).
+        // Isliye ab naya schedule karne se pehle purana runnable hamesha cancel hoga.
+        bulkCaptureRunnable?.let { handler.removeCallbacks(it) }
         bulkCaptureRunnable = object : Runnable {
             override fun run() {
                 if (isDestroyed) return
@@ -500,12 +3161,14 @@ class LocationMonitorService : Service() {
                 if (clocked && !frozen) {
                     captureBulkLocationSnapshot()
                 }
-                if (!isDestroyed) handler.postDelayed(this, BULK_CAPTURE_MS)
+                if (!isDestroyed) handler.postDelayed(this, getDynamicCaptureIntervalMs())
             }
         }
-        handler.postDelayed(bulkCaptureRunnable!!, BULK_CAPTURE_MS)
+        handler.postDelayed(bulkCaptureRunnable!!, getDynamicCaptureIntervalMs())
 
         // ✅ FIX #1: BULK_POST_MS is now 30 seconds (was 10s)
+        // ✅ Same overlap bug yahan bhi tha — cancel karo pehle
+        bulkPostRunnable?.let { handler.removeCallbacks(it) }
         bulkPostRunnable = object : Runnable {
             override fun run() {
                 if (isDestroyed) return
@@ -538,10 +3201,16 @@ class LocationMonitorService : Service() {
     private fun isFlutterAppForeground(): Boolean {
         return try {
             val am = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
-            val tasks = am.getRunningTasks(1)
-            tasks.isNotEmpty() && tasks[0].topActivity?.packageName == packageName
+            val processes = am.runningAppProcesses ?: return false
+            for (proc in processes) {
+                if (proc.processName == packageName) {
+                    return proc.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND ||
+                            proc.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE
+                }
+            }
+            false
         } catch (e: Exception) {
-            false // Safe default: assume not foreground so Kotlin captures
+            false
         }
     }
 
@@ -588,14 +3257,19 @@ class LocationMonitorService : Service() {
                 } catch (_: Exception) {}
             }
 
-            // ✅ FIX: Skip if still no valid coordinates
-            if (lat == 0.0 && lng == 0.0) {
-                android.util.Log.w("LocationMonitor", "⚠️ [BULK] SKIP — lat/lng are 0.0, no valid GPS fix yet")
+            // ✅ FIX: Skip if invalid coordinates
+            // lat == 0.0 check kafi nahi — ColorOS/OnePlus Double.MIN_VALUE (5e-324) return karta hai
+            // jo == 0.0 se match nahi karta lekin practically zero hai — global range + near-zero check
+            if (lat !in -90.0..90.0 || lng !in -180.0..180.0 ||
+                (lat > -0.001 && lat < 0.001 && lng > -0.001 && lng < 0.001)) {
+                android.util.Log.w("LocationMonitor",
+                    "⚠️ [BULK] SKIP — invalid coordinate (possible GPS suspend/Double.MIN_VALUE): lat=$lat lng=$lng")
                 return
             }
 
             // ✅ FIX #2: Accuracy filter — skip poor GPS readings
-            if (accuracy > MIN_ACCURACY_METERS && accuracy != 0f) {
+            // accuracy == 0f bhi invalid hai (Android ne accuracy set nahi ki) — skip karo
+            if (accuracy == 0f || accuracy > MIN_ACCURACY_METERS) {
                 android.util.Log.w("LocationMonitor",
                     "⚠️ [BULK] SKIP — poor GPS accuracy: ${accuracy}m (threshold: ${MIN_ACCURACY_METERS}m)")
                 return
@@ -928,6 +3602,8 @@ class LocationMonitorService : Service() {
     // ══════════════════════════════════════════════════════════════════════════
 
     private fun startMqttWatchdog() {
+        // ✅ FIX: same re-entry bug — cancel any previous loop before starting a new one.
+        watchdogRunnable?.let { handler.removeCallbacks(it) }
         var consecutiveFailures = 0
         watchdogRunnable = object : Runnable {
             override fun run() {
@@ -954,6 +3630,8 @@ class LocationMonitorService : Service() {
     }
 
     private fun startHeartbeatWatchdog() {
+        // ✅ FIX: same re-entry bug — cancel any previous loop before starting a new one.
+        heartbeatRunnable?.let { handler.removeCallbacks(it) }
         heartbeatRunnable = object : Runnable {
             override fun run() {
                 if (isDestroyed) return
@@ -1144,7 +3822,17 @@ class LocationMonitorService : Service() {
         editor.putBoolean(KEY_IS_CLOCKED_IN, false)
         editor.putBoolean("flutter.pending_gpx_close", true)
         editor.putString("flutter.fastClockOutTime", timestamp)
-        editor.putString("flutter.fastClockOutDistance", "0.0")
+        // ✅ FIX #4: Pehle yahan raw String "0.0" likhi jati thi. Flutter ka
+        // shared_preferences plugin double ko is Base64 prefix ke saath store
+        // karta hai — raw String par Flutter side prefs.getDouble() cast-error
+        // throw karta tha aur restoreFastDataOnStartup() poora abort ho jata
+        // tha (native auto-clockout kabhi post nahi hota tha). Ab Flutter ke
+        // apne double format mein likhte hain; Flutter side par _safeReadDouble
+        // dono shapes handle karta hai (purane poisoned devices bhi recover).
+        editor.putString(
+            "flutter.fastClockOutDistance",
+            FLUTTER_DOUBLE_PREFIX + "0.0"
+        )
         editor.putString("flutter.fastClockOutReason", reason)
         editor.putBoolean("flutter.hasFastClockOutData", true)
         editor.putBoolean("flutter.clockOutPending", true)
@@ -1159,7 +3847,38 @@ class LocationMonitorService : Service() {
         }
 
         val clockInTime = prefs.getString("flutter.clockInTime", "") ?: ""
-        val fastJson = """{"fast_attendanceId":"","fast_userId":"","fast_clockOutTime":"$timestamp","fast_totalTime":"00:00:00","fast_totalDistance":0.0,"fast_reason":"$reason","fast_clockInTime":"$clockInTime"}"""
+
+        // ✅ FIX #4: Pehle JSON mein fast_attendanceId="" aur key ka naam
+        // fast_userId tha jabke Flutter fast_empId parhta hai — restore par
+        // empId hamesha '' aata tha aur attendance ID resolve nahi hoti thi
+        // (UNKWN_ fallback → server par orphan clock-out).
+        //
+        // emp_id Flutter setInt() se save hota hai → Android prefs mein Long
+        // type. getString() us par ClassCastException dega, is liye prefs.all
+        // map se type-safe read:
+        val empIdNative: String = try {
+            prefs.all["flutter.emp_id"]?.toString() ?: ""
+        } catch (e: Exception) { "" }
+
+        // Attendance ID — Flutter waali hi fallback chain (attendanceId →
+        // currentAttendanceId → clockInAttendanceId), har read try-guarded:
+        fun safePrefString(key: String): String = try {
+            prefs.all[key]?.toString() ?: ""
+        } catch (e: Exception) { "" }
+
+        var attendanceIdNative = safePrefString("flutter.attendanceId")
+        if (attendanceIdNative.isEmpty()) {
+            attendanceIdNative = safePrefString("flutter.currentAttendanceId")
+        }
+        if (attendanceIdNative.isEmpty()) {
+            attendanceIdNative = safePrefString("flutter.clockInAttendanceId")
+        }
+
+        android.util.Log.d("LocationMonitor",
+            "🆔 [CRITICAL EVENT] fastJson → empId=$empIdNative attendanceId=$attendanceIdNative")
+
+        // fast_userId bhi rakha hai (back-compat) — Flutter dono parhta hai.
+        val fastJson = """{"fast_attendanceId":"$attendanceIdNative","fast_empId":"$empIdNative","fast_userId":"$empIdNative","fast_clockOutTime":"$timestamp","fast_totalTime":"00:00:00","fast_totalDistance":0.0,"fast_reason":"$reason","fast_clockInTime":"$clockInTime"}"""
         editor.putString("flutter.fastClockOutData", fastJson)
 
         val isTravelMode = prefs.getBoolean("flutter.is_travel_mode", false)
@@ -1251,6 +3970,14 @@ class LocationMonitorService : Service() {
 
     private fun checkBreakEndNotification(prefs: android.content.SharedPreferences) {
         try {
+            // ✅ FIX: Sirf tab fire karo jab user ACTUALLY break par ho
+            // Covers: not clocked in, weekly off, aur clocked in but not on break
+            val isOnBreak = prefs.getBoolean("flutter.break_is_on_break", false)
+            if (!isOnBreak) {
+                android.util.Log.d("LocationMonitor", "⏭ [BREAK END] Skipped — user is not on break")
+                return
+            }
+
             val breakEndStr = prefString(prefs, "flutter.break_scheduled_end")
             if (breakEndStr.isEmpty()) return
             if (breakEndStr == lastBreakEndNotifiedTime) return
@@ -1394,8 +4121,19 @@ class LocationMonitorService : Service() {
 
             locationListener = object : LocationListener {
                 override fun onLocationChanged(loc: Location) {
-                    lastLat      = loc.latitude
-                    lastLon      = loc.longitude
+                    // ✅ FIX: Invalid coordinate se lastLat/lastLon update mat karo
+                    // Double.MIN_VALUE (5e-324) — ColorOS GPS suspend pe aata hai
+                    val locLat = loc.latitude
+                    val locLng = loc.longitude
+                    if (locLat !in -90.0..90.0 || locLng !in -180.0..180.0 ||
+                        (locLat > -0.001 && locLat < 0.001 && locLng > -0.001 && locLng < 0.001)) {
+                        android.util.Log.w("LocationMonitor",
+                            "⚠️ [GPS] Invalid coordinate ignored: lat=$locLat lng=$locLng")
+                        lastAccuracy = loc.accuracy // accuracy update karo dead zone detect ke liye
+                        return
+                    }
+                    lastLat      = locLat
+                    lastLon      = locLng
                     lastAccuracy = loc.accuracy
                     lastSpeed    = loc.speed
                     lastHeartbeatTime = System.currentTimeMillis()

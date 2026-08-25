@@ -26,7 +26,7 @@ class TimeSyncService {
         headers: {'Accept': 'application/json'},
       )
           .timeout(
-        const Duration(seconds: 10),
+        const Duration(seconds: 20),
         onTimeout: () => throw Exception('Server request timed out'),
       );
 

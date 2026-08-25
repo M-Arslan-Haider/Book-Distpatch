@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-
 import 'package:book_dispatch/ViewModels/travel_session_view_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
@@ -572,7 +571,7 @@ class GeofenceViolationViewModel extends GetxController {
 
   void _startOutsideCounter() {
     _outsideCounterTimer?.cancel();
-    _outsideCounterTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+    _outsideCounterTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       if (!isOutside.value) {
         _outsideCounterTimer?.cancel();
         outsideSeconds.value = 0;

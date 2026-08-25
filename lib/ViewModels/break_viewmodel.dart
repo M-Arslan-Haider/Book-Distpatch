@@ -98,7 +98,7 @@ class BreakViewModel extends GetxController {
   String _empName = '';
   String _depId   = '';   // 🆕 dep_id — SharedPreferences se load hoga (cached_dep_id)
   Timer? _autoStartTimer;
-  Timer? _breakScheduleRefreshTimer; // 🆕 har 10 sec mein API se break time fetch karo
+  Timer? _breakScheduleRefreshTimer; // 🆕 har 10 min mein API se break time fetch karo
 
   static const _keyScheduledBreakStart = 'break_scheduled_start'; // 🆕 local save
   static const _keyScheduledBreakEnd   = 'break_scheduled_end';   // 🆕 local save
@@ -292,14 +292,14 @@ class BreakViewModel extends GetxController {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // 🆕 Har 10 sec mein API se break schedule fetch karo aur locally save karo
+  // 🆕 Har 10 min mein API se break schedule fetch karo aur locally save karo
   // ══════════════════════════════════════════════════════════════════════════
   void _startBreakScheduleRefreshTimer() {
     _breakScheduleRefreshTimer?.cancel();
-    _breakScheduleRefreshTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+    _breakScheduleRefreshTimer = Timer.periodic(const Duration(minutes: 10), (_) async {
       await fetchScheduledBreakTime();
     });
-    debugPrint('[BreakSchedule] 🔄 10-second refresh timer started');
+    debugPrint('[BreakSchedule] 🔄 10-minute refresh timer started');
   }
 
   // ── Day name helper ───────────────────────────────────────────────────────
@@ -318,7 +318,7 @@ class BreakViewModel extends GetxController {
   // Returns true  → mila, scheduledBreak/prefs/info update ho gaya
   // Returns false → nahi mila, caller purani attendancedata API use karega
   // ── Periodic shift schedule refresh ──────────────────────────────────────
-  // fetchScheduledBreakTime() har 10 sec mein call hoti hai.
+  // fetchScheduledBreakTime() har 10 min mein call hoti hai.
   // Har 30 min mein ek baar background mein schedule refresh karo
   // taake admin ka koi bhi break time change live reflect ho.
   DateTime? _lastScheduleRefreshTime;
@@ -326,9 +326,9 @@ class BreakViewModel extends GetxController {
   void _maybeRefreshScheduleInBackground() {
     final now = DateTime.now();
     if (_lastScheduleRefreshTime == null ||
-        now.difference(_lastScheduleRefreshTime!).inSeconds >= 10) {
+        now.difference(_lastScheduleRefreshTime!).inMinutes >= 30) { // ✅ FIX: 10 seconds (TESTING) → 30 minutes (production)
       _lastScheduleRefreshTime = now;
-      debugPrint('[BreakSchedule] 🔄 10-sec periodic schedule refresh triggered (TESTING)');
+      debugPrint('[BreakSchedule] 🔄 30-min periodic schedule refresh triggered');
       _triggerScheduleRefresh();
     }
   }
@@ -375,8 +375,8 @@ class BreakViewModel extends GetxController {
 
       if (raw.isEmpty) {
         debugPrint('[BreakSchedule] ❌ cached_shift_schedule is EMPTY — falling back to attendancedata API');
-        debugPrint('[BreakSchedule] 🔄 Old user detected — triggering silent refresh');
-        _triggerScheduleRefresh();
+        // ✅ FIX: _triggerScheduleRefresh() yahan se hata diya — infinite loop rokne ke liye
+        // Refresh sirf _maybeRefreshScheduleInBackground() se hogi (30-min cooldown par)
         debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         return false;
       }
@@ -407,8 +407,8 @@ class BreakViewModel extends GetxController {
 
       if (bStart.isEmpty || bEnd.isEmpty) {
         debugPrint('[BreakSchedule] ❌ break_start or break_end is EMPTY for "$todayName" — old cache format detected');
-        debugPrint('[BreakSchedule] 🔄 Triggering silent refresh to update break fields');
-        _triggerScheduleRefresh();
+        // ✅ FIX: _triggerScheduleRefresh() yahan se hata diya — infinite loop rokne ke liye
+        // Refresh sirf _maybeRefreshScheduleInBackground() se hogi (30-min cooldown par)
         debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         return false;
       }

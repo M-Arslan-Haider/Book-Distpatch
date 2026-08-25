@@ -1707,7 +1707,7 @@ class IntervalSelfieService extends GetxController with WidgetsBindingObserver {
 
   void _startPolling() {
     _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+    _pollTimer = Timer.periodic(const Duration(minutes: 1), (_) async {
       debugPrint('🔄 [INTERVAL SELFIE] Poll tick');
       await _fetchPolicyFromApi();
       await _checkClockInStateChange();

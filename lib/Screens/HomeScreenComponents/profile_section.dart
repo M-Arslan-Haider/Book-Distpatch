@@ -1,156 +1,3 @@
-// //
-// // import 'package:flutter/material.dart';
-// // import '../../Database/util.dart';
-// //
-// // class ProfileSection extends StatefulWidget {
-// //   const ProfileSection({super.key});
-// //
-// //   @override
-// //   State<ProfileSection> createState() => _ProfileSectionState();
-// // }
-// //
-// // class _ProfileSectionState extends State<ProfileSection> {
-// //
-// //   @override
-// //   void initState() {
-// //     super.initState();
-// //     _load();
-// //   }
-// //
-// //   Future<void> _load() async {
-// //     await loadEmployeeData();
-// //     if (mounted) setState(() {});
-// //   }
-// //
-// //   String _getInitials(String name) {
-// //     final parts = name.trim().split(' ').where((p) => p.isNotEmpty).toList();
-// //     if (parts.isEmpty) return '?';
-// //     if (parts.length == 1) return parts[0][0].toUpperCase();
-// //     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-// //   }
-// //   //
-// //   // @override
-// //   // Widget build(BuildContext context) {
-// //   //   final String name        = emp_name.isNotEmpty ? emp_name : 'Employee';
-// //   //   final String designation = emp_job.isNotEmpty ? emp_job : 'Staff';
-// //   //   final String id          = emp_id.isNotEmpty ? emp_id : '--';
-// //   //   final String initials    = _getInitials(name);
-// //   //
-// //   //   return Padding(
-// //   //     padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 4),
-// //   //     child: Container(
-// //   //       padding: const EdgeInsets.all(13),
-// //   //       decoration: BoxDecoration(
-// //   //         color: Colors.white,
-// //   //         borderRadius: BorderRadius.circular(20),
-// //   //       ),
-// //   //       child: Row(
-// //   //         children: [
-// //   //           Column(
-// //   //             crossAxisAlignment: CrossAxisAlignment.start,
-// //   //             children: [
-// //   //               const Text(
-// //   //                 "GPS Attendance System",
-// //   //                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-// //   //               ),
-// //   //               const SizedBox(height: 2),
-// //   //               Text("ID: $id",
-// //   //                   style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-// //   //               const SizedBox(height: 2),
-// //   //               Text("Name: $name",
-// //   //                   style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-// //   //               const SizedBox(height: 2),
-// //   //               Text("Job: $designation",
-// //   //                   style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-// //   //             ],
-// //   //           ),
-// //   //           const Spacer(),
-// //   //           CircleAvatar(
-// //   //             radius: 40,
-// //   //             backgroundColor: const Color(0xFF4354E8),
-// //   //             child: ClipOval(
-// //   //               child: Image.asset(
-// //   //                 'assets/icons/pngicon.png',
-// //   //                 width: 80,
-// //   //                 height: 80,
-// //   //                 fit: BoxFit.cover,
-// //   //               ),
-// //   //             ),
-// //   //           )
-// //   //         ],
-// //   //       ),
-// //   //     ),
-// //   //   );
-// //   // }
-// //
-// //   @override
-// //   Widget build(BuildContext context) {
-// //     final String name        = emp_name.isNotEmpty ? emp_name : 'Employee';
-// //     final String designation = emp_job.isNotEmpty ? emp_job : 'Staff';
-// //     final String id          = emp_id.isNotEmpty ? emp_id : '--';
-// //     final String initials    = _getInitials(name);
-// //
-// //     return Padding(
-// //       padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 4),
-// //       child: Container(
-// //         padding: const EdgeInsets.all(13),
-// //         decoration: BoxDecoration(
-// //           color: Colors.white,
-// //           borderRadius: BorderRadius.circular(20),
-// //         ),
-// //         child: Row(
-// //           children: [
-// //             // Wrap with Expanded to constrain width
-// //             Expanded(
-// //               child: Column(
-// //                 crossAxisAlignment: CrossAxisAlignment.start,
-// //                 children: [
-// //                   const Text(
-// //                     "GPS Workforce Monitor",
-// //                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-// //                     overflow: TextOverflow.ellipsis, // Add ellipsis for long text
-// //                   ),
-// //                   const SizedBox(height: 2),
-// //                   Text(
-// //                     "ID: $id",
-// //                     style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-// //                     overflow: TextOverflow.ellipsis,
-// //                   ),
-// //                   const SizedBox(height: 2),
-// //                   Text(
-// //                     "Name: $name",
-// //                     style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-// //                     overflow: TextOverflow.ellipsis,
-// //                   ),
-// //                   const SizedBox(height: 2),
-// //                   Text(
-// //                     "Job: $designation",
-// //                     style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-// //                     overflow: TextOverflow.ellipsis,
-// //                   ),
-// //                 ],
-// //               ),
-// //             ),
-// //             // Remove Spacer(), use SizedBox for spacing instead
-// //             const SizedBox(width: 12),
-// //             CircleAvatar(
-// //               radius: 40,
-// //               backgroundColor: const Color(0xFF4354E8),
-// //               child: ClipOval(
-// //                 child: Image.asset(
-// //                   'assets/icons/download (2)-removebg-preview.jpg',
-// //                   width: 80,
-// //                   height: 80,
-// //                   fit: BoxFit.cover,
-// //                 ),
-// //               ),
-// //             ),
-// //           ],
-// //         ),
-// //       ),
-// //     );
-// //   }
-// // }
 //
 //
 // import 'package:flutter/material.dart';
@@ -223,7 +70,7 @@
 //           ),
 //         ],
 //         border: Border.all(
-//           color: AppColors.divider.withOpacity(0.3),
+//           color: const Color(0xFF3DAF93).withOpacity(0.25), // teal accent border
 //           width: 1,
 //         ),
 //       ),
@@ -284,7 +131,7 @@
 //               Icon(
 //                 Icons.calendar_today_rounded,
 //                 size: 13,
-//                 color: AppColors.textSecondary.withOpacity(0.6),
+//                 color: const Color(0xFF3DAF93).withOpacity(0.70),
 //               ),
 //               const SizedBox(width: 6),
 //               Text(
@@ -303,6 +150,12 @@
 //   }
 // }
 //
+// // ── Sidebar-matched colour palette ──────────────────────────────────────────
+// const _kTealLight  = Color(0xFF3DAF93); // navbar _tealLight / sidebar greenTeal
+// const _kTealDark   = Color(0xFF1A6E59); // navbar _tealDark  / sidebar primary
+// const _kChipBg     = Color(0xFFE8F7F3); // very light teal surface
+// const _kChipBorder = Color(0xFFB2DFD4); // soft teal border
+//
 // class _InfoChip extends StatelessWidget {
 //   final IconData icon;
 //   final String label;
@@ -315,12 +168,13 @@
 //   @override
 //   Widget build(BuildContext context) {
 //     return Container(
-//       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+//       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
 //       decoration: BoxDecoration(
-//         color: const Color(0xFFF0F4FF),
+//         // Soft teal background — matches sidebar header gradient family
+//         color: _kChipBg,
 //         borderRadius: BorderRadius.circular(20),
 //         border: Border.all(
-//           color: const Color(0xFFDCE4F5),
+//           color: _kChipBorder,
 //           width: 1,
 //         ),
 //       ),
@@ -330,172 +184,18 @@
 //           Icon(
 //             icon,
 //             size: 13,
-//             color: const Color(0xFF5B7ED7),
+//             color: _kTealLight,
 //           ),
 //           const SizedBox(width: 5),
 //           Text(
 //             label,
 //             style: const TextStyle(
 //               fontSize: 12.5,
-//               fontWeight: FontWeight.w500,
-//               color: Color(0xFF3A4A6B),
+//               fontWeight: FontWeight.w600,
+//               color: _kTealDark,
 //             ),
 //           ),
 //         ],
-//       ),
-//     );
-//   }
-
-
-//
-// import 'package:flutter/material.dart';
-// import '../../Database/util.dart';
-//
-// class ProfileSection extends StatefulWidget {
-//   const ProfileSection({super.key});
-//
-//   @override
-//   State<ProfileSection> createState() => _ProfileSectionState();
-// }
-//
-// class _ProfileSectionState extends State<ProfileSection> {
-//
-//   @override
-//   void initState() {
-//     super.initState();
-//     _load();
-//   }
-//
-//   Future<void> _load() async {
-//     await loadEmployeeData();
-//     if (mounted) setState(() {});
-//   }
-//
-//   String _getInitials(String name) {
-//     final parts = name.trim().split(' ').where((p) => p.isNotEmpty).toList();
-//     if (parts.isEmpty) return '?';
-//     if (parts.length == 1) return parts[0][0].toUpperCase();
-//     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-//   }
-//   //
-//   // @override
-//   // Widget build(BuildContext context) {
-//   //   final String name        = emp_name.isNotEmpty ? emp_name : 'Employee';
-//   //   final String designation = emp_job.isNotEmpty ? emp_job : 'Staff';
-//   //   final String id          = emp_id.isNotEmpty ? emp_id : '--';
-//   //   final String initials    = _getInitials(name);
-//   //
-//   //   return Padding(
-//   //     padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 4),
-//   //     child: Container(
-//   //       padding: const EdgeInsets.all(13),
-//   //       decoration: BoxDecoration(
-//   //         color: Colors.white,
-//   //         borderRadius: BorderRadius.circular(20),
-//   //       ),
-//   //       child: Row(
-//   //         children: [
-//   //           Column(
-//   //             crossAxisAlignment: CrossAxisAlignment.start,
-//   //             children: [
-//   //               const Text(
-//   //                 "GPS Attendance System",
-//   //                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-//   //               ),
-//   //               const SizedBox(height: 2),
-//   //               Text("ID: $id",
-//   //                   style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-//   //               const SizedBox(height: 2),
-//   //               Text("Name: $name",
-//   //                   style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-//   //               const SizedBox(height: 2),
-//   //               Text("Job: $designation",
-//   //                   style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-//   //             ],
-//   //           ),
-//   //           const Spacer(),
-//   //           CircleAvatar(
-//   //             radius: 40,
-//   //             backgroundColor: const Color(0xFF4354E8),
-//   //             child: ClipOval(
-//   //               child: Image.asset(
-//   //                 'assets/icons/pngicon.png',
-//   //                 width: 80,
-//   //                 height: 80,
-//   //                 fit: BoxFit.cover,
-//   //               ),
-//   //             ),
-//   //           )
-//   //         ],
-//   //       ),
-//   //     ),
-//   //   );
-//   // }
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     final String name        = emp_name.isNotEmpty ? emp_name : 'Employee';
-//     final String designation = emp_job.isNotEmpty ? emp_job : 'Staff';
-//     final String id          = emp_id.isNotEmpty ? emp_id : '--';
-//     final String initials    = _getInitials(name);
-//
-//     return Padding(
-//       padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 4),
-//       child: Container(
-//         padding: const EdgeInsets.all(13),
-//         decoration: BoxDecoration(
-//           color: Colors.white,
-//           borderRadius: BorderRadius.circular(20),
-//         ),
-//         child: Row(
-//           children: [
-//             // Wrap with Expanded to constrain width
-//             Expanded(
-//               child: Column(
-//                 crossAxisAlignment: CrossAxisAlignment.start,
-//                 children: [
-//                   const Text(
-//                     "GPS Workforce Monitor",
-//                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-//                     overflow: TextOverflow.ellipsis, // Add ellipsis for long text
-//                   ),
-//                   const SizedBox(height: 2),
-//                   Text(
-//                     "ID: $id",
-//                     style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-//                     overflow: TextOverflow.ellipsis,
-//                   ),
-//                   const SizedBox(height: 2),
-//                   Text(
-//                     "Name: $name",
-//                     style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-//                     overflow: TextOverflow.ellipsis,
-//                   ),
-//                   const SizedBox(height: 2),
-//                   Text(
-//                     "Job: $designation",
-//                     style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-//                     overflow: TextOverflow.ellipsis,
-//                   ),
-//                 ],
-//               ),
-//             ),
-//             // Remove Spacer(), use SizedBox for spacing instead
-//             const SizedBox(width: 12),
-//             CircleAvatar(
-//               radius: 40,
-//               backgroundColor: const Color(0xFF4354E8),
-//               child: ClipOval(
-//                 child: Image.asset(
-//                   'assets/icons/download (2)-removebg-preview.jpg',
-//                   width: 80,
-//                   height: 80,
-//                   fit: BoxFit.cover,
-//                 ),
-//               ),
-//             ),
-//           ],
-//         ),
 //       ),
 //     );
 //   }
@@ -582,13 +282,17 @@ class _ProfileSectionState extends State<ProfileSection> {
           // Greeting line with emoji
           Row(
             children: [
-              Text(
-                '$greeting, $firstName ',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                  letterSpacing: 0.2,
+              Flexible(
+                child: Text(
+                  '$greeting, $firstName ',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                    letterSpacing: 0.2,
+                  ),
+                  softWrap: true,
+                  overflow: TextOverflow.visible,
                 ),
               ),
               Text(
@@ -608,17 +312,20 @@ class _ProfileSectionState extends State<ProfileSection> {
               color: AppColors.textSecondary,
               letterSpacing: 0.2,
             ),
+            softWrap: true,
+            overflow: TextOverflow.visible,
           ),
           const SizedBox(height: 10),
 
           // EMP ID and Designation chips
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
               _InfoChip(
                 icon: Icons.badge_outlined,
                 label: 'EMP-$id',
               ),
-              const SizedBox(width: 8),
               _InfoChip(
                 icon: Icons.work_outline_rounded,
                 label: designation,
@@ -689,12 +396,16 @@ class _InfoChip extends StatelessWidget {
             color: _kTealLight,
           ),
           const SizedBox(width: 5),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              color: _kTealDark,
+          Flexible(
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: _kTealDark,
+              ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
             ),
           ),
         ],

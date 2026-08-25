@@ -26,7 +26,7 @@ class RemoteConfigService {
     // Location Endpoints
     'location_endpoint': '/location/post/',
     'emplocation_endpoint': '/emplocation/post/',
-    'location_bulk_endpoint': 'http://103.149.33.102:8001/location/bulk',
+    'location_bulk_endpoint': 'http://103.120.70.171:8001/location/bulk',
 
     // Leave Endpoints
     'leave_endpoint': '/leavetable/post/',

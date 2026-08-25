@@ -1,9 +1,8 @@
 
-
-
 import 'package:book_dispatch/Screens/schedule_hub_screen.dart';
 import 'package:book_dispatch/Screens/sync_status_card_screen.dart';
 import 'package:book_dispatch/Screens/task_screen.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -617,6 +616,13 @@ class _HomeScreenState extends State<HomeScreen>
                     ),
                     child: TextButton.icon(
                       onPressed: () async {
+                        // ✅ Oracle APEX ko update action POST karo (fire-and-forget)
+                        final prefs = await SharedPreferences.getInstance();
+                        UpdateCheckService.postUpdateAction(
+                          empId       : _empId,
+                          empName     : _empName,
+                          companyCode : prefs.getString('company_code') ?? '',
+                        );
                         final uri = Uri.parse(UpdateCheckService.playStoreUrl);
                         if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
                       },

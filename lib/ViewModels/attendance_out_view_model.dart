@@ -342,7 +342,11 @@ class AttendanceOutViewModel extends GetxController {
 
     final prefs = await SharedPreferences.getInstance();
 
-    final String resolvedEmpId = empId.isNotEmpty ? empId : (prefs.getString('emp_id') ?? '');
+    // ✅ FIX #3: emp_id prefs mein setInt se save hota hai — getString() int par
+    // TypeError throw karta tha jis se poora (unawaited) fastSave silently mar
+    // jata tha aur clock-out DB tak save nahi hota tha. Type-safe read:
+    final String resolvedEmpId =
+    empId.isNotEmpty ? empId : _safeEmpIdFromPrefs(prefs);
 
     double latOut = _locVM.globalLatitude1.value;
     double lngOut = _locVM.globalLongitude1.value;
@@ -459,9 +463,26 @@ class AttendanceOutViewModel extends GetxController {
           if (await _isOnline()) {
             await _repo.syncUnposted();
             await fetchAllAttendanceOut();
-            await prefs.setBool(_keyHasFastData, false);
-            await prefs.remove(_keyFastData);
-            debugPrint('⚡ [OutVM] Delayed sync complete');
+            // ✅ FIX #5 (OutVM side): flags pehle sync ke result check kiye
+            // baghair clear ho jate the — agar POST fail hota to restore
+            // safety-net bhi khatam ho jata tha. Ab sirf tab clear karo jab
+            // YEH record DB mein maujood ho aur posted=1 ho chuka ho.
+            try {
+              final bool stillUnposted = (await _repo.getUnposted()).any(
+                    (r) => r.attendance_out_id?.toString() == attendanceOutId,
+              );
+              final bool savedInDb = await _repo.idExists(attendanceOutId);
+              if (savedInDb && !stillUnposted) {
+                await prefs.setBool(_keyHasFastData, false);
+                await prefs.remove(_keyFastData);
+                debugPrint('⚡ [OutVM] Delayed sync complete — flags cleared');
+              } else {
+                debugPrint('⏸️ [OutVM] Delayed sync: record not yet posted '
+                    '(savedInDb=$savedInDb, stillUnposted=$stillUnposted) — flags KEPT for retry');
+              }
+            } catch (e) {
+              debugPrint('⚠️ [OutVM] Delayed sync flag-check error (flags kept): $e');
+            }
           }
         });
       } catch (e) {
@@ -547,7 +568,9 @@ class AttendanceOutViewModel extends GetxController {
 
   Future<void> saveFormAttendanceOut({DateTime? clockOutTime}) async {
     final prefs = await SharedPreferences.getInstance();
-    final empId = prefs.getString('emp_id') ?? '';
+    // ✅ FIX #3: getString('emp_id') int-typed key par throw karta tha —
+    // yeh poori method har call par crash ho jati thi. Type-safe read:
+    final empId = _safeEmpIdFromPrefs(prefs);
     await clockOut(
       empId: empId,
       clockOutTime: clockOutTime,
@@ -579,8 +602,18 @@ class AttendanceOutViewModel extends GetxController {
       await _repo.syncUnposted();
       await fetchAllAttendanceOut();
       final prefs = await SharedPreferences.getInstance();
-      await _clearBackupKeys(prefs);
-      debugPrint('✅ [OutVM] Sync done');
+      // ✅ FIX #5-spirit: conditional clear — failed sync par safety-net na uray.
+      try {
+        final remaining = await _repo.getUnposted();
+        if (remaining.isEmpty) {
+          await _clearBackupKeys(prefs);
+          debugPrint('✅ [OutVM] Sync done — backup cleared');
+        } else {
+          debugPrint('⏸️ [OutVM] Sync done but ${remaining.length} still unposted — backup KEPT');
+        }
+      } catch (_) {
+        debugPrint('⚠️ [OutVM] syncNow post-check failed — backup KEPT');
+      }
     }
   }
 
@@ -664,22 +697,55 @@ class AttendanceOutViewModel extends GetxController {
         return;
       }
 
-      double dist = prefs.getDouble(_keyFastClockOutDist) ?? 0.0;
+      // ✅ FIX #4: getDouble() Kotlin ki raw-String value par throw karta tha
+      // aur poora restore abort ho jata tha. Ab type-safe reader:
+      double dist = _safeReadDouble(prefs, _keyFastClockOutDist);
       if (dist == 0.0) {
-        final blob = prefs.getString(_keyFastData) ?? '{}';
-        dist = ((jsonDecode(blob) as Map<String, dynamic>)['fast_totalDistance'] as num?)?.toDouble() ?? 0.0;
+        try {
+          final blob = prefs.getString(_keyFastData) ?? '{}';
+          dist = ((jsonDecode(blob) as Map<String, dynamic>)['fast_totalDistance'] as num?)?.toDouble() ?? 0.0;
+        } catch (_) {}
       }
 
-      final String reason = prefs.getString(_keyFastClockOutReason) ?? 'background_auto';
+      final String reason = _getStringFromPrefs(prefs, _keyFastClockOutReason).isNotEmpty
+          ? _getStringFromPrefs(prefs, _keyFastClockOutReason)
+          : 'background_auto';
       final DateTime realTime = DateTime.parse(timeStr);
 
       String empId = '';
       String? restoredClockOutImage;
+      String blobAttendanceId = '';
       try {
         final blob = jsonDecode(prefs.getString(_keyFastData) ?? '{}') as Map<String, dynamic>;
-        empId = blob['fast_empId'] as String? ?? '';
+        // ✅ FIX #4: Kotlin JSON mein key 'fast_userId' thi jabke Flutter
+        // 'fast_empId' parhta tha → empId hamesha '' aata tha. Dono keys
+        // support karo (Kotlin side bhi ab dono likhta hai):
+        empId = (blob['fast_empId'] as String?) ??
+            (blob['fast_userId'] as String?) ?? '';
         restoredClockOutImage = blob['fast_clock_out_image'] as String?;
+        blobAttendanceId = (blob['fast_attendanceId'] as String?) ?? '';
       } catch (_) {}
+
+      // ✅ FIX #3 (restore path): agar blob se empId nahi mila to prefs se
+      // type-safe read karo — pehle yahan bhi '' chala jata tha.
+      if (empId.isEmpty) {
+        empId = _safeEmpIdFromPrefs(prefs);
+      }
+
+      // ✅ FIX #4: Kotlin ab fast_attendanceId bhi likhta hai. Agar prefs mein
+      // attendance ID keys kisi wajah se missing hain (partial wipe waghaira)
+      // to blob ki ID prefs mein seed kar do taake clockOut() UNKWN_ fallback
+      // ki bajaye SAHI clock-in ID use kare. Yeh sirf tab hota hai jab prefs
+      // mein koi ID maujood NA ho — existing behaviour override nahi hota.
+      if (blobAttendanceId.isNotEmpty) {
+        final String existingId = prefs.getString(_keyAttendanceId) ??
+            prefs.getString(_keyCurrentId) ??
+            prefs.getString(_keyClockInAltId) ?? '';
+        if (existingId.isEmpty) {
+          await prefs.setString(_keyAttendanceId, blobAttendanceId);
+          debugPrint('🆔 [OutVM] FIX #4: blob attendanceId seeded into prefs: $blobAttendanceId');
+        }
+      }
 
       debugPrint('✅ [OutVM] Fast restore: time=$realTime, dist=$dist km');
       debugPrint('📸 [OutVM] Fast restore image: ${restoredClockOutImage != null ? "✅ (${restoredClockOutImage.length} chars)" : "❌ NULL (auto clockout)"}');
@@ -800,14 +866,33 @@ class AttendanceOutViewModel extends GetxController {
     _periodicSyncTimer = Timer.periodic(const Duration(minutes: 5), (_) async {
       try {
         final prefs = await SharedPreferences.getInstance();
-        if (!(prefs.getBool(_keyHasBackup) ?? false)) return;
+
+        // ✅ FIX #7 (OUT): pehle yeh timer SIRF hasBackup flag par chalta tha —
+        // fast clock-out path yeh flag set hi nahi karta, is liye failed fast
+        // clock-outs kabhi retry nahi hote the. Ab LEVEL-TRIGGERED: DB mein
+        // unposted rows hain to sync attempt hota hai, flag ho ya na ho.
+        final bool hasBackup = prefs.getBool(_keyHasBackup) ?? false;
+        final unposted = await _repo.getUnposted();
+        if (unposted.isEmpty && !hasBackup) return;
 
         if (await _isOnline()) {
-          debugPrint('🔄 [OutVM] Periodic sync — internet available');
+          debugPrint('🔄 [OutVM] Periodic sync — ${unposted.length} unposted OUT record(s)');
           await _repo.syncUnposted();
           await fetchAllAttendanceOut();
-          await _clearBackupKeys(prefs);
-          debugPrint('✅ [OutVM] Periodic sync complete');
+
+          // ✅ FIX #5-spirit: backup keys sirf tab clear karo jab sab kuch
+          // post ho chuka ho — pehle unconditionally clear hoti thin.
+          if (hasBackup) {
+            final remaining = await _repo.getUnposted();
+            if (remaining.isEmpty) {
+              await _clearBackupKeys(prefs);
+              debugPrint('✅ [OutVM] Periodic sync complete — backup cleared');
+            } else {
+              debugPrint('⏸️ [OutVM] Periodic sync: ${remaining.length} still unposted — backup KEPT');
+            }
+          } else {
+            debugPrint('✅ [OutVM] Periodic sync complete');
+          }
         }
       } catch (e) {
         debugPrint('❌ [OutVM] Periodic sync error: $e');
@@ -830,8 +915,19 @@ class AttendanceOutViewModel extends GetxController {
     if (await _isOnline()) {
       await _repo.syncUnposted();
       await fetchAllAttendanceOut();
-      await _clearBackupKeys(prefs);
-      debugPrint('✅ [OutVM] Synced to server');
+      // ✅ FIX #5-spirit: backup keys sirf tab clear jab koi unposted OUT row
+      // baqi na ho — warna failed POST ka safety-net ur jata tha.
+      try {
+        final remaining = await _repo.getUnposted();
+        if (remaining.isEmpty) {
+          await _clearBackupKeys(prefs);
+          debugPrint('✅ [OutVM] Synced to server — backup cleared');
+        } else {
+          debugPrint('⏸️ [OutVM] ${remaining.length} OUT record(s) still unposted — backup KEPT');
+        }
+      } catch (_) {
+        debugPrint('⚠️ [OutVM] post-sync check failed — backup KEPT (safe default)');
+      }
     } else {
       debugPrint('🌐 [OutVM] Offline — will sync later');
     }
@@ -856,13 +952,15 @@ class AttendanceOutViewModel extends GetxController {
       return provided;
     }
 
-    final saved = prefs.getDouble(_keyClockOutDistance) ?? 0.0;
+    // ✅ FIX #4 (defensive): type-safe reads — poisoned String-typed keys par
+    // getDouble() throw kar ke poora clockOut() fail kar deta tha.
+    final saved = _safeReadDouble(prefs, _keyClockOutDistance);
     if (saved > 0) {
       debugPrint('📍 [OutVM] Using saved distance: ${saved.toStringAsFixed(3)} km');
       return saved;
     }
 
-    final backup = prefs.getDouble(_keyBackupDistance) ?? 0.0;
+    final backup = _safeReadDouble(prefs, _keyBackupDistance);
     if (backup > 0) {
       debugPrint('📍 [OutVM] Using backup distance: ${backup.toStringAsFixed(3)} km');
       return backup;
@@ -925,10 +1023,60 @@ class AttendanceOutViewModel extends GetxController {
   }
 
   String _getStringFromPrefs(SharedPreferences prefs, String key) {
+    // ✅ FIX #3: prefs.getString() int-typed key (emp_id = setInt) par throw
+    // karta tha aur catch '' return karta tha — 11:58 PM auto clock-out
+    // emp_id = '' ke saath post hota tha (server par orphan/reject).
+    // prefs.get() har type ko safely toString() kar deta hai.
     try {
-      return prefs.getString(key) ?? '';
+      final dynamic raw = prefs.get(key);
+      if (raw == null) return '';
+      return raw.toString();
     } catch (_) {
       return '';
     }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ✅ FIX #3 — PRIVATE: TYPE-SAFE emp_id READER
+  // login_view_model emp_id ko setInt() se save karta hai; getString() us par
+  // TypeError deta hai. prefs.get() int/String dono handle karta hai.
+  // ─────────────────────────────────────────────────────────────────────────
+  String _safeEmpIdFromPrefs(SharedPreferences prefs) {
+    try {
+      final dynamic raw = prefs.get('emp_id');
+      if (raw == null) return '';
+      return raw.toString();
+    } catch (_) {
+      return '';
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ✅ FIX #4 — PRIVATE: TYPE-SAFE DOUBLE READER
+  // Kotlin (LocationMonitorService.handleCriticalEvent) 'fastClockOutDistance'
+  // ko raw String likhta tha; Flutter prefs.getDouble() us par cast-error
+  // throw karta tha aur poora restoreFastDataOnStartup() abort ho jata tha —
+  // native auto-clockouts kabhi post nahi hote the. Yeh reader har shape
+  // (double / int / raw String / Flutter double-prefix String) handle karta
+  // hai, is liye purane "poisoned" devices bhi bina reinstall ke recover
+  // ho jate hain.
+  // ─────────────────────────────────────────────────────────────────────────
+  double _safeReadDouble(SharedPreferences prefs, String key) {
+    const String flutterDoublePrefix = 'VGhpc0lzVGhlUHJlZml4Rm9yQURvdWJsZS4h';
+    try {
+      final dynamic raw = prefs.get(key);
+      if (raw == null) return 0.0;
+      if (raw is double) return raw;
+      if (raw is int) return raw.toDouble();
+      if (raw is String) {
+        final String s = raw.startsWith(flutterDoublePrefix)
+            ? raw.substring(flutterDoublePrefix.length)
+            : raw;
+        return double.tryParse(s.trim()) ?? 0.0;
+      }
+    } catch (e) {
+      debugPrint('⚠️ [OutVM] _safeReadDouble($key) error: $e');
+    }
+    return 0.0;
   }
 }

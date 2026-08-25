@@ -1,3 +1,4 @@
+// schedule_hub_screen.dart
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -305,6 +306,10 @@ class _ScheduleHubScreenState extends State<ScheduleHubScreen> {
 
     return 'Pending';
   }
+
+  // ---------- NEW helper to expose NOTES field to UI ----------
+  String _getLocationNotes(Map<String, dynamic> r) =>
+      (r['NOTES'] ?? r['notes'] ?? r['NOTE'] ?? r['note'] ?? '').toString().trim();
 
   double? _toDouble(dynamic v) {
     if (v == null) return null;
@@ -1180,6 +1185,7 @@ class _ScheduleHubScreenState extends State<ScheduleHubScreen> {
     return DateTime.tryParse(raw.toString());
   }
 
+  // ---------- Modified: constrain calendar height so it doesn't push content ----------
   Widget _buildCalendarPicker() {
     final markedDates = <DateTime>{};
     for (final loc in _locations) {
@@ -1191,22 +1197,26 @@ class _ScheduleHubScreenState extends State<ScheduleHubScreen> {
       if (d != null) markedDates.add(DateTime(d.year, d.month, d.day));
     }
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: _MiniCalendar(
-        selectedDate: _selectedFilterDate,
-        markedDates: markedDates,
-        onDateSelected: (date) => setState(() => _selectedFilterDate = date),
+    // Constrain calendar height so it doesn't push the list content out of view
+    return SizedBox(
+      height: 260, // tuned to be compact but usable; adjust if desired
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: _MiniCalendar(
+          selectedDate: _selectedFilterDate,
+          markedDates: markedDates,
+          onDateSelected: (date) => setState(() => _selectedFilterDate = date),
+        ),
       ),
     );
   }
@@ -1347,6 +1357,7 @@ class _ScheduleHubScreenState extends State<ScheduleHubScreen> {
               title: _getLocationTitle(loc),
               time: _getLocationTimeRange(loc),
               scheduleId: scheduleNo,  // ✅ Display SCHEDULE_NO
+              notes: _getLocationNotes(loc), // <-- NEW: pass notes to card
               showStart: showStart,
               showComplete: showComplete,
               onStartTap: showStart ? () => _handleStartTap(loc) : null,
@@ -1436,6 +1447,7 @@ class _LocationCard extends StatelessWidget {
   final String title;
   final String time;
   final String scheduleId;
+  final String notes; // <- new
   final bool showStart;
   final bool showComplete;
   final VoidCallback? onStartTap;
@@ -1447,6 +1459,7 @@ class _LocationCard extends StatelessWidget {
     required this.title,
     required this.time,
     required this.scheduleId,
+    required this.notes, // <- new
     required this.showStart,
     required this.showComplete,
     this.onStartTap,
@@ -1602,6 +1615,22 @@ class _LocationCard extends StatelessWidget {
               color: Color(0xFF1F2937),
             ),
           ),
+
+          // ---------- NEW: display notes if present ----------
+          if (notes.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              notes,
+              style: const TextStyle(
+                fontSize: 12,
+                color: Color(0xFF6B7280),
+                fontWeight: FontWeight.w500,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+
           const SizedBox(height: 6),
 
           Row(
@@ -1858,10 +1887,12 @@ class _MiniCalendarState extends State<_MiniCalendar> {
     final rows = (totalCells / 7).ceil();
     final today = DateTime.now();
 
+    // Use Flexible + SingleChildScrollView for the day grid to avoid RenderFlex overflow
     return Padding(
       padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        // allow Column to take available height inside the fixed SizedBox parent
+        mainAxisSize: MainAxisSize.max,
         children: [
           Row(
             children: [
@@ -1911,81 +1942,90 @@ class _MiniCalendarState extends State<_MiniCalendar> {
                 .toList(),
           ),
           const SizedBox(height: 2),
-          ...List.generate(rows, (row) {
-            return Row(
-              children: List.generate(7, (col) {
-                final cellIndex = row * 7 + col;
-                final dayNumber = cellIndex - leadingBlanks + 1;
 
-                if (dayNumber < 1 || dayNumber > daysInMonth) {
-                  return const Expanded(child: SizedBox(height: 36));
-                }
+          // Make the grid flexible and scrollable if needed to avoid overflow on small heights
+          Flexible(
+            child: SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
+              child: Column(
+                children: List.generate(rows, (row) {
+                  return Row(
+                    children: List.generate(7, (col) {
+                      final cellIndex = row * 7 + col;
+                      final dayNumber = cellIndex - leadingBlanks + 1;
 
-                final cellDate = DateTime(
-                    _visibleMonth.year, _visibleMonth.month, dayNumber);
-                final isSelected =
-                _isSameDay(cellDate, widget.selectedDate);
-                final isToday = _isSameDay(cellDate, today);
-                final hasEvent = _hasEvent(cellDate);
+                      if (dayNumber < 1 || dayNumber > daysInMonth) {
+                        return const Expanded(child: SizedBox(height: 36));
+                      }
 
-                return Expanded(
-                  child: GestureDetector(
-                    onTap: () => widget.onDateSelected(cellDate),
-                    child: Container(
-                      height: 36,
-                      margin: const EdgeInsets.symmetric(
-                          vertical: 2, horizontal: 1),
-                      decoration: BoxDecoration(
-                        gradient: isSelected
-                            ? const LinearGradient(
-                          colors: [_teal, _tealDark],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        )
-                            : null,
-                        shape: BoxShape.circle,
-                        border: (!isSelected && isToday)
-                            ? Border.all(color: _tealDark, width: 1.2)
-                            : null,
-                      ),
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Text(
-                            '$dayNumber',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: isSelected
-                                  ? FontWeight.w800
-                                  : FontWeight.w600,
-                              color: isSelected
-                                  ? Colors.white
-                                  : (isToday
-                                  ? _tealDark
-                                  : const Color(0xFF374151)),
+                      final cellDate = DateTime(
+                          _visibleMonth.year, _visibleMonth.month, dayNumber);
+                      final isSelected =
+                      _isSameDay(cellDate, widget.selectedDate);
+                      final isToday = _isSameDay(cellDate, today);
+                      final hasEvent = _hasEvent(cellDate);
+
+                      return Expanded(
+                        child: GestureDetector(
+                          onTap: () => widget.onDateSelected(cellDate),
+                          child: Container(
+                            height: 36,
+                            margin: const EdgeInsets.symmetric(
+                                vertical: 2, horizontal: 1),
+                            decoration: BoxDecoration(
+                              gradient: isSelected
+                                  ? const LinearGradient(
+                                colors: [_teal, _tealDark],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              )
+                                  : null,
+                              shape: BoxShape.circle,
+                              border: (!isSelected && isToday)
+                                  ? Border.all(color: _tealDark, width: 1.2)
+                                  : null,
+                            ),
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Text(
+                                  '$dayNumber',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: isSelected
+                                        ? FontWeight.w800
+                                        : FontWeight.w600,
+                                    color: isSelected
+                                        ? Colors.white
+                                        : (isToday
+                                        ? _tealDark
+                                        : const Color(0xFF374151)),
+                                  ),
+                                ),
+                                if (hasEvent)
+                                  Positioned(
+                                    bottom: 3,
+                                    child: Container(
+                                      width: 5,
+                                      height: 5,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color:
+                                        isSelected ? Colors.white : _teal,
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
-                          if (hasEvent)
-                            Positioned(
-                              bottom: 3,
-                              child: Container(
-                                width: 5,
-                                height: 5,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color:
-                                  isSelected ? Colors.white : _teal,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              }),
-            );
-          }),
+                        ),
+                      );
+                    }),
+                  );
+                }),
+              ),
+            ),
+          ),
         ],
       ),
     );
